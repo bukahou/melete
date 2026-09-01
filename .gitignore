@@ -1,0 +1,40 @@
+# === 原始素材：体积大 + 版权，绝不入库 ===
+*.pdf
+/tmp/
+pipeline/**/raw/
+*.raw.txt
+saa-c03.txt
+
+# === 凭证 ===
+.env
+.env.local
+*.local
+*.pem
+*.key
+
+# === Go ===
+/backend/bin/
+/backend/tmp/
+*.test
+
+# === Node / Next.js ===
+node_modules/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# === Python ===
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# === 编辑器 / 系统 ===
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 注：data/**/*.json（题库中间产物）**故意纳入版本管理** ——
+# 它是 source of truth，需要 review 和 diff。前提是本仓库永久 private。
