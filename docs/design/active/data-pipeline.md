@@ -32,12 +32,40 @@ PDF ──[① 解析]──> questions.json ──[② AI 富化]──> enrich
 
 ---
 
+## 素材收件区（inbox）
+
+**原始素材（PDF 等）不进仓库** —— 体积大 + 版权。约定如下：
+
+```
+$MELETE_INBOX/<bank-slug>/<任意文件名>        默认 ~/melete-inbox/
+          ↓  python3 pipeline/core/ingest.py <bank-slug>
+data/<bank-slug>/questions.json               结构化产物（进 git）
+data/<bank-slug>/source.yaml                  素材登记单（进 git，仅元数据）
+```
+
+流程：
+
+1. 素材长期存放在**你自己的磁盘**上，仓库不管
+2. 要导入时，复制到收件区里对应的题库子目录
+3. 跑 `ingest.py`
+4. 处理完，**由你自己**把素材拿走 —— **脚本不删除、不移动任何用户文件**
+
+### 登记单（source.yaml）解决什么问题
+
+素材拿走之后，仓库仍然知道：产物来自哪个文件（`filename` + `sha256` + `bytes`）、
+什么时候导入的、用哪个 git 版本的解析器生成的、产出了多少题多少告警。
+
+将来拿到新版素材，**比对 sha256 即可判断是不是同一份**，不用凭记忆。
+
+---
+
 ## ① 解析（已完成）
 
 ```bash
-pdftotext -layout "$MELETE_SAA_PDF" /tmp/saa-c03.txt
-python3 pipeline/banks/aws-saa-c03/parse.py /tmp/saa-c03.txt data/aws-saa-c03/questions.json
+python3 pipeline/core/ingest.py aws-saa-c03    # 编排：抽取 → 解析 → 登记
 ```
+
+`ingest.py` 是通用编排器（`pipeline/core/`），题库特有的只有 `parse.py`。
 
 ### 源文件形态（踩过的坑，换题库时对照）
 

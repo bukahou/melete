@@ -27,6 +27,8 @@
 - [x] 西里尔字母混入拉丁选项字母的归一
 - [x] 质量报告 + warnings 随题带出
 - [x] 产出 `data/aws-saa-c03/questions.json`（1011 道，97.9% 零告警）
+- [x] 素材收件区约定 + `pipeline/core/ingest.py` 编排器（素材不进仓库，只留登记单）
+- [x] 产出 `data/aws-saa-c03/source.yaml` 登记单（sha256 + 解析器版本 + 产出统计）
 
 ## P1 · AI 富化 ⬜
 

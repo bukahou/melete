@@ -47,7 +47,7 @@ melete/
 
 | | 原因 |
 |---|---|
-| 原始 PDF | 94 MB + 版权。留在 `~/下载`，管道入口用环境变量指定本地路径 |
+| 原始素材（PDF 等） | 体积大 + 版权。走**收件区**约定，见下方「素材收件区」一节 |
 | 内网 IP / 节点名 / 集群拓扑 | 部署清单放 config 私有仓 `clusters/集群甲/apps/melete/` |
 | 任何真实凭证 | 见上。**已 commit 的凭证视为已泄漏**，删文件和补 .gitignore 都无效 |
 
@@ -184,6 +184,33 @@ PDF → questions.json → enriched.json → [导入] → DB
 
 ---
 
+## 素材收件区（inbox）
+
+**原始素材（PDF 等）不进仓库** —— 体积大 + 版权。约定如下：
+
+```
+$MELETE_INBOX/<bank-slug>/<任意文件名>        默认 ~/melete-inbox/
+          ↓  python3 pipeline/core/ingest.py <bank-slug>
+data/<bank-slug>/questions.json               结构化产物（进 git）
+data/<bank-slug>/source.yaml                  素材登记单（进 git，仅元数据）
+```
+
+流程：
+
+1. 素材长期存放在**你自己的磁盘**上，仓库不管
+2. 要导入时，复制到收件区里对应的题库子目录
+3. 跑 `ingest.py`
+4. 处理完，**由你自己**把素材拿走 —— **脚本不删除、不移动任何用户文件**
+
+### 登记单（source.yaml）解决什么问题
+
+素材拿走之后，仓库仍然知道：产物来自哪个文件（`filename` + `sha256` + `bytes`）、
+什么时候导入的、用哪个 git 版本的解析器生成的、产出了多少题多少告警。
+
+将来拿到新版素材，**比对 sha256 即可判断是不是同一份**，不用凭记忆。
+
+---
+
 ## 当前状态
 
 ### P0 已完成
@@ -196,11 +223,9 @@ data/aws-saa-c03/questions.json         1011 道题（1.4 MB）
 重跑方式：
 
 ```bash
-pdftotext -layout "$MELETE_SAA_PDF" /tmp/saa-c03.txt
-python3 pipeline/banks/aws-saa-c03/parse.py /tmp/saa-c03.txt data/aws-saa-c03/questions.json
+# 把 PDF 放进 ~/melete-inbox/aws-saa-c03/ 后：
+python3 pipeline/core/ingest.py aws-saa-c03
 ```
-
-（`MELETE_SAA_PDF` 指向本地 PDF，当前是 `~/下载/SAA-C03 中文 题目+答案 新.pdf`）
 
 ### 解析质量
 
@@ -244,8 +269,8 @@ python3 pipeline/banks/aws-saa-c03/parse.py /tmp/saa-c03.txt data/aws-saa-c03/qu
 
 ## 待定事项
 
+- P1 的模型选择与预算上限
 - 应用的 hostname（需查 config 仓 CLAUDE.md 的「在用 hostname 清单」避免撞名）
-- GitHub 仓库尚未创建（`gh repo create bukahou/melete --private`）
 - atlantis 内容迁入的时机（P5，不阻塞主线）
 
 ---

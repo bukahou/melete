@@ -50,8 +50,9 @@ docs/
 **P0 完成** —— 1011 道题已解析为结构化 JSON，97.9% 零告警。
 
 ```bash
-pdftotext -layout "$MELETE_SAA_PDF" /tmp/saa-c03.txt
-python3 pipeline/banks/aws-saa-c03/parse.py /tmp/saa-c03.txt data/aws-saa-c03/questions.json
+mkdir -p ~/melete-inbox/aws-saa-c03 && cp <素材.pdf> ~/melete-inbox/aws-saa-c03/
+python3 pipeline/core/ingest.py aws-saa-c03
+# 处理完自行把素材拿走 —— 原始素材不进仓库（体积 + 版权）
 ```
 
 下一步 P1：用 Claude Batches API 对 1011 道题一次性产出「答案裁决 + 解析 + 三维标签」。
