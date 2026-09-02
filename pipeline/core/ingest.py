@@ -39,13 +39,24 @@ def sha256_of(path: Path) -> str:
 
 
 def git_rev_of(path: Path) -> str:
-    """解析器当前的 git 版本，用于可复现性追溯。"""
+    """
+    解析器当前的 git 版本，用于可复现性追溯。
+
+    带未提交改动时追加 -dirty（同 `git describe --dirty` 的惯例）：
+    否则登记单会声称用了某个 commit 的解析器，而实际跑的是工作区里改过的版本 ——
+    那样这份登记单就是在撒谎，可追溯性归零。
+    """
+    rel = str(path.relative_to(REPO))
     try:
-        out = subprocess.run(
-            ["git", "log", "-1", "--format=%h", "--", str(path.relative_to(REPO))],
+        rev = subprocess.run(
+            ["git", "log", "-1", "--format=%h", "--", rel],
             cwd=REPO, capture_output=True, text=True, timeout=10,
-        )
-        return out.stdout.strip() or "uncommitted"
+        ).stdout.strip() or "uncommitted"
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain", "--", rel],
+            cwd=REPO, capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        return f"{rev}-dirty" if dirty else rev
     except Exception:
         return "unknown"
 

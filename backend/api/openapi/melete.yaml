@@ -1,0 +1,581 @@
+openapi: 3.0.3
+info:
+  title: Melete API
+  version: 0.1.0
+  description: |
+    题库驱动的学习平台。
+
+    设计要点：**答案不是单一字段，而是一组带来源的「主张」**（`AnswerClaim`）。
+    884 道有对照数据的题里 38% 存在题库标注与社区投票不一致，
+    界面上并列呈现各方主张本身就是最好的学习材料。
+
+servers:
+  - url: /api/v1
+
+# 认证：Bearer access token（见 docs/design/active/deployment.md §0）。
+#
+# 本 API 对公网暴露（web 与 iOS 都是平等客户端），因此不存在「可信的调用方」——
+# 曾有过的服务间共享密钥已移除：原生 App 反编译即得密钥，它挡不住任何人。
+# 身份只由 access token 的签名保证，accountId 取自其 sub。
+security:
+  - accessToken: []
+
+tags:
+  - name: bank
+    description: 题库
+  - name: question
+    description: 题目
+  - name: auth
+    description: 认证（仅供 web 服务端调用 —— 本 API 不对公网暴露）
+  - name: study
+    description: 学习记录（作答 / 自评 / 个人统计）
+
+paths:
+  /auth/password:
+    post:
+      tags: [auth]
+      summary: 用户名密码登录
+      operationId: passwordLogin
+      security: []          # 登录前尚无 token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Credentials" }
+      responses:
+        "200":
+          description: 认证通过
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "401":
+          description: 用户名或密码错误
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /auth/sso:
+    post:
+      tags: [auth]
+      summary: 用 Akasha id_token 换取本 API 的 token
+      description: |
+        web 与 iOS 各自完成 OIDC 流程后，把拿到的 id_token 交给本端点。
+
+        **id_token 由本 API 自己验签**（Akasha JWKS + issuer + audience）——
+        绝不接受客户端自称的 sub：那等于任何人都能登录任意账号。
+      operationId: ssoExchange
+      security: []          # 登录前尚无 token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SsoExchange" }
+      responses:
+        "200":
+          description: 账号已确立
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "401":
+          description: id_token 无效
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: 用 refresh token 换新的 access token
+      operationId: refreshToken
+      security: []          # access 已过期，此处只认 refresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "200":
+          description: 已换发
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "401":
+          description: refresh token 无效、已过期或已吊销
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: 登出（吊销该会话）
+      operationId: logout
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "204":
+          description: 已吊销（幂等：token 不存在也返回 204）
+
+  /attempts:
+    post:
+      tags: [study]
+      summary: 记录一次作答（对错由服务端按参考答案判定）
+      operationId: recordAttempt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AttemptInput" }
+      responses:
+        "200":
+          description: 已记录
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AttemptResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /me/progress:
+    get:
+      tags: [study]
+      summary: 我的学习进度总览
+      operationId: getMyProgress
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Progress" }
+
+  /me/tag-stats:
+    get:
+      tags: [study]
+      summary: 按标签的正确率（「我哪里不会」）
+      description: |
+        `attempt ⋈ question_tag ⋈ tag` 聚合。每题只取**最近一次**作答参与统计 ——
+        否则反复重做同一道错题会把正确率越刷越低，与直觉相反。
+      operationId: getMyTagStats
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema: { type: string, enum: [domain, service, concept] }
+        - name: minAttempts
+          in: query
+          description: 至少做过几道才纳入（样本太小的标签正确率没有意义）
+          schema: { type: integer, minimum: 1, default: 3 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TagStat" }
+
+  /me/resume:
+    get:
+      tags: [study]
+      summary: 继续学习（上次刷到哪）
+      description: 从 attempt 推导，不额外维护断点表 —— 少一处要保持一致的状态。
+      operationId: getMyResume
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Resume" }
+
+  /banks:
+    get:
+      tags: [bank]
+      summary: 题库列表
+      operationId: listBanks
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Bank" }
+
+  /banks/{slug}:
+    get:
+      tags: [bank]
+      summary: 题库详情与统计
+      operationId: getBank
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BankDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /banks/{slug}/tags:
+    get:
+      tags: [bank]
+      summary: 题库的标签列表（用于筛选与正确率热图）
+      operationId: listBankTags
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - name: type
+          in: query
+          description: 只返回某一类标签
+          schema: { type: string, enum: [domain, service, concept] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Tag" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /banks/{slug}/questions:
+    get:
+      tags: [question]
+      summary: 题目列表（分页 + 标签筛选）
+      operationId: listQuestions
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - name: tag
+          in: query
+          description: 标签 id，可重复；多个标签取交集
+          schema:
+            type: array
+            items: { type: integer, format: int64 }
+        - name: contested
+          in: query
+          description: 只返回存在答案分歧的题（题库标注 ≠ 社区投票）
+          schema: { type: boolean }
+        - name: enriched
+          in: query
+          description: 只返回已完成 AI 富化的题
+          schema: { type: boolean }
+        - name: mode
+          in: query
+          description: |
+            学习模式过滤（wrong/unsure/unseen 需要 X-Melete-Account 头）：
+            wrong = 最近一次作答是错的；unsure = 最近一次自评 rating ≤ 2；
+            unseen = 从未作答。账号取自会话 JWT，非请求参数
+          schema: { type: string, enum: [wrong, unsure, unseen] }
+
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuestionPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /questions/{id}:
+    get:
+      tags: [question]
+      summary: 单题详情（题干 + 选项 + 各方答案主张 + 解析 + 标签）
+      operationId: getQuestion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuestionDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    accessToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        本 API 签发的 access token（HS256，TTL 1 小时，对齐 geass-v3 规范）。
+        过期后用 refresh token 调 /auth/refresh 换新的。
+
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      description: 题库 slug，如 aws-saa-c03
+      schema: { type: string }
+
+  responses:
+    TooManyRequests:
+      description: 登录尝试过于频繁
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Progress:
+      type: object
+      required: [bankSlug, questionCount, seenCount, correctCount, wrongCount, unsureCount, attemptCount]
+      properties:
+        bankSlug:     { type: string }
+        questionCount: { type: integer, description: 题库总题数 }
+        seenCount:    { type: integer, description: 做过的题数（去重） }
+        correctCount: { type: integer, description: 最近一次作答为对的题数 }
+        wrongCount:   { type: integer, description: 最近一次作答为错的题数 }
+        unsureCount:  { type: integer, description: 最近一次自评 ≤2 的题数 }
+        attemptCount: { type: integer, description: 总作答次数（含重做） }
+        lastActiveAt: { type: string, format: date-time }
+
+    TagStat:
+      type: object
+      required: [tagId, type, value, total, correct, rate]
+      properties:
+        tagId:   { type: integer, format: int64 }
+        type:    { type: string, enum: [domain, service, concept] }
+        value:   { type: string }
+        i18n:
+          type: object
+          additionalProperties: { type: string }
+        total:   { type: integer, description: 该标签下做过的题数 }
+        correct: { type: integer }
+        rate:    { type: number, format: float, description: 正确率 0-100 }
+
+    Resume:
+      type: object
+      description: 没有任何作答记录时 questionId 为空，前端应引导「开始第一题」
+      properties:
+        bankSlug:   { type: string }
+        questionId: { type: integer, format: int64 }
+        externalNo: { type: integer }
+        stem:       { type: string }
+        answeredAt: { type: string, format: date-time }
+
+    AttemptInput:
+      type: object
+      required: [questionId, chosen, rating]
+      properties:
+        questionId: { type: integer, format: int64 }
+        chosen:     { type: string, description: 排序后的字母集合，如 "AB" }
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 4
+          description: FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy
+        durationMs: { type: integer }
+
+    AttemptResult:
+      type: object
+      required: [correct]
+      properties:
+        correct: { type: boolean, description: 服务端按参考答案判定 }
+        reference: { $ref: "#/components/schemas/Reference" }
+
+    Reference:
+      type: object
+      description: |
+        判对错用的参考答案。优先级 ai_verdict > community_vote > bank_label ——
+        AI 是唯一看过全部信息并给出理由的来源；题库标注是四个来源里
+        最不该被无条件信任的那个（38% 与社区投票不一致）。
+        仅用于给出反馈信号，界面仍并列展示全部主张。
+      required: [answer, source]
+      properties:
+        answer: { type: string }
+        source: { type: string, enum: [bank_label, community_vote, ai_verdict, user_note] }
+
+    Credentials:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+        deviceInfo: { type: string, description: 设备标识，用于「我的登录设备」 }
+
+    SsoExchange:
+      type: object
+      required: [idToken]
+      properties:
+        idToken: { type: string, description: Akasha 签发的 id_token（由本 API 验签） }
+        deviceInfo: { type: string, description: 设备标识，用于「我的登录设备」 }
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+
+    TokenPair:
+      type: object
+      description: |
+        access 是 JWT（不落库，TTL 1h）；refresh 是不透明随机串（落库，可吊销）。
+        对齐 geass-v3：refresh 不做成 JWT —— 生命周期以月计的凭证必须能撤回。
+      required: [accessToken, refreshToken, expiresIn, accountId, display]
+      properties:
+        accessToken:  { type: string }
+        refreshToken: { type: string }
+        expiresIn:    { type: integer, description: access token 剩余秒数（非绝对时间，免受客户端时钟偏差影响） }
+        accountId:    { type: integer, format: int64 }
+        display:      { type: string }
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+
+    Bank:
+      type: object
+      required: [id, slug, name, locale, kind]
+      properties:
+        id:          { type: integer, format: int64 }
+        slug:        { type: string, example: aws-saa-c03 }
+        name:        { type: string }
+        description: { type: string }
+        locale:      { type: string, example: zh }
+        kind:        { type: string, enum: [cert, custom] }
+
+    BankDetail:
+      allOf:
+        - $ref: "#/components/schemas/Bank"
+        - type: object
+          required: [stats]
+          properties:
+            stats: { $ref: "#/components/schemas/BankStats" }
+
+    BankStats:
+      type: object
+      description: 题库的内容侧统计（与用户无关）
+      required: [questionCount, enrichedCount, contestedCount]
+      properties:
+        questionCount:  { type: integer, description: 题目总数 }
+        enrichedCount:  { type: integer, description: 已完成 AI 富化的题数 }
+        contestedCount: { type: integer, description: 题库标注与社区投票不一致的题数 }
+
+    Tag:
+      type: object
+      description: 通用 (type, value) 结构，不硬编码任何特定题库的分类体系
+      required: [id, type, value]
+      properties:
+        id:    { type: integer, format: int64 }
+        type:  { type: string, enum: [domain, service, concept] }
+        value: { type: string, example: "S3" }
+        i18n:
+          type: object
+          additionalProperties: { type: string }
+        questionCount: { type: integer, description: 挂在该标签下的题数 }
+
+    Choice:
+      type: object
+      required: [label, body]
+      properties:
+        label: { type: string, example: "A" }
+        body:  { type: string }
+
+    AnswerClaim:
+      type: object
+      description: |
+        一条带来源的答案主张。同一道题可以有多条，**故意不做合并**。
+        `bank_label` 与 `community_vote` 不一致的情况占 38%，
+        并列展示分歧并给出 AI 的裁决理由，正是本项目的核心价值。
+      required: [source, answer]
+      properties:
+        source:
+          type: string
+          enum: [bank_label, community_vote, ai_verdict, user_note]
+        answer:
+          type: string
+          description: 排序后的字母集合，如 "AB"
+          example: "B"
+        confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: 无则省略
+        rationale:
+          type: string
+          description: 为什么；AI 裁决必有
+        meta:
+          type: object
+          description: 如社区投票分布 {"A":80,"C":20}
+          additionalProperties: true
+
+    Explanation:
+      type: object
+      required: [source, locale, body]
+      properties:
+        source: { type: string, enum: [ai, editor, user] }
+        locale: { type: string, example: zh }
+        body:   { type: string }
+
+    QuestionSummary:
+      type: object
+      required: [id, externalNo, stem, kind, pickCount, contested, enriched]
+      properties:
+        id:         { type: integer, format: int64 }
+        externalNo: { type: integer, description: 原题号，用于溯源 }
+        stem:       { type: string }
+        kind:       { type: string, enum: [single, multi] }
+        pickCount:  { type: integer }
+        contested:  { type: boolean, description: 题库标注与社区投票是否不一致 }
+        enriched:   { type: boolean, description: 是否已完成 AI 富化 }
+
+    QuestionDetail:
+      allOf:
+        - $ref: "#/components/schemas/QuestionSummary"
+        - type: object
+          required: [bankSlug, choices, claims, explanations, tags]
+          properties:
+            bankSlug:  { type: string }
+            reference: { $ref: "#/components/schemas/Reference" }
+            dataIssue:
+              type: string
+              description: 题目本身有缺陷时的说明（题库脏点），正常不出现
+            choices:
+              type: array
+              items: { $ref: "#/components/schemas/Choice" }
+            claims:
+              type: array
+              items: { $ref: "#/components/schemas/AnswerClaim" }
+            explanations:
+              type: array
+              items: { $ref: "#/components/schemas/Explanation" }
+            tags:
+              type: array
+              items: { $ref: "#/components/schemas/Tag" }
+            warnings:
+              type: array
+              description: P0 解析阶段的告警，不静默丢弃
+              items: { type: string }
+
+    QuestionPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/QuestionSummary" }
+        total:  { type: integer }
+        limit:  { type: integer }
+        offset: { type: integer }

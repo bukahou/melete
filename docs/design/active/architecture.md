@@ -78,9 +78,27 @@ CREATE TABLE answer_claim (
   KEY idx_claim_q (question_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 完整解析。与 answer_claim 同构（多来源 + 多语言）：
+--   rationale = 「为什么选它」的论证，绑定到某条答案主张
+--   explanation = 「面向学习者的完整讲解」，绑定到题目本身
+CREATE TABLE explanation (
+  id          BIGINT      NOT NULL AUTO_INCREMENT,
+  question_id BIGINT      NOT NULL,
+  source      VARCHAR(32) NOT NULL,   -- ai | editor | user
+  locale      VARCHAR(16) NOT NULL DEFAULT 'zh',
+  body        MEDIUMTEXT  NOT NULL,
+  created_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_expl (question_id, source, locale),
+  KEY idx_expl_q (question_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE tag (
   id      BIGINT       NOT NULL AUTO_INCREMENT,
-  bank_id BIGINT       NULL,          -- NULL = 全局标签（concept 类）
+  bank_id BIGINT       NOT NULL DEFAULT 0,  -- 0 = 全局标签（concept 类）
+                                     -- 不用 NULL：MySQL 唯一索引视多个 NULL 为不同值，
+                                     -- uk_tag 会对全局标签失效，重跑导入插出重复标签
   type    VARCHAR(16)  NOT NULL,      -- domain | service | concept
   value   VARCHAR(128) NOT NULL,      -- 'domain-3' | 'S3' | 'cache/cdn'
   i18n    JSON,                       -- {"zh":"高性能架构","ja":"高パフォーマンス設計"}

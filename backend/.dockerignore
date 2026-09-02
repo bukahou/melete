@@ -1,0 +1,7 @@
+# 构建上下文只需要源码与依赖清单
+.git
+*.md
+docs/
+bin/
+tmp/
+*.test

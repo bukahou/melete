@@ -1,0 +1,24 @@
+{
+  "bank": "aws-saa-c03",
+  "domains": {
+    "1": "Design Secure Architectures",
+    "2": "Design Resilient Architectures",
+    "3": "Design High-Performing Architectures",
+    "4": "Design Cost-Optimized Architectures"
+  },
+  "concept_seeds": [
+    "eventual-consistency", "strong-consistency", "idempotency", "decoupling",
+    "event-driven", "message-queue", "fan-out", "throttling", "backpressure",
+    "failover", "multi-az", "disaster-recovery", "rpo-rto", "health-check",
+    "horizontal-scaling", "vertical-scaling", "auto-scaling", "load-balancing",
+    "caching", "cdn", "cache-invalidation", "read-replica", "sharding",
+    "connection-pooling", "object-storage", "block-storage", "file-storage",
+    "storage-tiering", "lifecycle-policy", "least-privilege", "temporary-credentials",
+    "identity-federation", "encryption-at-rest", "encryption-in-transit",
+    "key-management", "network-segmentation", "private-subnet", "nat",
+    "private-endpoint", "vpc-peering", "dns-resolution", "serverless",
+    "cold-start", "monitoring", "logging", "audit-trail", "cost-allocation",
+    "reserved-capacity", "spot-capacity", "data-transfer-cost", "data-migration"
+  ],
+  "service_naming": "AWS 服务用官方短名，去掉 Amazon/AWS 前缀：S3 / EC2 / VPC / Lambda / RDS / DynamoDB / CloudFront / Route 53 / EBS / EFS / SQS / SNS / IAM / KMS / ELB / ALB / NLB / ECS / EKS / Fargate / Aurora / Redshift / Athena / Glue / Kinesis / Step Functions / API Gateway / CloudWatch / CloudTrail / Direct Connect / Transit Gateway / Storage Gateway / FSx / Global Accelerator / WAF / Shield / Secrets Manager / Systems Manager / Organizations / Control Tower / Snowball / DataSync / Backup"
+}

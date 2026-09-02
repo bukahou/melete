@@ -1,0 +1,7 @@
+# 这些要么由构建产生，要么不该进镜像
+node_modules
+.next
+out
+.git
+*.md
+.env*

@@ -38,3 +38,8 @@ Thumbs.db
 
 # 注：data/**/*.json（题库中间产物）**故意纳入版本管理** ——
 # 它是 source of truth，需要 review 和 diff。前提是本仓库永久 private。
+#
+# 唯一例外：enriched.json 是 enriched/*.json 分片的 merge 产物，
+# 每完成一片就要全量重写 1.5MB，进 git 只是无谓膨胀。
+# 需要时一条命令重建：python3 pipeline/core/enrich.py merge <bank>
+data/*/enriched.json

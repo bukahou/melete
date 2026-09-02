@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+/*
+ * Melete 设计系统 —— 编辑风 / 印刷感。
+ *
+ * 立场：学习产品的本质是长时间阅读，所以整个界面向纸面排版看齐 ——
+ * 暖纸色底、衬线中文标题、等宽题号与答案字母、hairline 分割线。
+ * 数据的呈现遵循 dataviz 规范：来源三色经 validate_palette.js 双模式验证
+ * （浅色 worst ΔE 11.3 protan / 深色 9.7，全部 PASS），
+ * 且来源身份从不只靠颜色 —— 每处色块旁必有文字标签。
+ */
+
+@theme {
+  /* 纸面 */
+  --color-surface: #f9f7f2;
+  --color-raise: #fffefb;
+  --color-ink: #23222b;
+  --color-muted: #6d6a75;
+  --color-line: #e5e1d8;
+
+  /* 答案主张的来源三色（categorical，已验证） */
+  --color-src-bank: #b45f17;
+  --color-src-community: #2e66b8;
+  --color-src-ai: #a83578;
+
+  /* 状态色（status，不与来源色混用） */
+  --color-ok: #337a4d;
+  --color-warn: #b3402e;
+
+  /* 主操作：印刷式的墨色实底 */
+  --color-cta: #23222b;
+  --color-cta-fg: #f9f7f2;
+
+  --font-serif: var(--font-noto-serif), "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
+  --font-mono-x: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-surface: #1d1d24;
+    --color-raise: #24242c;
+    --color-ink: #ece9e2;
+    --color-muted: #a09da8;
+    --color-line: #35343e;
+
+    --color-src-bank: #cf7f31;
+    --color-src-community: #6394e0;
+    --color-src-ai: #cf6ba6;
+
+    --color-ok: #5fae7f;
+    --color-warn: #d9705c;
+
+    --color-cta: #ece9e2;
+    --color-cta-fg: #1d1d24;
+  }
+}
+
+html { color-scheme: light dark; }
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-family: ui-sans-serif, system-ui, "Noto Sans CJK SC", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-feature-settings: "tnum";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: color-mix(in oklab, var(--color-src-community) 25%, transparent); }
+
+/* ---- 排版部件 ---- */
+
+/* eyebrow：小型字距标签，节标题的固定形态 */
+.eyebrow {
+  font-size: 0.6875rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+/* 衬线 display */
+.display {
+  font-family: var(--font-serif);
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  line-height: 1.28;
+  text-wrap: balance;
+}
+
+/* 印刷式强调：赭色荧光衬线 */
+.mark-em {
+  font-style: normal;
+  background: linear-gradient(transparent 64%,
+              color-mix(in oklab, var(--color-src-bank) 32%, transparent) 0);
+  padding: 0 0.06em;
+}
+
+/* 节标题行：文字 + hairline + 序号 */
+.section-rule {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+}
+.section-rule::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--color-line);
+  transform: translateY(-0.35em);
+}
+
+/* ---- 解析正文（AI 产出的长文 + markdown 表格）---- */
+.prose-cn { line-height: 1.95; font-size: 0.925rem; }
+.prose-cn p { margin: 0.9em 0; }
+.prose-cn p:first-child { margin-top: 0; }
+.prose-cn table { width: 100%; border-collapse: collapse; margin: 1.1rem 0; font-size: 0.875em; line-height: 1.6; }
+.prose-cn th, .prose-cn td { border: 1px solid var(--color-line); padding: 0.5rem 0.75rem; text-align: left; }
+.prose-cn th { background: color-mix(in oklab, var(--color-line) 38%, transparent);
+               font-weight: 600; font-size: 0.95em; }
+.prose-cn code { font-family: var(--font-mono-x);
+                 background: color-mix(in oklab, var(--color-line) 55%, transparent);
+                 padding: 0.1em 0.4em; border-radius: 0.25rem; font-size: 0.86em; }
+.prose-cn ul, .prose-cn ol { padding-left: 1.4em; margin: 0.9em 0; }
+.prose-cn li { margin: 0.35em 0; }
+.prose-cn li::marker { color: var(--color-muted); }
+.prose-cn strong { font-weight: 700; }
+.prose-cn blockquote { border-left: 2px solid var(--color-line); padding-left: 1em;
+                       color: var(--color-muted); margin: 0.9em 0; }
+
+/* ---- 数据部件（dataviz 规范）---- */
+
+/* 分段占比条：4px 圆角端、段间 2px surface gap */
+.meter { display: flex; height: 10px; border-radius: 4px; overflow: hidden; gap: 2px; }
+.meter > span { height: 100%; }
+.meter > span:first-child { border-radius: 4px 0 0 4px; }
+.meter > span:last-child { border-radius: 0 4px 4px 0; }

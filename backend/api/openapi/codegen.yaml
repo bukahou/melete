@@ -1,0 +1,9 @@
+# oapi-codegen 配置 —— Spec-first：契约改了重新生成，不手改 api.gen.go
+package: api
+output: internal/api/api.gen.go
+generate:
+  models: true
+  chi-server: true
+  strict-server: true
+output-options:
+  skip-prune: true
