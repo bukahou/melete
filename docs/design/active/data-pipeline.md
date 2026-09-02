@@ -128,9 +128,24 @@ python3 pipeline/core/ingest.py aws-saa-c03    # 编排：抽取 → 解析 → 
 | S3 默认加密 SSE-S3 | 2023-01 | — |
 | S3 新桶默认禁用 ACL | 2023-04 | — |
 | NLB 支持安全组 | 2023-08 | — |
+| CodeCommit 停止向新客户开放 | 2024-07-25 | SAP #171 |
+| DynamoDB 表级资源策略 | 2024-03 | SAP #185（影响选项 C 的可行性） |
+| ElastiCache Redis 7.0.5 起可在线开关传输中加密 | 2023 | SAP #163 |
+| Server Migration Service（SMS）被 MGN 取代并停服 | 2022-03 | SAP #174 / #188 |
+| CloudFront 访问 S3：OAI → OAC | 2022-08 | SAP #153 |
 
 处理约定：**按题目成文年代的事实判**，但在 notes 里同时写明现行行为 ——
 两种口径都给，学习者才知道这题为什么有争议。
+
+### 标签错位制造的「假分歧」（2026-09-02，SAP #200 实证）
+
+源文本里两个选项都印着 `B.`，其后标签整体前移（C→B、D→C、E→D、F→E）。
+题库标注 **BDF** 用的是原始标签，社区投票 **BCE** 用的是错位后的标签 —— **两者指向同一组选项内容**。
+这不是分歧题，是标签错位制造的假分歧。全库 3 例（#200 两个 B、#337 / #515 两个 C）。
+
+处置链：解析器挂 `duplicate_choice_label_X`（不再误报成「缺 F」）→ `load.py` 整题丢弃字母主张
+→ `enrich.py` 不计入分歧 → 富化侧判 data_issue、答案用文字写在解析里。
+统计「标注 ≠ 投票」比例时这类题必须剔除，否则虚高。
 
 ### 反对「题库 + 社区一致意见」的取舍标准
 
@@ -352,6 +367,11 @@ enrich.py merge  <bank>          # 合并 → enriched.json（不进 git，可�
 | S3 默认加密 SSE-S3 | 2023-01 | — |
 | S3 新桶默认禁用 ACL | 2023-04 | — |
 | NLB 支持安全组 | 2023-08 | — |
+| CodeCommit 停止向新客户开放 | 2024-07-25 | SAP #171 |
+| DynamoDB 表级资源策略 | 2024-03 | SAP #185（影响选项 C 的可行性） |
+| ElastiCache Redis 7.0.5 起可在线开关传输中加密 | 2023 | SAP #163 |
+| Server Migration Service（SMS）被 MGN 取代并停服 | 2022-03 | SAP #174 / #188 |
+| CloudFront 访问 S3：OAI → OAC | 2022-08 | SAP #153 |
 
 处理约定：**按题目成文年代的事实判**，但在 notes 里同时写明现行行为 ——
 两种口径都给，学习者才知道这题为什么有争议。
@@ -528,6 +548,11 @@ SAA 的 #460/#467/#473 是**同一分片内连续三道**都丢了设问句 —�
 | S3 默认加密 SSE-S3 | 2023-01 | — |
 | S3 新桶默认禁用 ACL | 2023-04 | — |
 | NLB 支持安全组 | 2023-08 | — |
+| CodeCommit 停止向新客户开放 | 2024-07-25 | SAP #171 |
+| DynamoDB 表级资源策略 | 2024-03 | SAP #185（影响选项 C 的可行性） |
+| ElastiCache Redis 7.0.5 起可在线开关传输中加密 | 2023 | SAP #163 |
+| Server Migration Service（SMS）被 MGN 取代并停服 | 2022-03 | SAP #174 / #188 |
+| CloudFront 访问 S3：OAI → OAC | 2022-08 | SAP #153 |
 | Organizations 声明式策略下发 EBS 加密 | 2024-12 | #419 |
 | **Scheduled RI 停售** | — | #1013 |
 | **HTTP API 不支持资源策略**（那是 REST API 的） | — | #1019 |

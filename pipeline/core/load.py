@@ -191,6 +191,14 @@ def validate(qs: list) -> tuple[list[str], list[str]]:
             continue
         labels = {ch["label"] for ch in q["choices"]}
         kept = []
+        # 同一题出现重复选项标签（#200 两个 B、#337/#515 两个 C）：字母不再唯一指向一个选项，
+        # 题库标注与社区投票的字母都失去意义 —— 两者「不一致」很可能只是各自沿用了不同的标签口径
+        # （#200 实证：BDF 与 BCE 指向同一组内容）。整题主张丢弃，避免制造假分歧。
+        if any(w.startswith("duplicate_choice_label_") for w in q.get("warnings", [])):
+            if q["claims"]:
+                soft.append(f"#{q['no']}: 选项标签重复，{len(q['claims'])} 条字母主张全部不可信，跳过")
+            q["claims"] = []
+            continue
         for c in q["claims"]:
             if set(c["answer"]) - labels:
                 soft.append(f"#{q['no']}: claim[{c['source']}] 答案 {c['answer']!r} 含选项外字母，跳过该条")

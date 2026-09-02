@@ -161,7 +161,16 @@ def parse_block(no: int, body: str) -> dict:
     # 结构性缺陷检测（判据与 SAA 版一致，此处复用同一套告警名）
     if choices:
         expect = [chr(ord("A") + i) for i in range(len(choices))]
-        if [c["label"] for c in choices] != expect:
+        labels_seq = [c["label"] for c in choices]
+        dup_labels = sorted({l for l in labels_seq if labels_seq.count(l) > 1})
+        if dup_labels:
+            # 同一题两个选项印着同一个字母（SAP #200 两个 B、#337/#515 两个 C；SAA #125 两个 D）。
+            # 后果比「缺一个」严重得多：字母不再唯一指向选项，题库标注与社区投票可能各用一套标签口径，
+            # 「不一致」就成了假分歧（#200 实证：BDF 与 BCE 指向同一组内容）。
+            # 只报这一条、不再报「缺 X」—— 那个描述会把人引向错误的方向。
+            for l in dup_labels:
+                warnings.append(f"duplicate_choice_label_{l}")
+        elif labels_seq != expect:
             missing = [x for x in expect if x not in {c["label"] for c in choices}]
             warnings.append("choice_labels_not_contiguous"
                             + (f"_missing_{''.join(missing)}" if missing else ""))

@@ -101,6 +101,9 @@ def claims_of(q: dict) -> dict:
 
 def is_contested(q: dict) -> tuple[bool, list[str]]:
     """通用判据：这道题的答案是否存在不确定性。不含任何题库特有逻辑。"""
+    # 选项标签重复的题，字母主张互相不可比 —— 不算分歧（见 load.py 同一处理）
+    if any(w.startswith("duplicate_choice_label_") for w in q.get("warnings", [])):
+        return False, []
     c = claims_of(q)
     bl = (c.get("bank_label") or {}).get("answer")
     cv = c.get("community_vote")

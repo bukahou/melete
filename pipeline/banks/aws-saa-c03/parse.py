@@ -138,7 +138,14 @@ def parse_block(no: int, body: str) -> dict:
     # 这是零误报信号 —— 全库仅命中这 3 道，且都已被其它告警旁证。
     # 与「超长合并选项」判据的区别：那个看长度（误报 33 处），这个看结构（误报 0）。
     labels = [c["label"] for c in choices]
-    if labels and labels != [chr(ord("A") + i) for i in range(len(labels))]:
+    dup_labels = sorted({l for l in labels if labels.count(l) > 1})
+    if dup_labels:
+        # 同一题两个选项印着同一个字母（#125 两个 D；SAP #200/#337/#515 同类）。
+        # 字母不再唯一指向选项，题库标注与社区投票可能各用一套标签口径 —— 「不一致」成了假分歧。
+        # 只报这一条、不再报「缺 X」：那个描述会把人引向错误的方向。
+        for l in dup_labels:
+            warnings.append(f"duplicate_choice_label_{l}")
+    elif labels and labels != [chr(ord("A") + i) for i in range(len(labels))]:
         missing = [chr(ord("A") + i) for i in range(len(labels)) if chr(ord("A") + i) not in labels]
         warnings.append("choice_labels_not_contiguous"
                         + (f"_missing_{''.join(missing)}" if missing else ""))
