@@ -88,7 +88,27 @@ class Loader:
                       ON DUPLICATE KEY UPDATE body=VALUES(body)""", rows)
         return len(rows)
 
+    # 管道拥有的主张来源。user_note 之类由用户在应用里写入的来源不在此列 —— 重导不得动它们。
+    PIPELINE_SOURCES = ("bank_label", "community_vote", "ai_verdict")
+
     def upsert_claims(self, qmap: dict, qs: list) -> int:
+        # 先清掉本次不再产出的管道主张：纯 upsert 会让上一次导入留下的行成为幽灵
+        # （#125 实证：解析器判定字母主张不可信后，旧的 community_vote 行仍在库里）。
+        # 只删管道来源；按 (question_id, source) 精确删，不碰用户写入的来源。
+        wanted = {(qmap[q["no"]], c["source"]) for q in qs for c in q["claims"]}
+        qids = [qmap[q["no"]] for q in qs]
+        stale = []
+        for i in range(0, len(qids), BATCH):
+            chunk = qids[i:i + BATCH]
+            self.cur.execute(
+                f"SELECT question_id, source FROM answer_claim WHERE question_id IN ({','.join(['%s'] * len(chunk))})"
+                f" AND source IN ({','.join(['%s'] * len(self.PIPELINE_SOURCES))})",
+                chunk + list(self.PIPELINE_SOURCES))
+            stale += [(qid, src) for qid, src in self.cur.fetchall() if (qid, src) not in wanted]
+        if stale:
+            self._exec("DELETE FROM answer_claim WHERE question_id=%s AND source=%s", stale)
+            print(f"  · 清理过期主张 {len(stale)} 条")
+
         rows = []
         for q in qs:
             for c in q["claims"]:
