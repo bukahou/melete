@@ -42,7 +42,7 @@ LIGATURE_WORDS = frozenset(
 _INTERNAL = re.compile(r"(?<![A-Za-z])([A-Za-z]+) ([a-z]+)(?![A-Za-z])")
 # 词首形态：独立小写 token。前面只能是行首/空白/引号/括号，后面只能是行尾/空白/标点 ——
 # 显式排除冒号与斜杠等，避免 `sts:AssumeRole` 这类标识符被当成残片
-_INITIAL = re.compile(r"(?:^|(?<=[\s(\"']))([a-z]{2,})(?=$|[\s.,;)!?\"'])")
+_INITIAL = re.compile(r"(?:^|(?<=[\s(\"']))([a-z]{2,})(?=$|[\s.,;)!?\"'\-/])")   # 允许连字符：field-level
 
 
 def _recombine(left: str, right: str) -> str | None:
