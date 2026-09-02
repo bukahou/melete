@@ -26,6 +26,11 @@ Melete 数据导入管道 — SAP-C02 解析器（英文原版 + 社区讨论）
 import json
 import re
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # 仓库根
+from pipeline.core.textrepair import restore_ligatures  # noqa: E402
+import sys
 from datetime import datetime, timezone
 
 # 题头：Question #N，右侧常跟 "Topic 1" 页眉
@@ -40,6 +45,35 @@ OPT_START = re.compile(r"^\s{0,8}([A-F])\.\s*(.*)$")
 ANS_LINE = re.compile(r"Correct Answer\s*:\s*([A-F]+)", re.M)
 VOTE_PAIR = re.compile(r"([A-F]+)\s*\(\s*(\d+)\s*%\s*\)")
 PICK_N = re.compile(r"\(Choose\s+(two|three|four|2|3|4)[.)]?", re.I)
+# ★ 源站 抓取侧的缺陷：正文里形如「<字母>. 」的片段被当成选项标签剥掉，
+# 于是末字母落在 A–F 的缩写 + 句号 + 空格被吞掉三个字符：
+#     "VPC. Create" → "VPCreate"    "ALB. Turn" → "ALTurn"    "MFA. Configure" → "MFConfigure"
+# 全库 32 题（6.0%），parse.py 原本零告警 —— 属静默缺陷。
+# 修复是确定性的：缩写表 × 后接大写动词，无歧义。IPSet 是 WAF 真实资源名，不在表里。
+ABBREV_EATEN = {"VP": "VPC", "AL": "ALB", "NL": "NLB", "MF": "MFA"}
+EATEN_VERBS = ("Create|Update|Attach|Associate|Configure|Con gure|Add|Delete|Enable|Ensure|Use|"
+               "Provision|Point|Set|Modify|Move|Run|Select|Store|Specify|Deploy|Launch|Migrate|"
+               "Assign|Register|Apply|Change|Grant|Turn|Install|Connect|Replace|Remove|Verify|"
+               "Activate|Route|Place|Put|Send|Allow|Restrict|Block|Choose|Increase|Reduce|Scale|"
+               "Encrypt|Host|Write|Read|Import|Export|Publish|Subscribe|Invoke|Call|Include|"
+               "Require|Define|De ne|Build|Make|Open|Give|Keep|Test|Start|Stop|Disable|Provide|Order|Accept")
+EATEN_LABEL = re.compile(r"\b(" + "|".join(ABBREV_EATEN) + r")(" + EATEN_VERBS + r")\b")
+
+
+def repair_text(text: str) -> tuple[str, list[str]]:
+    """两类确定性修复；返回 (文本, 登记)。登记进 repairs 字段而非 warnings —— 已修好的不需要人看。"""
+    repairs: list[str] = []
+
+    def fix_eaten(m: re.Match) -> str:
+        fixed = f"{ABBREV_EATEN[m.group(1)]}. {m.group(2)}"
+        repairs.append(f"{m.group(0)}→{fixed}")
+        return fixed
+
+    text = EATEN_LABEL.sub(fix_eaten, text)
+    text, lig = restore_ligatures(text)
+    return text, repairs + lig
+
+
 EN_NUM = {"two": 2, "three": 3, "four": 4, "2": 2, "3": 3, "4": 4}
 
 # ★ 讨论区起点：源站 的评论都以「用户名 + 徽章/相对时间」开头，例如
@@ -115,6 +149,14 @@ def parse_block(no: int, body: str) -> dict:
     if cur:
         choices.append(cur)
 
+    # ---- 文本层确定性修复（连字丢失 / 被吞的缩写句点）----
+    repairs: list[str] = []
+    stem, r = repair_text(stem)
+    repairs += r
+    for ch in choices:
+        ch["body"], r = repair_text(ch["body"])
+        repairs += r
+
     # 结构性缺陷检测（判据与 SAA 版一致，此处复用同一套告警名）
     if choices:
         expect = [chr(ord("A") + i) for i in range(len(choices))]
@@ -184,6 +226,7 @@ def parse_block(no: int, body: str) -> dict:
         "choices": choices,
         "claims": claims,
         "warnings": warnings,
+        "repairs": repairs,
     }
 
 
@@ -211,6 +254,9 @@ def main(src: str, dst: str) -> None:
     gaps = sorted(set(range(nos[0], nos[-1] + 1)) - set(nos))
     warn = Counter(w.split("_missing")[0] for q in questions for w in q["warnings"])
     clean_n = sum(1 for q in questions if not q["warnings"])
+    repaired = sum(1 for q in questions if q["repairs"])
+    n_repairs = sum(len(q["repairs"]) for q in questions)
+    print(f"文本修复        {repaired} 题 / {n_repairs} 处（连字还原 + 被吞缩写句点；登记在 repairs 字段）")
     print(f"题目总数        {len(questions)}  (题号 {nos[0]}–{nos[-1]})")
     if gaps:
         print(f"题号缺失        {gaps}  ← 需与源文档核对是否题库自身缺号")
