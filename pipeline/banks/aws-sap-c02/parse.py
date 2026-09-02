@@ -87,6 +87,8 @@ KNOWN_TYPOS = {
     "VPC the primary Region": "VPC in the primary Region",   # #389  吞 in（全库唯一，语义无歧义）
     "Amazon ROS": "Amazon RDS",               # #483  D → O（全库 2 处，同题）
     "Muit-AZ": "Multi-AZ",                    # #483  l 被吞
+    "combination of stops": "combination of steps",   # #503  e → o
+    "Snowcons SSD": "Snowcone SSD",           # #503  e → s
 }
 KNOWN_TYPO_PATTERNS = [
     (re.compile(r"(?<![.\w])NET (Core|Framework)\b"), r".NET \1"),   # 前导点被吞；".NET" 已带点的不动
@@ -96,6 +98,9 @@ KNOWN_TYPO_PATTERNS = [
 ]
 # 连字还原**之后**才能命中的定点修：#360 原文是 "AWS. Con g rule"，先还原成 Config 才看得见多出的点。
 # (?!ure) 排除合法的 "…AWS. Configure the…" 句子。
+KNOWN_TYPO_PATTERNS = KNOWN_TYPO_PATTERNS + [
+    (re.compile(r"(?<![A-Za-z])C2 instances\b"), "EC2 instances"),      # #503  E 被吞
+]
 KNOWN_TYPO_PATTERNS_POST = [
     (re.compile(r"\bAWS\. Config\b(?!ure)"), "AWS Config"),
 ]
