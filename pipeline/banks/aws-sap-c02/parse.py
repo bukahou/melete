@@ -89,6 +89,11 @@ KNOWN_TYPOS = {
     "Muit-AZ": "Multi-AZ",                    # #483  l 被吞
     "combination of stops": "combination of steps",   # #503  e → o
     "Snowcons SSD": "Snowcone SSD",           # #503  e → s
+    "30-T8 repository": "30-TB repository",   # #512  B → 8
+    "to be ed and approved": "to be submitted and approved",   # #515  整词丢失，语境唯一
+    "ImporvExport": "Import/Export",          # #515  "t/" 被识别成 v
+    "DynramoDB": "DynamoDB",                  # #507  多一个 r
+    "the $3 object": "the S3 object",         # #507  S → $
 }
 KNOWN_TYPO_PATTERNS = [
     (re.compile(r"(?<![.\w])NET (Core|Framework)\b"), r".NET \1"),   # 前导点被吞；".NET" 已带点的不动
