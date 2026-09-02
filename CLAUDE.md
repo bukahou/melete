@@ -188,7 +188,7 @@ PDF → questions.json → enriched.json → [导入] → DB
 | **P3** | FSRS 调度 | 待办 |
 | **P4** | AI 实时问答 | 待办 |
 | **P5** | atlantis 迁入 + concept 关联 | 待办 |
-| **P6** | 第二个题库，验证扩展性 | 待办 |
+| **P6** | 第二个题库，验证扩展性 | ✅ SAP-C02 已入库（2026-09-03）；`pipeline/core/*` 零改动即接入，见 tracker |
 
 ---
 
