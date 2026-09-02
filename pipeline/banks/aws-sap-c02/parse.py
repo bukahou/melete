@@ -66,7 +66,14 @@ EATEN_LABEL = re.compile(r"\b(" + "|".join(ABBREV_EATEN) + r")(" + EATEN_VERBS +
 
 # 已核实的孤立 OCR 错字（全库唯一，且是 AWS API 常量名，拼法无歧义）。
 # 只收「确定性 + 可核对官方名」的项；泛化的 l→I 检测扫过全库，其余 13 个命中都是合法 CamelCase。
-KNOWN_TYPOS = {"IgnorePublicAcIs": "IgnorePublicAcls"}   # #274，小写 l 被 OCR 成大写 I
+KNOWN_TYPOS = {
+    "IgnorePublicAcIs": "IgnorePublicAcls",   # #274  小写 l 被 OCR 成大写 I
+    "CioudFormation": "CloudFormation",       # #316  l → i
+    "CloudF ormation": "CloudFormation",      # #329  词中被插入空格
+    # #346 "DynamoDB. Use" → "DynamoDUse"：被吞句点粘在混合大小写词尾。全库扫描仅此一例，
+    # 同形态的 OneAtATime 是合法常量，故不做泛化规则，定点修。
+    "DynamoDUse": "DynamoDB. Use",
+}
 
 
 def repair_text(text: str) -> tuple[str, list[str]]:
