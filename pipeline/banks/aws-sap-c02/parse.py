@@ -85,6 +85,8 @@ KNOWN_TYPOS = {
     "MultiAZ": "Multi-AZ",                    # #374  缺连字符
     "a now AMI": "a new AMI",                 # #299  w → o
     "VPC the primary Region": "VPC in the primary Region",   # #389  吞 in（全库唯一，语义无歧义）
+    "Amazon ROS": "Amazon RDS",               # #483  D → O（全库 2 处，同题）
+    "Muit-AZ": "Multi-AZ",                    # #483  l 被吞
 }
 KNOWN_TYPO_PATTERNS = [
     (re.compile(r"(?<![.\w])NET (Core|Framework)\b"), r".NET \1"),   # 前导点被吞；".NET" 已带点的不动
