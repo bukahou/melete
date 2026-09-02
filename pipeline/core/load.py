@@ -332,7 +332,9 @@ def main() -> None:
     qmap = ld.upsert_questions(bank_id, qs)
     n_ch = ld.upsert_choices(qmap, qs)
     n_cl = ld.upsert_claims(qmap, qs)
-    n_ex = ld.upsert_explanations(qmap, qs, doc["bank"].get("locale", "zh"))
+    # 解析的语言 ≠ 题库的语言：SAP-C02 题面是英文，但富化会话按学习者语言写中文解析。
+    # 由 spec 声明 explanation_locale，缺省才退回题库 locale（SAA 中文题库两者相同）。
+    n_ex = ld.upsert_explanations(qmap, qs, spec.get("explanation_locale") or doc["bank"].get("locale", "zh"))
     tmap = ld.upsert_tags(bank_id, qs, spec)
     topic_field = spec.get("tag_types", {}).get("topic", {}).get("enrichment_field", "topics")
     n_qt = ld.link_question_tags(bank_id, qmap, qs, tmap, topic_field)
