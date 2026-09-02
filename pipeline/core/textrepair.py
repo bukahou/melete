@@ -45,7 +45,7 @@ _INTERNAL = re.compile(r"(?<![A-Za-z])([A-Za-z]+) ([a-z]+)(?![A-Za-z])")
 # 显式排除冒号与斜杠等，避免 `sts:AssumeRole` 这类标识符被当成残片
 # 后接允许连字符（field-level）与冒号（types of files:）。冒号曾被排除是为了 sts:AssumeRole，
 # 但真正的保险是封闭词表（fists 不在表里），不是标点。
-_INITIAL = re.compile(r"(?:^|(?<=[\s(\"']))([a-z]{2,})(?=$|[\s.,;:)!?\"'\-/])")
+_INITIAL = re.compile(r"(?:^|(?<=[\s(\"']))([a-z]{2,})(?=$|[\s.,;:)!?\"'\-/0-9@])")   # 也允许后接数字/@：nance1@example.com
 
 
 def _recombine(left: str, right: str) -> str | None:

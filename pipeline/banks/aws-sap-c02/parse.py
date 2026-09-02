@@ -80,12 +80,20 @@ KNOWN_TYPOS = {
     "$(aws:username)": "${aws:username}",     # #306  IAM 策略变量语法，圆括号不生效，照抄会踩坑
     "INET Core": ".NET Core",                 # #346  前导点被吞并粘上前一个 I
     "development me": "development time",     # #299  ti 连字丢失（全库唯一的 ti 连字案例，词表法不适用：me 是真词）
-    " to x noncompliant": " to fix noncompliant",   # #? 单字母残片，词首规则要求 ≥2 字母，定点
+    " to x noncompliant": " to fix noncompliant",   # 单字母残片，词首规则要求 ≥2 字母，定点
+    "Mulli-AZ": "Multi-AZ",                   # #374  t → l
+    "MultiAZ": "Multi-AZ",                    # #374  缺连字符
+    "AWS. Config": "AWS Config",              # #360  多一个点
+    "a now AMI": "a new AMI",                 # #299  w → o
+    "VPC the primary Region": "VPC in the primary Region",   # #389  吞 in（全库唯一，语义无歧义）
 }
-# 需要上下文的定点修（字面替换做不到「前面不是点」）
 KNOWN_TYPO_PATTERNS = [
     (re.compile(r"(?<![.\w])NET (Core|Framework)\b"), r".NET \1"),   # 前导点被吞；".NET" 已带点的不动
+    (re.compile(r"\bAccompany\b(?= (?:is|runs|has|wants|needs|uses)\b)"), "A company"),   # #394 等 3 处，空格丢失
+    (re.compile(r"\bitis\b"), "it is"),                                # #352 等 2 处，吞空格
+    (re.compile(r"(?<![A-Za-z0-9])3 Storage Lens"), "S3 Storage Lens"),  # #362  S 被吞
 ]
+# 需要上下文的定点修（字面替换做不到「前面不是点」）见上 KNOWN_TYPO_PATTERNS
 
 
 def repair_text(text: str) -> tuple[str, list[str]]:
