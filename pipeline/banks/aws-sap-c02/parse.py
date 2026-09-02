@@ -30,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # 仓库根
 from pipeline.core.textrepair import restore_ligatures  # noqa: E402
+from pipeline.core.dedupe import flag_duplicates  # noqa: E402
 import sys
 from datetime import datetime, timezone
 
@@ -234,6 +235,7 @@ def main(src: str, dst: str) -> None:
     raw = open(src, encoding="utf-8", errors="replace").read()
     parts = Q_SPLIT.split(raw)
     questions = [parse_block(int(parts[i]), parts[i + 1]) for i in range(1, len(parts) - 1, 2)]
+    n_dup, n_stem = flag_duplicates(questions)
 
     doc = {
         "bank": {
@@ -257,6 +259,7 @@ def main(src: str, dst: str) -> None:
     repaired = sum(1 for q in questions if q["repairs"])
     n_repairs = sum(len(q["repairs"]) for q in questions)
     print(f"文本修复        {repaired} 题 / {n_repairs} 处（连字还原 + 被吞缩写句点；登记在 repairs 字段）")
+    print(f"重复题          完全重复 {n_dup} · 仅题干重复 {n_stem}（后出现的题挂 duplicate_of_N / same_stem_as_N）")
     print(f"题目总数        {len(questions)}  (题号 {nos[0]}–{nos[-1]})")
     if gaps:
         print(f"题号缺失        {gaps}  ← 需与源文档核对是否题库自身缺号")

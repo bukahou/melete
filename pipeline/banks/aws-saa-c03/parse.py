@@ -13,6 +13,10 @@ import json
 import re
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))  # 仓库根
+from pipeline.core.dedupe import flag_duplicates  # noqa: E402
 
 # 页眉/页脚噪声：出现在题号行尾或独立成行
 NOISE = re.compile(r"(主题\s*\d+|Topic\s*\d+|考试\s*[A-Z]|\x0c)")
@@ -300,6 +304,8 @@ def main(src: str, dst: str) -> None:
         questions.append(parse_block(int(parts[i]), parts[i + 1]))
 
     repair_from_duplicates(questions)
+    n_dup, n_stem = flag_duplicates(questions)
+    print(f"重复题          完全重复 {n_dup} · 仅题干重复 {n_stem}")
 
     doc = {
         "bank": {
