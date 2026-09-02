@@ -73,7 +73,19 @@ KNOWN_TYPOS = {
     # #346 "DynamoDB. Use" → "DynamoDUse"：被吞句点粘在混合大小写词尾。全库扫描仅此一例，
     # 同形态的 OneAtATime 是合法常量，故不做泛化规则，定点修。
     "DynamoDUse": "DynamoDB. Use",
+    # 以下每条全库唯一，均已逐处核对上下文
+    "eu-wes&1": "eu-west-1",                 # #289  "t-" 被识别成 &
+    "Con gur&the": "Configure the",           # #278  同类 & 混入（此前唯一的连字残留）
+    "CloudWalch": "CloudWatch",               # #300  t → l
+    "$(aws:username)": "${aws:username}",     # #306  IAM 策略变量语法，圆括号不生效，照抄会踩坑
+    "INET Core": ".NET Core",                 # #346  前导点被吞并粘上前一个 I
+    "development me": "development time",     # #299  ti 连字丢失（全库唯一的 ti 连字案例，词表法不适用：me 是真词）
+    " to x noncompliant": " to fix noncompliant",   # #? 单字母残片，词首规则要求 ≥2 字母，定点
 }
+# 需要上下文的定点修（字面替换做不到「前面不是点」）
+KNOWN_TYPO_PATTERNS = [
+    (re.compile(r"(?<![.\w])NET (Core|Framework)\b"), r".NET \1"),   # 前导点被吞；".NET" 已带点的不动
+]
 
 
 def repair_text(text: str) -> tuple[str, list[str]]:
@@ -83,6 +95,10 @@ def repair_text(text: str) -> tuple[str, list[str]]:
         if bad in text:
             text = text.replace(bad, good)
             repairs.append(f"{bad}→{good}")
+    for pat, rep in KNOWN_TYPO_PATTERNS:
+        text, n = pat.subn(rep, text)
+        if n:
+            repairs.append(f"{pat.pattern}→{rep} ×{n}")
 
     def fix_eaten(m: re.Match) -> str:
         fixed = f"{ABBREV_EATEN[m.group(1)]}. {m.group(2)}"

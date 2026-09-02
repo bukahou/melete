@@ -30,7 +30,8 @@ LIGATURE_WORDS = frozenset(
     officer offices offload predefined prefix prefixes profile profiles reconfigure significant
     significantly simplified specific specifically specification specifications specified specifies
     sufficient traffic unified verification verified workflow workflows
-    defined insufficient confidential affinity scientific staffing notified identifier""".split()
+    defined insufficient confidential affinity scientific staffing notified identifier
+    find flag flags fine difficult""".split()
     # ⚠ 词典法会提议 "a field"→afield：左右都是真词时不能合并。词表只收核过的项，这就是不用词典的原因。
     # 连字在词首：只剩右残片（|le、|eet、|rewall）
     + """field fields figure figured figures figuring file files filter filtered filtering filters
@@ -42,7 +43,9 @@ LIGATURE_WORDS = frozenset(
 _INTERNAL = re.compile(r"(?<![A-Za-z])([A-Za-z]+) ([a-z]+)(?![A-Za-z])")
 # 词首形态：独立小写 token。前面只能是行首/空白/引号/括号，后面只能是行尾/空白/标点 ——
 # 显式排除冒号与斜杠等，避免 `sts:AssumeRole` 这类标识符被当成残片
-_INITIAL = re.compile(r"(?:^|(?<=[\s(\"']))([a-z]{2,})(?=$|[\s.,;)!?\"'\-/])")   # 允许连字符：field-level
+# 后接允许连字符（field-level）与冒号（types of files:）。冒号曾被排除是为了 sts:AssumeRole，
+# 但真正的保险是封闭词表（fists 不在表里），不是标点。
+_INITIAL = re.compile(r"(?:^|(?<=[\s(\"']))([a-z]{2,})(?=$|[\s.,;:)!?\"'\-/])")
 
 
 def _recombine(left: str, right: str) -> str | None:
