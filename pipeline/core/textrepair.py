@@ -31,7 +31,7 @@ LIGATURE_WORDS = frozenset(
     significantly simplified specific specifically specification specifications specified specifies
     sufficient traffic unified verification verified workflow workflows
     defined insufficient confidential affinity scientific staffing notified identifier
-    find flag flags fine difficult""".split()
+    find flag flags fine difficult flash""".split()
     # ⚠ 词典法会提议 "a field"→afield：左右都是真词时不能合并。词表只收核过的项，这就是不用词典的原因。
     # 连字在词首：只剩右残片（|le、|eet、|rewall）
     + """field fields figure figured figures figuring file files filter filtered filtering filters
