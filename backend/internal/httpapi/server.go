@@ -238,12 +238,22 @@ func (s *Server) RecordAttempt(ctx context.Context, req api.RecordAttemptRequest
 		// 中间件已挡住无 token 的请求，走到这里说明路由挂错了中间件
 		return nil, s.fail("RecordAttempt", errors.New("上下文缺少已认证账号"))
 	}
+	var contextJSON *string
+	if req.Body.Context != nil {
+		b, err := json.Marshal(req.Body.Context)
+		if err != nil {
+			return nil, s.fail("RecordAttempt.context", err)
+		}
+		str := string(b)
+		contextJSON = &str
+	}
 	res, err := s.studies.RecordAttempt(ctx, study.Attempt{
 		AccountID:  accountID,
 		QuestionID: req.Body.QuestionId,
 		Chosen:     req.Body.Chosen,
 		Rating:     req.Body.Rating,
 		DurationMs: req.Body.DurationMs,
+		Context:    contextJSON,
 	})
 	if err != nil {
 		return nil, s.fail("RecordAttempt", err)
@@ -267,17 +277,16 @@ func (s *Server) requireAccount(ctx context.Context, op string) (int64, error) {
 	return id, nil
 }
 
-func (s *Server) GetMyProgress(ctx context.Context, _ api.GetMyProgressRequestObject) (api.GetMyProgressResponseObject, error) {
+func (s *Server) GetMyProgress(ctx context.Context, req api.GetMyProgressRequestObject) (api.GetMyProgressResponseObject, error) {
 	accountID, err := s.requireAccount(ctx, "GetMyProgress")
 	if err != nil {
 		return nil, err
 	}
-	// 当前只有一个题库；多题库后这里改为遍历或加参数
-	banks, err := s.banks.ListBanks(ctx)
-	if err != nil || len(banks) == 0 {
+	slug, err := s.currentBank(ctx, req.Params.Bank)
+	if err != nil {
 		return nil, s.fail("GetMyProgress.banks", err)
 	}
-	p, err := s.studies.LoadProgress(ctx, accountID, banks[0].Slug)
+	p, err := s.studies.LoadProgress(ctx, accountID, slug)
 	if err != nil {
 		return nil, s.fail("GetMyProgress", err)
 	}
@@ -327,25 +336,34 @@ func (s *Server) GetMyTagStats(ctx context.Context, req api.GetMyTagStatsRequest
 	return out, nil
 }
 
-func (s *Server) GetMyResume(ctx context.Context, _ api.GetMyResumeRequestObject) (api.GetMyResumeResponseObject, error) {
+// currentBank 决定「当前题库」：显式传了 bank 就用它，否则退回第一个题库。
+// 多题库后「当前」应改为最近活跃的那个 —— 到时只改这一处。
+func (s *Server) currentBank(ctx context.Context, explicit *string) (string, error) {
+	if explicit != nil && *explicit != "" {
+		return *explicit, nil
+	}
+	banks, err := s.banks.ListBanks(ctx)
+	if err != nil {
+		return "", err
+	}
+	if len(banks) == 0 {
+		return "", errors.New("没有任何题库")
+	}
+	return banks[0].Slug, nil
+}
+
+func (s *Server) GetMyResume(ctx context.Context, req api.GetMyResumeRequestObject) (api.GetMyResumeResponseObject, error) {
 	accountID, err := s.requireAccount(ctx, "GetMyResume")
 	if err != nil {
 		return nil, err
 	}
-	r, err := s.studies.LoadResume(ctx, accountID)
+	slug, err := s.currentBank(ctx, req.Params.Bank)
+	if err != nil {
+		return nil, s.fail("GetMyResume.banks", err)
+	}
+	r, err := s.studies.LoadResume(ctx, accountID, slug)
 	if err != nil {
 		return nil, s.fail("GetMyResume", err)
 	}
-	out := api.GetMyResume200JSONResponse{}
-	if r.QuestionID > 0 {
-		out.BankSlug = &r.BankSlug
-		out.QuestionId = &r.QuestionID
-		out.ExternalNo = &r.ExternalNo
-		out.Stem = &r.Stem
-		if r.AnsweredAt.Valid {
-			t := r.AnsweredAt.Time
-			out.AnsweredAt = &t
-		}
-	}
-	return out, nil
+	return api.GetMyResume200JSONResponse(toAPIResume(r)), nil
 }

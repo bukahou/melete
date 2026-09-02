@@ -190,6 +190,11 @@ CREATE TABLE IF NOT EXISTS attempt (
   correct     TINYINT(1) NOT NULL,
   duration_ms INT,
   rating      TINYINT,                        -- FSRS 1-4
+  -- 这次作答的出处：{"mode":"tag","tagId":44} / {"mode":"wrong"} / {"mode":"unseen"}。
+  -- 这是 attempt 上唯一「从事实推不出来」的信息：做了 27 道带 EC2 标签的题，
+  -- 看不出是「EC2 专项」里做的还是顺序刷时撞上的。其余一切状态（错题 / 不确定 /
+  -- 没做过 / 顺序断点 / 专项进度）都是对 attempt 的查询，不落库。
+  context     JSON,
   created_at  DATETIME   NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_attempt_acc_q (account_id, question_id),

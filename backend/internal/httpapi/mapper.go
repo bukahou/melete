@@ -6,6 +6,7 @@ import (
 	"github.com/bukahou/melete/backend/internal/api"
 	"github.com/bukahou/melete/backend/internal/bank"
 	"github.com/bukahou/melete/backend/internal/question"
+	"github.com/bukahou/melete/backend/internal/study"
 )
 
 // 本文件只做「领域模型 → API 表示」的翻译。
@@ -131,6 +132,34 @@ func toAPIDetail(d *question.Detail) api.QuestionDetail {
 	if len(d.Warnings) > 0 {
 		w := d.Warnings
 		out.Warnings = &w
+	}
+	return out
+}
+
+func toAPIResume(r *study.Resume) api.Resume {
+	seq := api.SequentialCursor{DoneCount: r.Sequential.DoneCount, TotalCount: r.Sequential.TotalCount}
+	if r.Sequential.QuestionID.Valid {
+		id := r.Sequential.QuestionID.Int64
+		no := int(r.Sequential.ExternalNo.Int64)
+		stem := r.Sequential.Stem.String
+		seq.QuestionId, seq.ExternalNo, seq.Stem = &id, &no, &stem
+	}
+	if r.Sequential.LastAt.Valid {
+		t := r.Sequential.LastAt.Time
+		seq.LastAt = &t
+	}
+	out := api.Resume{BankSlug: r.BankSlug, Sequential: seq}
+	if f := r.Focus; f != nil {
+		fc := api.FocusCursor{
+			Context: api.DrillContext{Mode: api.DrillContextMode(f.Mode), TagId: f.TagID},
+			Label:   f.Mode, Total: f.Total, LastAt: f.LastAt, Done: f.Done,
+		}
+		if f.Tag != nil {
+			fc.Label = f.Tag.Value
+			i18n := f.Tag.I18n.String
+			fc.Tag = &api.Tag{Id: f.Tag.ID, Type: api.TagType(f.Tag.Type), Value: f.Tag.Value, I18n: parseI18n(&i18n)}
+		}
+		out.Focus = &fc
 	}
 	return out
 }

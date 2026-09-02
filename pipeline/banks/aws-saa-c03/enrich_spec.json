@@ -29,6 +29,12 @@
     "3": "Design High-Performing Architectures",
     "4": "Design Cost-Optimized Architectures"
   },
+  "domains_zh": {
+    "1": "设计安全架构",
+    "2": "设计弹性架构",
+    "3": "设计高性能架构",
+    "4": "设计成本优化架构"
+  },
   "concept_seeds": [
     "eventual-consistency",
     "strong-consistency",

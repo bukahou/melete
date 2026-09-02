@@ -17,13 +17,13 @@ import "server-only";
 export type {
   Bank, BankDetail, Tag, QuestionSummary, QuestionDetail, QuestionPage,
   AnswerClaim, Choice, Reference, AttemptResult, DrillMode,
-  Progress, TagStat, Resume,
+  Progress, TagStat, Resume, FocusCursor, DrillContext,
 } from "./claims";
 export { SOURCE_LABEL, voteDistribution, hasDisagreement } from "./claims";
 
 import type {
   Bank, BankDetail, Tag, QuestionDetail, QuestionPage, AttemptResult, DrillMode,
-  Progress, TagStat, Resume,
+  Progress, TagStat, Resume, DrillContext,
 } from "./claims";
 
 import { accessToken } from "./auth";
@@ -86,7 +86,7 @@ export function listQuestions(
 
 /** 服务端调用：记录一次作答（web route handler 专用，带账号头）。 */
 export async function recordAttempt(
-  body: { questionId: number; chosen: string; rating: number; durationMs?: number },
+  body: { questionId: number; chosen: string; rating: number; durationMs?: number; context?: DrillContext },
 ): Promise<AttemptResult> {
   const res = await fetch(`${BASE}/attempts`, {
     method: "POST",
@@ -101,7 +101,8 @@ export async function recordAttempt(
 
 // ---- 个人统计（都是 no-store：因人而异，绝不进共享缓存）----
 
-export const getMyProgress = () => get<Progress>("/me/progress", 0, true);
-export const getMyResume = () => get<Resume>("/me/resume", 0, true);
+const bankQuery = (bank?: string) => (bank ? `?bank=${encodeURIComponent(bank)}` : "");
+export const getMyProgress = (bank?: string) => get<Progress>(`/me/progress${bankQuery(bank)}`, 0, true);
+export const getMyResume = (bank?: string) => get<Resume>(`/me/resume${bankQuery(bank)}`, 0, true);
 export const getMyTagStats = (type: Tag["type"], minAttempts = 3) =>
   get<TagStat[]>(`/me/tag-stats?type=${type}&minAttempts=${minAttempts}`, 0, true);

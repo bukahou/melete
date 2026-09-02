@@ -147,6 +147,8 @@ paths:
       tags: [study]
       summary: 我的学习进度总览
       operationId: getMyProgress
+      parameters:
+        - $ref: "#/components/parameters/BankQuery"
       responses:
         "200":
           description: OK
@@ -186,6 +188,8 @@ paths:
       summary: 继续学习（上次刷到哪）
       description: 从 attempt 推导，不额外维护断点表 —— 少一处要保持一致的状态。
       operationId: getMyResume
+      parameters:
+        - $ref: "#/components/parameters/BankQuery"
       responses:
         "200":
           description: OK
@@ -315,6 +319,11 @@ components:
         过期后用 refresh token 调 /auth/refresh 换新的。
 
   parameters:
+    BankQuery:
+      name: bank
+      in: query
+      description: 题库 slug；缺省 = 当前题库（现阶段为第一个题库）
+      schema: { type: string }
     Slug:
       name: slug
       in: path
@@ -365,13 +374,46 @@ components:
 
     Resume:
       type: object
-      description: 没有任何作答记录时 questionId 为空，前端应引导「开始第一题」
+      description: |
+        「继续学习」的两条轨道，全部从 attempt 推导：
+        · sequential —— 顺序进度：题号最小的没做过的题，无需存状态
+        · focus —— 上次专项：最近一条 context.mode ∉ {unseen, all} 的作答的出处；从未做过专项时缺省
+      required: [bankSlug, sequential]
       properties:
         bankSlug:   { type: string }
+        sequential: { $ref: "#/components/schemas/SequentialCursor" }
+        focus:      { $ref: "#/components/schemas/FocusCursor" }
+
+    SequentialCursor:
+      type: object
+      required: [doneCount, totalCount]
+      description: questionId 缺省 = 题库已全部做过一遍
+      properties:
         questionId: { type: integer, format: int64 }
         externalNo: { type: integer }
         stem:       { type: string }
-        answeredAt: { type: string, format: date-time }
+        doneCount:  { type: integer, description: 做过的题数（去重） }
+        totalCount: { type: integer, description: 题库总题数 }
+        lastAt:     { type: string, format: date-time, description: 上次顺序作答时间 }
+
+    FocusCursor:
+      type: object
+      required: [context, label, total, lastAt]
+      properties:
+        context: { $ref: "#/components/schemas/DrillContext" }
+        label:   { type: string, description: mode=tag 时为标签 value，否则为 mode 名 }
+        tag:     { $ref: "#/components/schemas/Tag" }
+        done:    { type: integer, description: 集合内做过的题数；只有 tag / contested 有意义 }
+        total:   { type: integer, description: 集合当前大小 }
+        lastAt:  { type: string, format: date-time }
+
+    DrillContext:
+      type: object
+      description: 一次作答的出处 —— 用户是从哪个入口做的这道题
+      required: [mode]
+      properties:
+        mode:  { type: string, enum: [all, unseen, wrong, unsure, contested, tag] }
+        tagId: { type: integer, format: int64, description: mode=tag 时必填 }
 
     AttemptInput:
       type: object
@@ -385,6 +427,7 @@ components:
           maximum: 4
           description: FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy
         durationMs: { type: integer }
+        context:    { $ref: "#/components/schemas/DrillContext" }
 
     AttemptResult:
       type: object

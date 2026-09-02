@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, ArrowRight, ExternalLink } from "lucide-react";
-import { ApiError, getQuestion, listQuestions, type DrillMode } from "@/lib/api";
+import { ApiError, getQuestion, listQuestions, type DrillContext, type DrillMode } from "@/lib/api";
 import { ClaimsPanel } from "@/components/ClaimsPanel";
 import { DrillCard } from "@/components/DrillCard";
 import { Markdown } from "@/components/Markdown";
@@ -85,6 +85,16 @@ export default async function DrillPage({
   const q = await getQuestion(page.items[0].id);
   const reference = q.reference ?? null;
 
+  // 出处：用户是从哪个入口进来做这题的。mode 优先；多标签时记第一个（入口只会传一个）。
+  // unseen 与不带条件的 all 视同「顺序刷」，其余都是专项。
+  const context: DrillContext = mode
+    ? { mode }
+    : tags.length > 0
+      ? { mode: "tag", tagId: tags[0] }
+      : filters.contested
+        ? { mode: "contested" }
+        : { mode: "all" };
+
   return (
     <div className="space-y-8">
       <header className="flex flex-wrap items-baseline gap-x-4 gap-y-2 text-sm">
@@ -130,7 +140,7 @@ export default async function DrillPage({
         />
       </div>
 
-      <DrillCard questionId={q.id} stem={q.stem} choices={q.choices} pickCount={q.pickCount} reference={reference}>
+      <DrillCard questionId={q.id} stem={q.stem} choices={q.choices} pickCount={q.pickCount} reference={reference} context={context}>
         <ClaimsPanel claims={q.claims} />
         {q.explanations.map((e) => (
           <section key={`${e.source}-${e.locale}`}>

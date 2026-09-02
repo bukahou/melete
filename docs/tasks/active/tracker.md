@@ -213,9 +213,12 @@ PDF 里有完整的 源站 评论（SAP-C02 614 处），解析器有意剥掉�
 方案页：https://claude.ai/code/artifact/<ARTIFACT_ID>
 原则：**每个模块都是入口，不是事实**。12 栏面板；「继续」拆两条轨道（顺序进度 / 上次专项）。
 
-- [ ] 「上次专项」的存储：推荐 `attempt` 加 `context` 列（`{mode, tag}`），**待用户拍板**
-- [ ] 宣言挪去登录页；34% 数据带、打架题删除
-- [ ] 标签轴文案已通用化（`tagTypeLabel(bank.meta, type)`，2026-09-02），实施时直接用
+- [x] 「上次专项」的存储：`attempt.context`（用户拍板 2026-09-02）；`/me/resume` 返回 sequential + focus 两条轨道
+- [x] 宣言挪去登录页；34% 数据带、打架题删除
+- [x] 标签轴文案通用化（`tagTypeLabel(bank.meta, type)`）
+- [x] 12 栏面板首页上线（2026-09-02）
+- [ ] `/me/tag-stats` 尚无 `bank` 参数（progress / resume 已有）；多题库时补
+- [ ] 「当前题库」= 第一个题库；多题库时改为最近活跃（`currentBank` 一处）
 
 ## 阻塞 / 待定
 

@@ -126,13 +126,15 @@ class Loader:
             wanted.update((0, "concept", c) for c in e["concepts"])
 
         domains = spec.get("domains", {})
+        domains_zh = spec.get("domains_zh", {})
         rows = []
         for bid, typ, val in sorted(wanted):
             i18n = None
             if typ == "domain":
-                en = domains.get(val.split("-", 1)[1])
-                if en:
-                    i18n = json.dumps({"en": en}, ensure_ascii=False)
+                key = val.split("-", 1)[1]
+                names = {k: v for k, v in (("en", domains.get(key)), ("zh", domains_zh.get(key))) if v}
+                if names:
+                    i18n = json.dumps(names, ensure_ascii=False)
             rows.append((bid, typ, val, i18n))
         self._exec("""INSERT INTO tag (bank_id, type, value, i18n) VALUES (%s,%s,%s,%s)
                       ON DUPLICATE KEY UPDATE i18n=COALESCE(VALUES(i18n), i18n)""", rows)

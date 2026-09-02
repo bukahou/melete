@@ -3,9 +3,11 @@ package study
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Progress 是一个账号在某题库上的总体进度。
@@ -30,14 +32,49 @@ type TagStat struct {
 	Correct int            `db:"correct"`
 }
 
-// Resume 是「上次刷到哪」。
+// Resume 是「继续学习」的两条轨道。两条都从 attempt 推导，不落任何断点状态。
 type Resume struct {
-	BankSlug   string       `db:"bank_slug"`
-	QuestionID int64        `db:"question_id"`
-	ExternalNo int          `db:"external_no"`
-	Stem       string       `db:"stem"`
-	AnsweredAt sql.NullTime `db:"answered_at"`
+	BankSlug   string
+	Sequential SequentialCursor
+	Focus      *FocusCursor // nil = 从未做过专项
 }
+
+// SequentialCursor 是顺序进度：题号最小的没做过的题。QuestionID 无效 = 已全部做过。
+type SequentialCursor struct {
+	QuestionID sql.NullInt64  `db:"question_id"`
+	ExternalNo sql.NullInt64  `db:"external_no"`
+	Stem       sql.NullString `db:"stem"`
+	DoneCount  int
+	TotalCount int
+	LastAt     sql.NullTime
+}
+
+// FocusCursor 是上次专项：最近一条 context.mode ∉ {unseen, all} 的作答的出处。
+type FocusCursor struct {
+	Mode   string
+	TagID  *int64
+	Tag    *TagRef
+	Done   *int // 集合内做过的题数；只有 tag / contested 有意义
+	Total  int  // 集合当前大小
+	LastAt time.Time
+}
+
+// TagRef 是 focus 引用的标签（够前端显示即可，不引入 bank 域的完整类型）。
+type TagRef struct {
+	ID    int64          `db:"id"`
+	Type  string         `db:"type"`
+	Value string         `db:"value"`
+	I18n  sql.NullString `db:"i18n"`
+}
+
+// drillContext 与 API 契约 DrillContext 同形；这里解码 attempt.context 列。
+type drillContext struct {
+	Mode  string `json:"mode"`
+	TagID *int64 `json:"tagId,omitempty"`
+}
+
+// sequentialModes 视同「顺序刷」的出处：不构成专项。
+var sequentialModes = map[string]bool{"unseen": true, "all": true, "": true}
 
 // latestAttempt 取每题的最近一次作答。
 //
@@ -102,24 +139,130 @@ func (s *service) LoadTagStats(ctx context.Context, accountID int64, slug, tagTy
 	return out, nil
 }
 
-// LoadResume 找「上次刷到哪」。
-func (s *service) LoadResume(ctx context.Context, accountID int64) (*Resume, error) {
-	var r Resume
-	err := s.db.GetContext(ctx, &r, `
-		SELECT b.slug AS bank_slug, q.id AS question_id, q.external_no, q.stem,
-		       a.created_at AS answered_at
-		FROM attempt a
-		JOIN question q ON q.id = a.question_id
-		JOIN bank b     ON b.id = q.bank_id
-		WHERE a.account_id = ?
-		ORDER BY a.id DESC LIMIT 1`, accountID)
+// LoadResume 组装「继续学习」的两条轨道。
+func (s *service) LoadResume(ctx context.Context, accountID int64, slug string) (*Resume, error) {
+	var bankID int64
+	err := s.db.GetContext(ctx, &bankID, `SELECT id FROM bank WHERE slug = ?`, slug)
 	if errors.Is(err, sql.ErrNoRows) {
-		return &Resume{}, nil // 从未作答：返回空对象而非错误，前端引导「开始第一题」
+		return nil, ErrNotFound
 	}
 	if err != nil {
-		return nil, fmt.Errorf("查询学习断点: %w", err)
+		return nil, fmt.Errorf("查询题库 %q: %w", slug, err)
 	}
-	return &r, nil
+	r := &Resume{BankSlug: slug}
+
+	// ---- 顺序进度 ----
+	err = s.db.GetContext(ctx, &r.Sequential, `
+		SELECT q.id AS question_id, q.external_no, q.stem
+		FROM question q
+		WHERE q.bank_id = ?
+		  AND NOT EXISTS (SELECT 1 FROM attempt a WHERE a.account_id = ? AND a.question_id = q.id)
+		ORDER BY q.external_no LIMIT 1`, bankID, accountID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("查询顺序断点: %w", err)
+	}
+	err = s.db.QueryRowContext(ctx, `
+		SELECT (SELECT COUNT(*) FROM question WHERE bank_id = ?),
+		       (SELECT COUNT(DISTINCT a.question_id) FROM attempt a
+		          JOIN question q ON q.id = a.question_id AND q.bank_id = ?
+		         WHERE a.account_id = ?),
+		       (SELECT MAX(a.created_at) FROM attempt a
+		          JOIN question q ON q.id = a.question_id AND q.bank_id = ?
+		         WHERE a.account_id = ?
+		           AND (a.context IS NULL OR JSON_UNQUOTE(JSON_EXTRACT(a.context, '$.mode')) IN ('unseen', 'all')))`,
+		bankID, bankID, accountID, bankID, accountID,
+	).Scan(&r.Sequential.TotalCount, &r.Sequential.DoneCount, &r.Sequential.LastAt)
+	if err != nil {
+		return nil, fmt.Errorf("统计顺序进度: %w", err)
+	}
+
+	// ---- 上次专项 ----
+	var raw string
+	var at time.Time
+	err = s.db.QueryRowContext(ctx, `
+		SELECT a.context, a.created_at
+		FROM attempt a JOIN question q ON q.id = a.question_id
+		WHERE a.account_id = ? AND q.bank_id = ? AND a.context IS NOT NULL
+		  AND JSON_UNQUOTE(JSON_EXTRACT(a.context, '$.mode')) NOT IN ('unseen', 'all')
+		ORDER BY a.id DESC LIMIT 1`, accountID, bankID).Scan(&raw, &at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return r, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("查询上次专项: %w", err)
+	}
+	var dc drillContext
+	if json.Unmarshal([]byte(raw), &dc) != nil || sequentialModes[dc.Mode] {
+		return r, nil // 坏数据当作没有专项，不让首页因一行脏 JSON 报错
+	}
+	f := &FocusCursor{Mode: dc.Mode, TagID: dc.TagID, LastAt: at}
+	if err := s.fillFocusSize(ctx, accountID, bankID, f); err != nil {
+		return nil, err
+	}
+	r.Focus = f
+	return r, nil
+}
+
+// fillFocusSize 算出专项集合的当前大小（与做过的数量）。
+// 集合定义须与 question 域的 mode 过滤、bank 域的 contested 统计**同一口径**，
+// 否则首页写「EC2 27/490」、点进去却是 489 题。
+func (s *service) fillFocusSize(ctx context.Context, accountID, bankID int64, f *FocusCursor) error {
+	switch f.Mode {
+	case "tag":
+		if f.TagID == nil {
+			return nil
+		}
+		var t TagRef
+		if err := s.db.GetContext(ctx, &t, `SELECT id, type, value, i18n FROM tag WHERE id = ?`, *f.TagID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil // 标签已被重跑富化清掉：专项仍显示，但没有名字与规模
+			}
+			return fmt.Errorf("查询专项标签: %w", err)
+		}
+		f.Tag = &t
+		var done int
+		err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*),
+			       SUM(EXISTS (SELECT 1 FROM attempt a WHERE a.account_id = ? AND a.question_id = q.id))
+			FROM question_tag qt JOIN question q ON q.id = qt.question_id
+			WHERE qt.tag_id = ? AND q.bank_id = ?`, accountID, *f.TagID, bankID).Scan(&f.Total, &done)
+		if err != nil {
+			return fmt.Errorf("统计专项规模: %w", err)
+		}
+		f.Done = &done
+	case "contested":
+		// 与 bank.LoadStats 的 contested_count 同一定义：题库标注 ≠ 社区投票
+		var done int
+		err := s.db.QueryRowContext(ctx, `
+			SELECT COUNT(*),
+			       SUM(EXISTS (SELECT 1 FROM attempt a WHERE a.account_id = ? AND a.question_id = q.id))
+			FROM question q
+			WHERE q.bank_id = ? AND EXISTS (
+			  SELECT 1 FROM answer_claim bl
+			  JOIN answer_claim cv ON cv.question_id = bl.question_id AND cv.source = 'community_vote'
+			  WHERE bl.question_id = q.id AND bl.source = 'bank_label' AND bl.answer <> cv.answer)`,
+			accountID, bankID).Scan(&f.Total, &done)
+		if err != nil {
+			return fmt.Errorf("统计分歧题规模: %w", err)
+		}
+		f.Done = &done
+	case "wrong", "unsure":
+		// 集合本身就是「做过的」的子集，done 无意义；规模复用 Progress 的口径
+		var bankSlug string
+		if err := s.db.GetContext(ctx, &bankSlug, `SELECT slug FROM bank WHERE id = ?`, bankID); err != nil {
+			return fmt.Errorf("查询题库: %w", err)
+		}
+		p, err := s.LoadProgress(ctx, accountID, bankSlug)
+		if err != nil {
+			return err
+		}
+		if f.Mode == "wrong" {
+			f.Total = p.WrongCount
+		} else {
+			f.Total = p.UnsureCount
+		}
+	}
+	return nil
 }
 
 // Rate 是正确率百分比，避免前端各算各的。

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { accessToken } from "@/lib/auth";
-import { recordAttempt } from "@/lib/api";
+import { recordAttempt, type DrillContext } from "@/lib/api";
 
 /**
  * 作答记录的 BFF 转发口。
@@ -16,6 +16,7 @@ export async function POST(req: Request) {
     chosen: string;
     rating: number;
     durationMs?: number;
+    context?: DrillContext;
   };
   if (!body?.questionId || !body?.chosen || !body?.rating) {
     return NextResponse.json({ message: "参数不完整" }, { status: 400 });

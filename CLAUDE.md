@@ -129,10 +129,14 @@ article_tag   article_id, tag_id                                       -- 经 co
 -- 学习侧
 account       id, akasha_sub, ...
 card          account_id, question_id, state, due, stability, difficulty, reps, lapses
-attempt       id, account_id, question_id, chosen, correct, duration_ms, rating(1-4)
+attempt       id, account_id, question_id, chosen, correct, duration_ms, rating(1-4), context json  -- 出处：{mode, tagId}
 ```
 
 「我哪里不会」不需要额外设计：`attempt ⋈ question_tag ⋈ tag` 按标签聚合正确率即是。
+
+**学习侧只存事实，不存状态**：错题 / 不确定 / 没做过 / 顺序断点 / 专项进度全部是对 `attempt` 的查询
+（每题只取最近一次）。`attempt.context` 是唯一「推不出来」的信息 —— 这道题是从哪个入口做的；
+「上次专项」= 最近一条 `context.mode ∉ {unseen, all}` 的作答。将来唯一合法的状态表是 FSRS 的 `card`（P3）。
 
 ---
 

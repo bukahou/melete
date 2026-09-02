@@ -25,9 +25,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const signedIn = Boolean(await accessToken());
   return (
     <html lang="zh-CN" className={notoSerif.variable}>
-      <body className="flex min-h-screen flex-col">
+      <body className="flex min-h-screen flex-col overflow-x-clip">
         <header className="border-b border-line">
-          <div className="mx-auto flex w-full max-w-4xl items-baseline gap-6 px-6 py-5">
+          <div className="mx-auto flex w-full max-w-[1400px] items-baseline gap-6 px-6 py-5">
             <Link href="/" className="group flex items-center gap-2.5">
               {/* 与 atlantis / geass 同形状的作品系列标识，配色取 melete 的题库赭 */}
               <Image src={logo} alt="" width={26} height={26} priority className="translate-y-px" />
@@ -36,7 +36,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <span className="hidden text-xs tracking-wide text-muted sm:inline">练习与修习</span>
             <nav className="ml-auto flex items-baseline gap-5 text-sm">
               <Link href="/" className="text-muted transition-colors hover:text-ink">
-                题库
+                首页
               </Link>
               {signedIn && (
                 <Link href="/me" className="text-muted transition-colors hover:text-ink">
@@ -61,7 +61,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-12">{children}</main>
 
         <footer className="border-t border-line">
-          <div className="mx-auto flex w-full max-w-4xl flex-wrap items-baseline gap-x-6 gap-y-1 px-6 py-6 text-xs text-muted">
+          <div className="mx-auto flex w-full max-w-[1400px] flex-wrap items-baseline gap-x-6 gap-y-1 px-6 py-6 text-xs text-muted">
             <span className="display text-sm">Μελέτη</span>
             <span>司「练习、修习」的缪斯</span>
             <span className="ml-auto">被动阅读不产生学习，主动回忆才产生</span>

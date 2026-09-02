@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Check, Eye, X } from "lucide-react";
-import { SOURCE_LABEL, type Choice, type Reference } from "@/lib/claims";
+import { SOURCE_LABEL, type Choice, type DrillContext, type Reference } from "@/lib/claims";
 import { QuestionBody } from "./QuestionBody";
 
 /**
@@ -26,6 +26,7 @@ export function DrillCard({
   choices,
   pickCount,
   reference,
+  context,
   children,
 }: {
   questionId: number;
@@ -33,6 +34,8 @@ export function DrillCard({
   choices: Choice[];
   pickCount: number;
   reference: Reference | null;
+  /** 这道题是从哪个入口做的 —— 随 attempt 落库，是「上次专项」的唯一来源 */
+  context: DrillContext;
   children: React.ReactNode;
 }) {
   const [picked, setPicked] = useState<string[]>([]);
@@ -58,6 +61,7 @@ export function DrillCard({
           chosen,
           rating,
           durationMs: Date.now() - startedAt.current,
+          context,
         }),
       });
       setSaveState(res.ok ? "saved" : "failed");

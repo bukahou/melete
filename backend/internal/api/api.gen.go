@@ -80,6 +80,36 @@ func (e BankDetailKind) Valid() bool {
 	}
 }
 
+// Defines values for DrillContextMode.
+const (
+	DrillContextModeAll       DrillContextMode = "all"
+	DrillContextModeContested DrillContextMode = "contested"
+	DrillContextModeTag       DrillContextMode = "tag"
+	DrillContextModeUnseen    DrillContextMode = "unseen"
+	DrillContextModeUnsure    DrillContextMode = "unsure"
+	DrillContextModeWrong     DrillContextMode = "wrong"
+)
+
+// Valid indicates whether the value is a known member of the DrillContextMode enum.
+func (e DrillContextMode) Valid() bool {
+	switch e {
+	case DrillContextModeAll:
+		return true
+	case DrillContextModeContested:
+		return true
+	case DrillContextModeTag:
+		return true
+	case DrillContextModeUnseen:
+		return true
+	case DrillContextModeUnsure:
+		return true
+	case DrillContextModeWrong:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ExplanationSource.
 const (
 	Ai     ExplanationSource = "ai"
@@ -205,19 +235,19 @@ func (e TagStatType) Valid() bool {
 
 // Defines values for ListQuestionsParamsMode.
 const (
-	Unseen ListQuestionsParamsMode = "unseen"
-	Unsure ListQuestionsParamsMode = "unsure"
-	Wrong  ListQuestionsParamsMode = "wrong"
+	ListQuestionsParamsModeUnseen ListQuestionsParamsMode = "unseen"
+	ListQuestionsParamsModeUnsure ListQuestionsParamsMode = "unsure"
+	ListQuestionsParamsModeWrong  ListQuestionsParamsMode = "wrong"
 )
 
 // Valid indicates whether the value is a known member of the ListQuestionsParamsMode enum.
 func (e ListQuestionsParamsMode) Valid() bool {
 	switch e {
-	case Unseen:
+	case ListQuestionsParamsModeUnseen:
 		return true
-	case Unsure:
+	case ListQuestionsParamsModeUnsure:
 		return true
-	case Wrong:
+	case ListQuestionsParamsModeWrong:
 		return true
 	default:
 		return false
@@ -290,9 +320,12 @@ type AnswerClaimSource string
 // AttemptInput defines model for AttemptInput.
 type AttemptInput struct {
 	// Chosen 排序后的字母集合，如 "AB"
-	Chosen     string `json:"chosen"`
-	DurationMs *int   `json:"durationMs,omitempty"`
-	QuestionId int64  `json:"questionId"`
+	Chosen string `json:"chosen"`
+
+	// Context 一次作答的出处 —— 用户是从哪个入口做的这道题
+	Context    *DrillContext `json:"context,omitempty"`
+	DurationMs *int          `json:"durationMs,omitempty"`
+	QuestionId int64         `json:"questionId"`
 
 	// Rating FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy
 	Rating int `json:"rating"`
@@ -389,6 +422,17 @@ type Credentials struct {
 	Username   string  `json:"username"`
 }
 
+// DrillContext 一次作答的出处 —— 用户是从哪个入口做的这道题
+type DrillContext struct {
+	Mode DrillContextMode `json:"mode"`
+
+	// TagId mode=tag 时必填
+	TagId *int64 `json:"tagId,omitempty"`
+}
+
+// DrillContextMode defines model for DrillContext.Mode.
+type DrillContextMode string
+
 // Error defines model for Error.
 type Error struct {
 	Message string `json:"message"`
@@ -403,6 +447,25 @@ type Explanation struct {
 
 // ExplanationSource defines model for Explanation.Source.
 type ExplanationSource string
+
+// FocusCursor defines model for FocusCursor.
+type FocusCursor struct {
+	// Context 一次作答的出处 —— 用户是从哪个入口做的这道题
+	Context DrillContext `json:"context"`
+
+	// Done 集合内做过的题数；只有 tag / contested 有意义
+	Done *int `json:"done,omitempty"`
+
+	// Label mode=tag 时为标签 value，否则为 mode 名
+	Label  string    `json:"label"`
+	LastAt time.Time `json:"lastAt"`
+
+	// Tag 通用 (type, value) 结构，不硬编码任何特定题库的分类体系
+	Tag *Tag `json:"tag,omitempty"`
+
+	// Total 集合当前大小
+	Total int `json:"total"`
+}
 
 // Progress defines model for Progress.
 type Progress struct {
@@ -508,13 +571,30 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
-// Resume 没有任何作答记录时 questionId 为空，前端应引导「开始第一题」
+// Resume 「继续学习」的两条轨道，全部从 attempt 推导：
+// · sequential —— 顺序进度：题号最小的没做过的题，无需存状态
+// · focus —— 上次专项：最近一条 context.mode ∉ {unseen, all} 的作答的出处；从未做过专项时缺省
 type Resume struct {
-	AnsweredAt *time.Time `json:"answeredAt,omitempty"`
-	BankSlug   *string    `json:"bankSlug,omitempty"`
-	ExternalNo *int       `json:"externalNo,omitempty"`
+	BankSlug string       `json:"bankSlug"`
+	Focus    *FocusCursor `json:"focus,omitempty"`
+
+	// Sequential questionId 缺省 = 题库已全部做过一遍
+	Sequential SequentialCursor `json:"sequential"`
+}
+
+// SequentialCursor questionId 缺省 = 题库已全部做过一遍
+type SequentialCursor struct {
+	// DoneCount 做过的题数（去重）
+	DoneCount  int  `json:"doneCount"`
+	ExternalNo *int `json:"externalNo,omitempty"`
+
+	// LastAt 上次顺序作答时间
+	LastAt     *time.Time `json:"lastAt,omitempty"`
 	QuestionId *int64     `json:"questionId,omitempty"`
 	Stem       *string    `json:"stem,omitempty"`
+
+	// TotalCount 题库总题数
+	TotalCount int `json:"totalCount"`
 }
 
 // SsoExchange defines model for SsoExchange.
@@ -579,6 +659,9 @@ type TokenPair struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
+// BankQuery defines model for BankQuery.
+type BankQuery = string
+
 // Slug defines model for Slug.
 type Slug = string
 
@@ -621,6 +704,18 @@ type ListBankTagsParams struct {
 
 // ListBankTagsParamsType defines parameters for ListBankTags.
 type ListBankTagsParamsType string
+
+// GetMyProgressParams defines parameters for GetMyProgress.
+type GetMyProgressParams struct {
+	// Bank 题库 slug；缺省 = 当前题库（现阶段为第一个题库）
+	Bank *BankQuery `form:"bank,omitempty" json:"bank,omitempty"`
+}
+
+// GetMyResumeParams defines parameters for GetMyResume.
+type GetMyResumeParams struct {
+	// Bank 题库 slug；缺省 = 当前题库（现阶段为第一个题库）
+	Bank *BankQuery `form:"bank,omitempty" json:"bank,omitempty"`
+}
 
 // GetMyTagStatsParams defines parameters for GetMyTagStats.
 type GetMyTagStatsParams struct {
@@ -679,10 +774,10 @@ type ServerInterface interface {
 	ListBankTags(w http.ResponseWriter, r *http.Request, slug Slug, params ListBankTagsParams)
 	// 我的学习进度总览
 	// (GET /me/progress)
-	GetMyProgress(w http.ResponseWriter, r *http.Request)
+	GetMyProgress(w http.ResponseWriter, r *http.Request, params GetMyProgressParams)
 	// 继续学习（上次刷到哪）
 	// (GET /me/resume)
-	GetMyResume(w http.ResponseWriter, r *http.Request)
+	GetMyResume(w http.ResponseWriter, r *http.Request, params GetMyResumeParams)
 	// 按标签的正确率（「我哪里不会」）
 	// (GET /me/tag-stats)
 	GetMyTagStats(w http.ResponseWriter, r *http.Request, params GetMyTagStatsParams)
@@ -751,13 +846,13 @@ func (_ Unimplemented) ListBankTags(w http.ResponseWriter, r *http.Request, slug
 
 // 我的学习进度总览
 // (GET /me/progress)
-func (_ Unimplemented) GetMyProgress(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetMyProgress(w http.ResponseWriter, r *http.Request, params GetMyProgressParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // 继续学习（上次刷到哪）
 // (GET /me/resume)
-func (_ Unimplemented) GetMyResume(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) GetMyResume(w http.ResponseWriter, r *http.Request, params GetMyResumeParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1074,14 +1169,33 @@ func (siw *ServerInterfaceWrapper) ListBankTags(w http.ResponseWriter, r *http.R
 // GetMyProgress operation middleware
 func (siw *ServerInterfaceWrapper) GetMyProgress(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
 	ctx := r.Context()
 
 	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetMyProgressParams
+
+	// ------------- Optional query parameter "bank" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "bank", r.URL.Query(), &params.Bank, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "bank"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bank", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetMyProgress(w, r)
+		siw.Handler.GetMyProgress(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1094,14 +1208,33 @@ func (siw *ServerInterfaceWrapper) GetMyProgress(w http.ResponseWriter, r *http.
 // GetMyResume operation middleware
 func (siw *ServerInterfaceWrapper) GetMyResume(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
 	ctx := r.Context()
 
 	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetMyResumeParams
+
+	// ------------- Optional query parameter "bank" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "bank", r.URL.Query(), &params.Bank, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "bank"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bank", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetMyResume(w, r)
+		siw.Handler.GetMyResume(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1675,6 +1808,7 @@ func (response ListBankTags404JSONResponse) VisitListBankTagsResponse(w http.Res
 }
 
 type GetMyProgressRequestObject struct {
+	Params GetMyProgressParams
 }
 
 type GetMyProgressResponseObject interface {
@@ -1696,6 +1830,7 @@ func (response GetMyProgress200JSONResponse) VisitGetMyProgressResponse(w http.R
 }
 
 type GetMyResumeRequestObject struct {
+	Params GetMyResumeParams
 }
 
 type GetMyResumeResponseObject interface {
@@ -2106,8 +2241,10 @@ func (sh *strictHandler) ListBankTags(w http.ResponseWriter, r *http.Request, sl
 }
 
 // GetMyProgress operation middleware
-func (sh *strictHandler) GetMyProgress(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetMyProgress(w http.ResponseWriter, r *http.Request, params GetMyProgressParams) {
 	var request GetMyProgressRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetMyProgress(ctx, request.(GetMyProgressRequestObject))
@@ -2130,8 +2267,10 @@ func (sh *strictHandler) GetMyProgress(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetMyResume operation middleware
-func (sh *strictHandler) GetMyResume(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) GetMyResume(w http.ResponseWriter, r *http.Request, params GetMyResumeParams) {
 	var request GetMyResumeRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetMyResume(ctx, request.(GetMyResumeRequestObject))

@@ -277,15 +277,53 @@ export interface components {
              */
             rate: number;
         };
-        /** @description 没有任何作答记录时 questionId 为空，前端应引导「开始第一题」 */
+        /**
+         * @description 「继续学习」的两条轨道，全部从 attempt 推导：
+         *     · sequential —— 顺序进度：题号最小的没做过的题，无需存状态
+         *     · focus —— 上次专项：最近一条 context.mode ∉ {unseen, all} 的作答的出处；从未做过专项时缺省
+         */
         Resume: {
-            bankSlug?: string;
+            bankSlug: string;
+            sequential: components["schemas"]["SequentialCursor"];
+            focus?: components["schemas"]["FocusCursor"];
+        };
+        /** @description questionId 缺省 = 题库已全部做过一遍 */
+        SequentialCursor: {
             /** Format: int64 */
             questionId?: number;
             externalNo?: number;
             stem?: string;
+            /** @description 做过的题数（去重） */
+            doneCount: number;
+            /** @description 题库总题数 */
+            totalCount: number;
+            /**
+             * Format: date-time
+             * @description 上次顺序作答时间
+             */
+            lastAt?: string;
+        };
+        FocusCursor: {
+            context: components["schemas"]["DrillContext"];
+            /** @description mode=tag 时为标签 value，否则为 mode 名 */
+            label: string;
+            tag?: components["schemas"]["Tag"];
+            /** @description 集合内做过的题数；只有 tag / contested 有意义 */
+            done?: number;
+            /** @description 集合当前大小 */
+            total: number;
             /** Format: date-time */
-            answeredAt?: string;
+            lastAt: string;
+        };
+        /** @description 一次作答的出处 —— 用户是从哪个入口做的这道题 */
+        DrillContext: {
+            /** @enum {string} */
+            mode: "all" | "unseen" | "wrong" | "unsure" | "contested" | "tag";
+            /**
+             * Format: int64
+             * @description mode=tag 时必填
+             */
+            tagId?: number;
         };
         AttemptInput: {
             /** Format: int64 */
@@ -295,6 +333,7 @@ export interface components {
             /** @description FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy */
             rating: number;
             durationMs?: number;
+            context?: components["schemas"]["DrillContext"];
         };
         AttemptResult: {
             /** @description 服务端按参考答案判定 */
@@ -496,6 +535,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description 题库 slug；缺省 = 当前题库（现阶段为第一个题库） */
+        BankQuery: string;
         /** @description 题库 slug，如 aws-saa-c03 */
         Slug: string;
     };
@@ -655,7 +696,10 @@ export interface operations {
     };
     getMyProgress: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 题库 slug；缺省 = 当前题库（现阶段为第一个题库） */
+                bank?: components["parameters"]["BankQuery"];
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -699,7 +743,10 @@ export interface operations {
     };
     getMyResume: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 题库 slug；缺省 = 当前题库（现阶段为第一个题库） */
+                bank?: components["parameters"]["BankQuery"];
+            };
             header?: never;
             path?: never;
             cookie?: never;

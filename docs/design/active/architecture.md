@@ -166,6 +166,7 @@ CREATE TABLE attempt (
   correct     TINYINT(1) NOT NULL,
   duration_ms INT,
   rating      TINYINT,                        -- FSRS 1-4
+  context     JSON,                           -- 出处 {mode, tagId}；「上次专项」的唯一来源
   created_at  DATETIME   NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_attempt_acc_q (account_id, question_id),

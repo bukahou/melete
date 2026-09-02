@@ -22,6 +22,12 @@ export default async function LoginPage({
       <h1 className="display mt-5 text-2xl tracking-wide">Melete</h1>
       <p className="mt-2 text-xs tracking-wide text-muted">Μελέτη — 练习与修习</p>
 
+      {/* 产品理念只在这里出现：登录后的人不需要每天读一遍 */}
+      <p className="mt-8 max-w-[19rem] text-center text-[0.8rem] leading-[1.9] text-muted">
+        被动阅读不产生学习，<em className="mark-em text-ink">主动回忆</em>才产生。
+        每道题并列保存题库标注、社区投票与 AI 裁决三方答案 —— 分歧本身就是学习材料。
+      </p>
+
       <form method="POST" action="/auth/password" className="mt-10 w-full space-y-3">
         <input type="hidden" name="return" value={returnTo} />
         <input

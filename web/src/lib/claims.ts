@@ -26,6 +26,8 @@ export type DrillMode = "wrong" | "unsure" | "unseen";
 export type Progress = components["schemas"]["Progress"];
 export type TagStat = components["schemas"]["TagStat"];
 export type Resume = components["schemas"]["Resume"];
+export type FocusCursor = components["schemas"]["FocusCursor"];
+export type DrillContext = components["schemas"]["DrillContext"];
 
 /** 答案主张的来源标签。顺序与后端返回一致：题库 → 社区 → AI → 用户。 */
 export const SOURCE_LABEL: Record<AnswerClaim["source"], string> = {
@@ -74,4 +76,9 @@ export function tagTypeLabel(meta: BankMeta | undefined, type: TagType, locale =
 export function tagWeight(meta: BankMeta | undefined, tag: { type: TagType; value: string }): number | undefined {
   const key = tag.value.startsWith(`${tag.type}-`) ? tag.value.slice(tag.type.length + 1) : tag.value;
   return meta?.tagTypes?.[tag.type]?.weights?.[key];
+}
+
+/** 标签显示名：优先本地化名（考纲域有 zh/en），否则用 value（服务名本来就是英文短名）。 */
+export function tagName(tag: { value: string; i18n?: Record<string, string> | null }, locale = "zh"): string {
+  return tag.i18n?.[locale] ?? tag.i18n?.en ?? tag.value;
 }

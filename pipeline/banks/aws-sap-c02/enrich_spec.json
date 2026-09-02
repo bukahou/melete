@@ -32,6 +32,12 @@
     "3": "Continuous Improvement for Existing Solutions",
     "4": "Accelerate Workload Migration and Modernization"
   },
+  "domains_zh": {
+    "1": "针对组织复杂性进行设计",
+    "2": "设计新解决方案",
+    "3": "持续改进现有解决方案",
+    "4": "加速工作负载迁移和现代化"
+  },
   "concept_seeds": [
     "active-active",
     "audit-trail",

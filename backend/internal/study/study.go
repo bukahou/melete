@@ -26,6 +26,9 @@ type Attempt struct {
 	Chosen     string
 	Rating     int // FSRS 四键：1=Again 2=Hard 3=Good 4=Easy
 	DurationMs *int
+	// Context 是这次作答的出处（JSON 原文，形如 {"mode":"tag","tagId":44}）。
+	// 领域层只负责落库与原样读出，不解释它；解释权在 LoadResume。
+	Context *string
 }
 
 // Result 是记录后的判定结果。
@@ -42,7 +45,7 @@ type Service interface {
 	RecordAttempt(ctx context.Context, a Attempt) (*Result, error)
 	LoadProgress(ctx context.Context, accountID int64, slug string) (*Progress, error)
 	LoadTagStats(ctx context.Context, accountID int64, slug, tagType string, minAttempts int) ([]TagStat, error)
-	LoadResume(ctx context.Context, accountID int64) (*Resume, error)
+	LoadResume(ctx context.Context, accountID int64, slug string) (*Resume, error)
 }
 
 type service struct {
@@ -66,9 +69,9 @@ func (s *service) RecordAttempt(ctx context.Context, a Attempt) (*Result, error)
 	correct := ref != nil && chosen == ref.Answer
 
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO attempt (account_id, question_id, chosen, correct, duration_ms, rating)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		a.AccountID, a.QuestionID, chosen, correct, a.DurationMs, a.Rating)
+		INSERT INTO attempt (account_id, question_id, chosen, correct, duration_ms, rating, context)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		a.AccountID, a.QuestionID, chosen, correct, a.DurationMs, a.Rating, a.Context)
 	if err != nil {
 		return nil, fmt.Errorf("写入作答记录: %w", err)
 	}
