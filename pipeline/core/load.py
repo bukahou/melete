@@ -67,7 +67,9 @@ class Loader:
     def upsert_questions(self, bank_id: int, qs: list) -> dict:
         rows = [(bank_id, q["no"], q["stem"], q["kind"], q["pick"],
                  (q.get("enrichment") or {}).get("data_issue"),
-                 json.dumps({"warnings": q.get("warnings", [])}, ensure_ascii=False))
+                 json.dumps({"warnings": q.get("warnings", []),
+                             **({"duplicates": q["duplicates"]} if q.get("duplicates") else {})},
+                            ensure_ascii=False))
                 for q in qs]
         self._exec(
             """INSERT INTO question (bank_id, external_no, stem, kind, pick_count, data_issue, raw)
@@ -203,6 +205,45 @@ def validate(qs: list) -> tuple[list[str], list[str]]:
     return hard, soft
 
 
+def fold_duplicates(qs: list) -> tuple[list, list[str]]:
+    """
+    重复题只导入正本（用户拍板 2026-09-02，方案 b）：
+    解析器给后出现的题挂了 duplicate_of_N，这里把它的答案主张并入 N，然后不导入它。
+
+    为什么并入而不是丢弃：#10≡#438 两题的题库标注互相矛盾（CE vs A），
+    「题库在两处给了不同答案」本身就是一条有价值的主张 —— 与「题库说 A、社区说 B」是同一种呈现。
+    并入规则（answer_claim 以 (question_id, source) 唯一）：
+      正本没有这个来源      → 追加为新主张，meta.from_no 记出处
+      同来源、同答案        → 什么都不做（#84≡#85 就是这种）
+      同来源、答案不同      → 记进正本该主张的 meta.variants
+    FSRS 上这样只剩一张卡；schema 一行不改。
+    """
+    by_no = {q["no"]: q for q in qs}
+    dropped: set[int] = set()
+    notes: list[str] = []
+    for q in qs:
+        target = next((int(w.rsplit("_", 1)[1]) for w in q.get("warnings", []) if w.startswith("duplicate_of_")), None)
+        if target is None:
+            continue
+        canon = by_no.get(target)
+        if canon is None or target in dropped:
+            notes.append(f"#{q['no']}: 标记为 #{target} 的重复，但正本不可用，照常独立导入")
+            continue
+        canon.setdefault("duplicates", []).append(q["no"])
+        for c in q["claims"]:
+            same = next((k for k in canon["claims"] if k["source"] == c["source"]), None)
+            if same is None:
+                canon["claims"].append({**c, "from_no": q["no"]})
+                notes.append(f"#{q['no']} → #{target}: 补入主张 {c['source']}={c['answer']}")
+            elif same["answer"] != c["answer"]:
+                same.setdefault("variants", []).append(
+                    {"no": q["no"], "answer": c["answer"], **({"confidence": c["confidence"]} if c.get("confidence") is not None else {})})
+                notes.append(f"#{q['no']} → #{target}: {c['source']} 答案不同（{c['answer']} vs {same['answer']}），记入 variants")
+        dropped.add(q["no"])
+        notes.append(f"#{q['no']}: 与 #{target} 完全重复，不导入")
+    return [q for q in qs if q["no"] not in dropped], notes
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="把富化产物导入数据库")
     ap.add_argument("bank")
@@ -237,6 +278,13 @@ def main() -> None:
 
     # 整题无选项的跳过导入（无法作为学习单元），但保留在 questions.json 里可追溯
     qs = [q for q in qs if q["choices"]]
+
+    qs, dup_notes = fold_duplicates(qs)
+    if dup_notes:
+        print(f"⚠ 重复题 {len(dup_notes)} 条处置（只导正本，主张并入）：")
+        for e in dup_notes:
+            print(f"    {e}")
+        print()
 
     conn = mysql.connect(**parse_go_dsn(args.dsn), charset="utf8mb4", autocommit=False)
     ld = Loader(conn)
