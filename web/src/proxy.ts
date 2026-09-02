@@ -52,6 +52,11 @@ function toLogin(req: NextRequest) {
 }
 
 export const config = {
-  // 放行：认证路由 / Next 静态资源 / favicon（页面与数据请求全部设墙）
-  matcher: ["/((?!auth/|_next/|favicon.ico).*)"],
+  // 放行：认证路由 / Next 静态资源 / 站点图标（页面与数据请求全部设墙）。
+  //
+  // 图标必须放行，且不能只写 favicon.ico —— 图标走的是 App Router 的
+  // 文件约定（app/icon.png → /icon.png、apple-icon.png → /apple-icon.png），
+  // 根本不存在 favicon.ico。曾经漏掉这条，结果登录页自己的标签页图标
+  // 被 307 到登录页，永远加载不出来。
+  matcher: ["/((?!auth/|_next/|favicon\\.ico|icon\\.|apple-icon\\.|manifest\\.).*)"],
 };
