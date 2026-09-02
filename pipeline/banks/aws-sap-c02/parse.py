@@ -105,6 +105,7 @@ KNOWN_TYPO_PATTERNS = [
 # (?!ure) 排除合法的 "…AWS. Configure the…" 句子。
 KNOWN_TYPO_PATTERNS = KNOWN_TYPO_PATTERNS + [
     (re.compile(r"(?<![A-Za-z])C2 instances\b"), "EC2 instances"),      # #503  E 被吞
+    (re.compile(r"\bCloudTra(?:ii|l)\b"), "CloudTrail"),                # #516  il → ii / 吞 i（全库 50 处正确拼写不受影响）
 ]
 KNOWN_TYPO_PATTERNS_POST = [
     (re.compile(r"\bAWS\. Config\b(?!ure)"), "AWS Config"),
