@@ -57,13 +57,25 @@ EATEN_VERBS = ("Create|Update|Attach|Associate|Configure|Con gure|Add|Delete|Ena
                "Assign|Register|Apply|Change|Grant|Turn|Install|Connect|Replace|Remove|Verify|"
                "Activate|Route|Place|Put|Send|Allow|Restrict|Block|Choose|Increase|Reduce|Scale|"
                "Encrypt|Host|Write|Read|Import|Export|Publish|Subscribe|Invoke|Call|Include|"
-               "Require|Define|De ne|Build|Make|Open|Give|Keep|Test|Start|Stop|Disable|Provide|Order|Accept")
+               "Require|Define|De ne|Build|Make|Open|Give|Keep|Test|Start|Stop|Disable|Provide|Order|Accept|"
+               # 被吞的句点后面不一定是动词：#264 "NLB. In the case…" → NLIn；#462 ALIn。
+               # 补常见句首词。VPCs / ALBs / VPNs 是复数不是粘连 —— 后接 Cs/Bs/Ns 不在此列，天然排除。
+               "In|If|For|The|This|Then|When|After|Before|Also|Each|All|Both|Only|On|At|By|With|Using|It|Its")
 EATEN_LABEL = re.compile(r"\b(" + "|".join(ABBREV_EATEN) + r")(" + EATEN_VERBS + r")\b")
 
 
+# 已核实的孤立 OCR 错字（全库唯一，且是 AWS API 常量名，拼法无歧义）。
+# 只收「确定性 + 可核对官方名」的项；泛化的 l→I 检测扫过全库，其余 13 个命中都是合法 CamelCase。
+KNOWN_TYPOS = {"IgnorePublicAcIs": "IgnorePublicAcls"}   # #274，小写 l 被 OCR 成大写 I
+
+
 def repair_text(text: str) -> tuple[str, list[str]]:
-    """两类确定性修复；返回 (文本, 登记)。登记进 repairs 字段而非 warnings —— 已修好的不需要人看。"""
+    """三类确定性修复；返回 (文本, 登记)。登记进 repairs 字段而非 warnings —— 已修好的不需要人看。"""
     repairs: list[str] = []
+    for bad, good in KNOWN_TYPOS.items():
+        if bad in text:
+            text = text.replace(bad, good)
+            repairs.append(f"{bad}→{good}")
 
     def fix_eaten(m: re.Match) -> str:
         fixed = f"{ABBREV_EATEN[m.group(1)]}. {m.group(2)}"
