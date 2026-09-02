@@ -31,6 +31,18 @@ CN_NUM = {"两": 2, "三": 3, "四": 4, "2": 2, "3": 3, "4": 4, "２": 2, "３":
 
 # 「ﬁ」连字（U+FB01）在文本层丢失，「file 系统/服务器」只剩「le 系统/服务器」。
 # 全库实证 4 处（#260/#283/#332/#800），受害词仅 file —— 按已验证模式修复并登记。
+# 专有名词被当普通词组直译 —— 撞词误译之外的第四类译文缺陷。
+# 首例由富化侧发现：#886 的「Babel shell」实为 Babelfish for Aurora PostgreSQL。
+# 全库扫描又找到 Redshift→「红移」、Snowball→「雪球」等。
+# 危害：产品名失真使题目无法与真实 AWS 服务对应，学习者据此形成错误记忆。
+PRODUCT_MISTRANSLATION = re.compile(
+    r"Babel\s*(shell|鱼)"      # Babelfish
+    r"|红移"                    # Redshift
+    r"|雪球|雪锥"               # Snowball / Snowcone
+    r"|开放搜索"                # OpenSearch
+    r"|湖泊?形成"               # Lake Formation
+)
+
 # Lambda 并发术语（provisioned 与 reserved 的中译在本题库里不统一，见下方检测处注释）
 CONCURRENCY_TERM = re.compile(r"(预留|预置|预配置|预配)\s*并发")
 
@@ -138,6 +150,13 @@ def parse_block(no: int, body: str) -> dict:
         if CONCURRENCY_TERM.search(ch["body"]):
             warnings.append(f"lambda_concurrency_term_ambiguous_{ch['label']}")
 
+    # 专有名词直译（第四类译文缺陷）：产品名被拆词译成普通词组
+    for ch in choices:
+        if PRODUCT_MISTRANSLATION.search(ch["body"]):
+            warnings.append(f"product_name_mistranslated_{ch['label']}")
+    if PRODUCT_MISTRANSLATION.search(stem):
+        warnings.append("product_name_mistranslated_stem")
+
     # 「按需 + Aurora」共现 = Serverless 疑似被误译成「按需」（与 On-Demand 撞词）。
     # 依据：全库 16 处 Aurora Serverless 都正常译作「Serverless/无服务器」，
     # 仅 #511 反常，且源 PDF 原文即如此（中译版自身缺陷，非解析问题）。
@@ -240,12 +259,47 @@ def parse_block(no: int, body: str) -> dict:
     }
 
 
+# 题库自身的重复题：同一道题以两个题号出现，其中一份有素材缺陷。
+# 用完好的那份补全残缺的那份 —— 这不是"编造数据"，是拿题库自己的另一份副本修它。
+#
+# #868 缺选项 A（源 PDF 里就没印出来），而 #889 是同一道题的完整副本：
+# 题干相似度 0.9927，B/C/D 三选项逐字相同，标注与社区投票均为 B。
+# 由富化侧在做题时发现（解析器看不出「两道不同题号是同一道题」）。
+DUPLICATE_REPAIRS = [
+    {"broken": 868, "source": 889, "labels": ["A"],
+     "note": "#868 在源 PDF 中缺选项 A，从同题的 #889 补入"},
+]
+
+
+def repair_from_duplicates(questions: list) -> None:
+    """用重复题的完好副本补全残缺题的选项。就地修改，并记入 warnings 保持可追溯。"""
+    by_no = {q["no"]: q for q in questions}
+    for r in DUPLICATE_REPAIRS:
+        broken, src = by_no.get(r["broken"]), by_no.get(r["source"])
+        if not broken or not src:
+            continue
+        have = {c["label"] for c in broken["choices"]}
+        added = []
+        for lab in r["labels"]:
+            if lab in have:
+                continue  # 已经有了（比如上游修好了），不覆盖
+            donor = next((c for c in src["choices"] if c["label"] == lab), None)
+            if donor:
+                broken["choices"].append(dict(donor))
+                added.append(lab)
+        if added:
+            broken["choices"].sort(key=lambda c: c["label"])
+            broken["warnings"].append(f"choice_repaired_from_{r['source']}_{''.join(added)}")
+
+
 def main(src: str, dst: str) -> None:
     raw = open(src, encoding="utf-8").read()
     parts = Q_SPLIT.split(raw)
     questions = []
     for i in range(1, len(parts) - 1, 2):
         questions.append(parse_block(int(parts[i]), parts[i + 1]))
+
+    repair_from_duplicates(questions)
 
     doc = {
         "bank": {

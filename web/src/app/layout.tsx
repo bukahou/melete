@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
+import logo from "./icon.png";
 import { Noto_Serif_SC } from "next/font/google";
 import { LogOut } from "lucide-react";
 import { accessToken } from "@/lib/auth";
@@ -26,14 +28,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="flex min-h-screen flex-col">
         <header className="border-b border-line">
           <div className="mx-auto flex w-full max-w-4xl items-baseline gap-6 px-6 py-5">
-            <Link href="/" className="group flex items-baseline gap-2.5">
-              <span
-                className="display inline-flex h-7 w-7 translate-y-0.5 items-center justify-center rounded-sm text-[15px] leading-none"
-                style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
-                aria-hidden
-              >
-                Μ
-              </span>
+            <Link href="/" className="group flex items-center gap-2.5">
+              {/* 与 atlantis / geass 同形状的作品系列标识，配色取 melete 的题库赭 */}
+              <Image src={logo} alt="" width={26} height={26} priority className="translate-y-px" />
               <span className="display text-lg tracking-wide">Melete</span>
             </Link>
             <span className="hidden text-xs tracking-wide text-muted sm:inline">练习与修习</span>

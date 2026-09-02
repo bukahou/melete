@@ -11,15 +11,22 @@ Melete 数据导入管道 — 第二段：questions.json → enriched/*.json →
   · 每片独立校验，坏片删掉重跑，不影响其他片
 
 子命令：
-  status <bank>   进度总览
-  next   <bank>   打印下一个待做分片的题目（喂给解答会话）
-  check  <bank>   校验分片，报告问题
-  merge  <bank>   合并全部分片 → enriched.json
+  status <bank>          进度总览
+  next   <bank>          打印下一个待做分片的题目（喂给解答会话）
+  write  <bank> <file>   从 Python 字面量写入分片（**推荐**，见下）
+  check  <bank>          校验分片，报告问题
+  merge  <bank>          合并全部分片 → enriched.json
+
+为什么有 write 子命令：直接用 heredoc 手写 JSON 三次踩坑（裸换行 ×2、
+非法转义 ×1）—— JSON 的转义规则对「含 markdown 表格与中文标点的长解析」
+太脆弱。改用 Python 字面量后，三引号字符串里的换行、引号、反斜杠全是字面值，
+问题从根上消失。
 
 题库特有的约束（考纲域、concept 种子、服务命名）从
 pipeline/banks/<bank>/enrich_spec.json 读取 —— 本模块零题库特有逻辑。
 """
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -32,10 +39,11 @@ KEBAB = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 CONFIDENCE = {"high", "medium", "low"}
 ITEM_KEYS = {"no", "verdict", "confidence", "reasoning", "explanation",
              "domain", "services", "concepts", "data_issue"}
+# fp 是 write 时的题面指纹门禁，校验后即丢弃，不落进产物。
 # notes 是 advisory 级：题目有瑕疵但答案仍可判定时的登记处（如译文撞词）。
 # 与 data_issue 的分工：data_issue = 结构性不可判（verdict 必须留空），
 # notes = 有毛病但不阻断。可选字段，旧分片没有它也合法。
-OPTIONAL_KEYS = {"notes"}
+OPTIONAL_KEYS = {"notes", "fp"}
 
 
 # ---------- 载入 ----------
@@ -64,6 +72,27 @@ def shard_ranges(total_no: list[int]) -> list[tuple[int, int]]:
 
 def shard_name(rng: tuple[int, int]) -> str:
     return f"{rng[0]:04d}-{rng[1]:04d}.json"
+
+
+def fingerprint(q: dict) -> str:
+    """
+    题面指纹 —— 防「凭记忆写」的强制锚点。
+
+    背景（2026-09-02 实发）：富化侧上下文被压缩后，误以为题面还在，
+    凭记忆写了 11 道题的解析，选项描述全是脑补的。裁决结论碰巧没错，
+    但 reasoning 里的对线内容是错的 —— 而那正是本项目的核心价值。
+
+    为什么用哈希而不是「抄题干前 N 字」：
+      · 实测题干前 20 字有 37 题撞车，且**撞的正是同类题**
+        （都以「一家公司在 EC2 上运行…」开头）—— 最容易记混的恰恰是这些
+      · 选项前缀同样撞车（大量「创建一个 Amazon…」）
+      · 哈希 8 位在 1019 题上零撞车，且**无法凭记忆构造** ——
+        只有真正读过该题的完整题面才算得出来
+
+    这就是它的全部作用：把「你确实看了真数据」变成可验证的事实。
+    """
+    raw = q["stem"] + "|" + "|".join(c["label"] + c["body"] for c in q["choices"])
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:8]
 
 
 def claims_of(q: dict) -> dict:
@@ -207,7 +236,7 @@ def cmd_next(bank: str, count: int) -> None:
             q = qmap[no]
             c = claims_of(q)
             contested, why = is_contested(q)
-            print(f"### 问题 #{no}  [{q['kind']} · 应选 {q['pick']} 项]"
+            print(f"### 问题 #{no}  [{q['kind']} · 应选 {q['pick']} 项]  fp={fingerprint(q)}"
                   + (f"  ⚠ {'；'.join(why)}" if contested else ""))
             print(f"\n{q['stem']}\n")
             for ch in q["choices"]:
@@ -223,6 +252,103 @@ def cmd_next(bank: str, count: int) -> None:
             if q.get("warnings"):
                 print(f"  解析告警: {q['warnings']}")
             print()
+
+
+def cmd_write(bank: str, src: Path) -> None:
+    """
+    从 Python 字面量文件写入分片 —— 避开 JSON 的转义地雷。
+
+    输入文件里定义一个 ITEMS 列表，长文本用三引号字符串包起来即可：
+    换行、引号、反斜杠、markdown 表格全是字面值，不需要任何转义。
+    （直接手写 JSON 已三次踩坑：裸换行 x2、非法转义 x1）
+
+    相比手写 JSON 的三个好处：
+      · 转义问题消失
+      · 自动路由到正确的分片文件，不用自己算题号区间
+      · **写盘前先校验**，坏数据根本不会落地（而非写完再 check 才发现）
+
+    格式示例见 pipeline/banks/<bank>/enrich_spec.md。
+
+    注：用 exec 载入文件。这是本地开发工具，输入文件由使用者自己生成，
+    信任级别等同于直接 `python3 that_file.py`。
+    """
+    doc, spec = load_bank(bank)
+    qmap = {q["no"]: q for q in doc["questions"]}
+
+    if not src.exists():
+        sys.exit(f"✗ 找不到输入文件: {src}")
+    ns: dict = {}
+    try:
+        exec(compile(src.read_text(encoding="utf-8"), str(src), "exec"), ns)
+    except Exception as e:
+        sys.exit(f"✗ 输入文件执行失败: {type(e).__name__}: {e}")
+    items = ns.get("ITEMS")
+    if not isinstance(items, list) or not items:
+        sys.exit("✗ 输入文件必须定义一个非空的 ITEMS 列表")
+
+    # 先全量校验，一条不过就整批不写 —— 避免半批落地导致分片状态不明
+    errs = []
+    for it in items:
+        no = it.get("no")
+        if no not in qmap:
+            errs.append(f"#{no}: 题号不在题库中")
+            continue
+        # 指纹是硬门禁：对不上说明没有基于真实题面来写
+        want = fingerprint(qmap[no])
+        got = it.get("fp")
+        if got != want:
+            errs.append(
+                f"#{no}: fp 不符（期望 {want}，收到 {got or '缺失'}）"
+                f" —— 请先跑 `enrich.py next` 取真实题面，不要凭记忆写")
+            continue
+        errs += [f"#{no}: {e}" for e in check_item(it, qmap[no], spec)]
+    if errs:
+        print(f"✗ 校验未通过（{len(errs)} 个问题），未写入任何文件：")
+        for e in errs[:25]:
+            print(f"    {e}")
+        if len(errs) > 25:
+            print(f"    …… 另有 {len(errs)-25} 个")
+        sys.exit(1)
+
+    # 按题号路由到分片；同一批可以跨片
+    ranges = shard_ranges(list(qmap))
+    buckets: dict[tuple[int, int], list] = {}
+    for it in items:
+        rng = next((r for r in ranges if r[0] <= it["no"] <= r[1]), None)
+        if rng is None:
+            sys.exit(f"✗ #{it['no']} 不属于任何分片区间")
+        buckets.setdefault(rng, []).append(it)
+
+    d = shard_dir(bank)
+    d.mkdir(parents=True, exist_ok=True)
+    for rng, batch in sorted(buckets.items()):
+        path = d / shard_name(rng)
+        if path.exists():
+            try:
+                existing = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                # 上次写坏的半成品：直接重建，不试图挽救
+                existing = {"bank": bank, "range": list(rng), "items": []}
+        else:
+            existing = {"bank": bank, "range": list(rng), "items": []}
+
+        # 同题号覆盖（允许重跑单题订正），其余保留
+        merged = {i["no"]: i for i in existing.get("items", [])}
+        # fp 只用于写入门禁，不落进产物 —— 它不是题目数据的一部分
+        merged.update({i["no"]: {k: v for k, v in i.items() if k != "fp"} for i in batch})
+        existing.update({
+            "bank": bank,
+            "range": list(rng),
+            "model": existing.get("model", "claude (Claude Code 订阅额度)"),
+            "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "items": [merged[k] for k in sorted(merged)],
+        })
+        path.write_text(json.dumps(existing, ensure_ascii=False, indent=1), encoding="utf-8")
+        want = sum(1 for n in qmap if rng[0] <= n <= rng[1])
+        print(f"✓ {shard_name(rng)}  写入 {len(batch)} 题，该片现有 {len(existing['items'])}/{want}")
+        # 回显真实题干开头：指纹已挡住错位，这里再给人眼一次确认机会
+        for it in sorted(batch, key=lambda x: x["no"]):
+            print(f"     #{it['no']}  {qmap[it['no']]['stem'][:42]}…")
 
 
 def cmd_check(bank: str) -> None:
@@ -291,11 +417,15 @@ def main() -> None:
     p = sub.add_parser("next")
     p.add_argument("bank")
     p.add_argument("--count", type=int, default=1, help="一次输出几片")
+    w = sub.add_parser("write", help="从 Python 字面量文件写入分片（避开 JSON 转义）")
+    w.add_argument("bank")
+    w.add_argument("file", type=Path)
     a = ap.parse_args()
     {"status": lambda: cmd_status(a.bank),
      "check": lambda: cmd_check(a.bank),
      "merge": lambda: cmd_merge(a.bank),
-     "next": lambda: cmd_next(a.bank, a.count)}[a.cmd]()
+     "next": lambda: cmd_next(a.bank, a.count),
+     "write": lambda: cmd_write(a.bank, a.file)}[a.cmd]()
 
 
 if __name__ == "__main__":

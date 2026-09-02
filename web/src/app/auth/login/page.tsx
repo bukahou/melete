@@ -1,4 +1,6 @@
 import Link from "next/link";
+import Image from "next/image";
+import logo from "../../icon.png";
 import { KeyRound } from "lucide-react";
 
 /**
@@ -16,13 +18,7 @@ export default async function LoginPage({
 
   return (
     <div className="mx-auto flex max-w-sm flex-col items-center pt-14">
-      <span
-        className="display flex h-12 w-12 items-center justify-center rounded-sm text-2xl"
-        style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
-        aria-hidden
-      >
-        Μ
-      </span>
+      <Image src={logo} alt="" width={56} height={56} priority />
       <h1 className="display mt-5 text-2xl tracking-wide">Melete</h1>
       <p className="mt-2 text-xs tracking-wide text-muted">Μελέτη — 练习与修习</p>
 

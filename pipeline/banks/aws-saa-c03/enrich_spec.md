@@ -65,6 +65,57 @@ python3 pipeline/core/enrich.py merge  aws-saa-c03   # 最后合并成 enriched.
 }
 ```
 
+### ⛔ 铁律：每片开工前必须 `next` 一次，不能凭上下文里的题面
+
+**2026-09-02 实发**：上下文被压缩后，误以为题面还在，凭记忆写了 11 道题的解析 ——
+选项描述全是脑补的。裁决结论碰巧没错，但 reasoning 里的**对线内容是错的**，
+而那正是本项目的核心价值所在。
+
+工具侧已加**强制门禁**：每个 item 必须带 `fp` 字段（题面指纹，`next` 的输出里
+每题都有），写入时与真实题面比对，**不符即整批拒写**。
+
+> 为什么用哈希而不是「抄题干前 20 字」：实测题干前 20 字有 **37 题撞车**，
+> 且撞的正是同类题（都以「一家公司在 EC2 上运行…」开头）—— 最容易记混的恰恰是这些。
+> 8 位哈希在 1019 题上零撞车，**且无法凭记忆构造**：只有真读过题面才算得出来。
+
+### ⭐ 写入方式：用 `enrich.py write`，不要手写 JSON
+
+直接用 heredoc 手写 JSON 已经三次踩坑（裸换行 ×2、非法转义 ×1）——
+JSON 的转义规则对「含 markdown 表格与中文标点的长解析」太脆弱。改用这个：
+
+```bash
+cat > /tmp/shard.py <<'PYEOF'
+ITEMS = [
+    {
+        "no": 826,
+        "fp": "49a7ed64",          # 必填，从 next 的输出里抄（### 问题 #826 … fp=xxx）
+        "verdict": "B",
+        "confidence": "high",
+        "reasoning": """三引号里一切都是字面值：
+换行、"引号"、反斜杠 \ 、中文括号（像这样）全都不用转义。""",
+        "explanation": """| 表格 | 也没问题 |
+|---|---|
+| A | 正确 |""",
+        "domain": 3,
+        "services": ["S3", "CloudFront"],
+        "concepts": ["cdn", "caching"],
+        "data_issue": None,      # 注意是 Python 的 None，不是 null
+        "notes": "可选",
+    },
+]
+PYEOF
+python3 pipeline/core/enrich.py write aws-saa-c03 /tmp/shard.py
+```
+
+三个好处：
+
+- **转义问题消失** —— 三引号字符串里换行/引号/反斜杠都是字面值
+- **自动路由到正确分片**，不用自己算题号区间；一批可以跨片
+- **写盘前先全量校验，一条不过就整批不写** —— 坏数据根本不会落地，
+  而不是写完再 `check` 才发现（也就不会留下半成品分片）
+
+同题号会覆盖（可以重跑单题订正），其余保留。写完照例跑一次 `check`。
+
 字段约束（`enrich.py check` 会逐条验）：
 
 | 字段 | 约束 |
@@ -160,3 +211,16 @@ python3 pipeline/core/enrich.py merge  aws-saa-c03   # 最后合并成 enriched.
 
 **处理约定**：遇到该告警时，**按题意判断实指哪一个**（问冷启动 → provisioned；
 问配额/节流 → reserved），verdict 照给，并用 notes 写明「中译作 X，实指 Y」。
+
+### 第四例：专有名词被拆词直译
+
+前三例是**撞词**（不同概念共享一个中文词），这一例性质不同 ——
+**产品名被当成普通词组翻译**，导致无法与真实 AWS 服务对应。
+
+- 首例 **#886**「Babel shell」= **Babelfish for Aurora PostgreSQL**
+- 全库扫描另找出：Redshift→「红移」(#199)、Snowball/Snowcone→「雪球/雪锥」(#301/#304/#331/#659/#844)
+- 告警：`product_name_mistranslated_X`（7 道）
+
+**处理约定**：按真实产品名理解题意，verdict 照给，用 notes 写明
+「中译作 X，实为 AWS Y」。这类无法规则化穷举 —— 遇到「像产品名但读着不对」的
+词组，先怀疑是直译。
