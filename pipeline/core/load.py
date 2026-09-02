@@ -112,13 +112,17 @@ class Loader:
     # ---- tag ----
     def upsert_tags(self, bank_id: int, qs: list, spec: dict) -> dict:
         """domain / service 是题库私有（bank_id=本题库），concept 全局共享（bank_id=0）。"""
+        topic_field = spec.get("tag_types", {}).get("topic", {}).get("enrichment_field", "topics")
         wanted: set[tuple[int, str, str]] = set()
         for q in qs:
             e = q.get("enrichment")
             if not e:
                 continue
             wanted.add((bank_id, "domain", f"domain-{e['domain']}"))
-            wanted.update((bank_id, "service", s) for s in e["services"])
+            # 「知识对象」轴统一叫 topic —— AWS 里是服务、LPIC 里是命令、Java 里是 API。
+            # 富化产物里的字段名由题库 spec 自己声明（SAA/SAP 沿用 services），
+            # 这样 core 不认识任何题库词汇，题库也不必为了 core 改产物。
+            wanted.update((bank_id, "topic", s) for s in e[topic_field])
             wanted.update((0, "concept", c) for c in e["concepts"])
 
         domains = spec.get("domains", {})
@@ -136,7 +140,7 @@ class Loader:
         self.cur.execute("SELECT bank_id, type, value, id FROM tag WHERE bank_id IN (0,%s)", (bank_id,))
         return {(b, t, v): i for b, t, v, i in self.cur.fetchall()}
 
-    def link_question_tags(self, bank_id: int, qmap: dict, qs: list, tmap: dict) -> int:
+    def link_question_tags(self, bank_id: int, qmap: dict, qs: list, tmap: dict, topic_field: str) -> int:
         """标签关联先删后插 —— 重跑富化时标签可能变少，纯 upsert 无法清理旧关联。"""
         qids = [qmap[q["no"]] for q in qs if q.get("enrichment")]
         for i in range(0, len(qids), BATCH):
@@ -154,7 +158,7 @@ class Loader:
             qid = qmap[q["no"]]
             # weight 2 = 主标签（考纲域），1 = 次要
             rows.append((qid, tmap[(bank_id, "domain", f"domain-{e['domain']}")], 2))
-            rows += [(qid, tmap[(bank_id, "service", s)], 1) for s in e["services"]]
+            rows += [(qid, tmap[(bank_id, "topic", s)], 1) for s in e[topic_field]]
             rows += [(qid, tmap[(0, "concept", c)], 1) for c in e["concepts"]]
         self._exec("""INSERT INTO question_tag (question_id, tag_id, weight) VALUES (%s,%s,%s)
                       ON DUPLICATE KEY UPDATE weight=VALUES(weight)""", rows)
@@ -234,13 +238,26 @@ def main() -> None:
 
     conn = mysql.connect(**parse_go_dsn(args.dsn), charset="utf8mb4", autocommit=False)
     ld = Loader(conn)
-    bank_id = ld.upsert_bank(doc["bank"], {"domains": spec.get("domains", {})})
+    # bank.meta = 题库的自描述展示元数据：标签轴叫什么、考纲权重、及格线。
+    # 前端不得写死这些词 —— 换成 LPIC 时只有这里不同。
+    # 键名用 camelCase：这个 JSON 就是 API 契约里的 BankMeta 原样透传，
+    # 与 OpenAPI 的 tagTypes / passScore / maxScore 对齐，后端不做二次映射。
+    # enrichment_field 是导入侧的私事，不进 meta。
+    tag_types = {t: {k: v for k, v in m.items() if k != "enrichment_field"}
+                 for t, m in spec.get("tag_types", {}).items()}
+    bank_id = ld.upsert_bank(doc["bank"], {
+        "tagTypes": tag_types,
+        "passScore": spec.get("pass_score"),
+        "maxScore": spec.get("max_score"),
+        "domains": spec.get("domains", {}),
+    })
     qmap = ld.upsert_questions(bank_id, qs)
     n_ch = ld.upsert_choices(qmap, qs)
     n_cl = ld.upsert_claims(qmap, qs)
     n_ex = ld.upsert_explanations(qmap, qs, doc["bank"].get("locale", "zh"))
     tmap = ld.upsert_tags(bank_id, qs, spec)
-    n_qt = ld.link_question_tags(bank_id, qmap, qs, tmap)
+    topic_field = spec.get("tag_types", {}).get("topic", {}).get("enrichment_field", "topics")
+    n_qt = ld.link_question_tags(bank_id, qmap, qs, tmap, topic_field)
     conn.close()
 
     n_enriched = sum(1 for q in qs if q.get("enrichment"))

@@ -11,6 +11,7 @@ import type { components } from "./api.gen";
 // 类型直接来自 OpenAPI 契约（npm run gen:api 重新生成）。
 // 后端改了契约、前端类型立刻跟着变 —— 这是 Spec-first 的实际收益。
 export type Bank = components["schemas"]["Bank"];
+export type BankMeta = components["schemas"]["BankMeta"];
 export type BankDetail = components["schemas"]["BankDetail"];
 export type Tag = components["schemas"]["Tag"];
 export type QuestionSummary = components["schemas"]["QuestionSummary"];
@@ -49,3 +50,28 @@ export function hasDisagreement(claims: AnswerClaim[]): boolean {
   return answers.size > 1;
 }
 
+
+export type TagType = Tag["type"];
+
+/**
+ * 标签轴的**角色**是通用的（domain = 考纲 / topic = 知识对象 / concept = 原理），
+ * **名字**不是：AWS 的 topic 叫「服务」，LPIC 叫「命令与工具」，Java 叫「API」。
+ * 名字由题库 meta 给；这里只兜底 —— meta 缺失时用角色的通用名，
+ * 绝不出现「服务」「AWS」这类题库词。换题库时页面代码零改动。
+ */
+const ROLE_FALLBACK: Record<TagType, Record<string, string>> = {
+  domain: { zh: "考纲", en: "Domain" },
+  topic: { zh: "主题", en: "Topic" },
+  concept: { zh: "概念", en: "Concept" },
+};
+
+export function tagTypeLabel(meta: BankMeta | undefined, type: TagType, locale = "zh"): string {
+  const l = meta?.tagTypes?.[type]?.label;
+  return l?.[locale] ?? l?.en ?? ROLE_FALLBACK[type][locale] ?? ROLE_FALLBACK[type].en;
+}
+
+/** 某标签的官方权重（百分比）。值以「type-」为前缀存储（如 domain-1），权重表按去前缀的键查。 */
+export function tagWeight(meta: BankMeta | undefined, tag: { type: TagType; value: string }): number | undefined {
+  const key = tag.value.startsWith(`${tag.type}-`) ? tag.value.slice(tag.type.length + 1) : tag.value;
+  return meta?.tagTypes?.[tag.type]?.weights?.[key];
+}

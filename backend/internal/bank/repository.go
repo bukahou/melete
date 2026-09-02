@@ -25,7 +25,7 @@ type mysqlRepository struct{ db *sqlx.DB }
 
 func NewMySQLRepository(db *sqlx.DB) Repository { return &mysqlRepository{db: db} }
 
-const bankColumns = `id, slug, name, description, locale, kind`
+const bankColumns = `id, slug, name, description, locale, kind, meta`
 
 func (r *mysqlRepository) ListBanks(ctx context.Context) ([]Bank, error) {
 	banks := []Bank{}

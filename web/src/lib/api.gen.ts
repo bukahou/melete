@@ -263,7 +263,7 @@ export interface components {
             /** Format: int64 */
             tagId: number;
             /** @enum {string} */
-            type: "domain" | "service" | "concept";
+            type: "domain" | "topic" | "concept";
             value: string;
             i18n?: {
                 [key: string]: string;
@@ -355,6 +355,32 @@ export interface components {
             locale: string;
             /** @enum {string} */
             kind: "cert" | "custom";
+            meta: components["schemas"]["BankMeta"];
+        };
+        /**
+         * @description 题库的**自描述展示元数据**。前端不得写死任何题库特有的词：
+         *     标签轴叫什么（AWS 是「服务」、LPIC 是「命令与工具」）、考纲权重、及格线，
+         *     全部从这里读。换一个题库只有这个对象不同，页面代码零改动。
+         */
+        BankMeta: {
+            /** @description 以标签 type（domain / topic / concept）为键 */
+            tagTypes?: {
+                [key: string]: components["schemas"]["TagTypeMeta"];
+            };
+            /** @description 官方及格分（无则不显示及格线） */
+            passScore?: number;
+            /** @description 满分 */
+            maxScore?: number;
+        };
+        TagTypeMeta: {
+            /** @description locale → 该标签轴的显示名 */
+            label?: {
+                [key: string]: string;
+            };
+            /** @description 标签 value → 官方权重百分比（通常只有 domain 轴有） */
+            weights?: {
+                [key: string]: number;
+            };
         };
         BankDetail: components["schemas"]["Bank"] & {
             stats: components["schemas"]["BankStats"];
@@ -373,7 +399,7 @@ export interface components {
             /** Format: int64 */
             id: number;
             /** @enum {string} */
-            type: "domain" | "service" | "concept";
+            type: "domain" | "topic" | "concept";
             /** @example S3 */
             value: string;
             i18n?: {
@@ -650,7 +676,7 @@ export interface operations {
     getMyTagStats: {
         parameters: {
             query: {
-                type: "domain" | "service" | "concept";
+                type: "domain" | "topic" | "concept";
                 /** @description 至少做过几道才纳入（样本太小的标签正确率没有意义） */
                 minAttempts?: number;
             };
@@ -739,7 +765,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description 只返回某一类标签 */
-                type?: "domain" | "service" | "concept";
+                type?: "domain" | "topic" | "concept";
             };
             header?: never;
             path: {

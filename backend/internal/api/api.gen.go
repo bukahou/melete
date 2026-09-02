@@ -165,7 +165,7 @@ func (e ReferenceSource) Valid() bool {
 const (
 	TagTypeConcept TagType = "concept"
 	TagTypeDomain  TagType = "domain"
-	TagTypeService TagType = "service"
+	TagTypeTopic   TagType = "topic"
 )
 
 // Valid indicates whether the value is a known member of the TagType enum.
@@ -175,7 +175,7 @@ func (e TagType) Valid() bool {
 		return true
 	case TagTypeDomain:
 		return true
-	case TagTypeService:
+	case TagTypeTopic:
 		return true
 	default:
 		return false
@@ -186,7 +186,7 @@ func (e TagType) Valid() bool {
 const (
 	TagStatTypeConcept TagStatType = "concept"
 	TagStatTypeDomain  TagStatType = "domain"
-	TagStatTypeService TagStatType = "service"
+	TagStatTypeTopic   TagStatType = "topic"
 )
 
 // Valid indicates whether the value is a known member of the TagStatType enum.
@@ -196,7 +196,7 @@ func (e TagStatType) Valid() bool {
 		return true
 	case TagStatTypeDomain:
 		return true
-	case TagStatTypeService:
+	case TagStatTypeTopic:
 		return true
 	default:
 		return false
@@ -228,7 +228,7 @@ func (e ListQuestionsParamsMode) Valid() bool {
 const (
 	ListBankTagsParamsTypeConcept ListBankTagsParamsType = "concept"
 	ListBankTagsParamsTypeDomain  ListBankTagsParamsType = "domain"
-	ListBankTagsParamsTypeService ListBankTagsParamsType = "service"
+	ListBankTagsParamsTypeTopic   ListBankTagsParamsType = "topic"
 )
 
 // Valid indicates whether the value is a known member of the ListBankTagsParamsType enum.
@@ -238,7 +238,7 @@ func (e ListBankTagsParamsType) Valid() bool {
 		return true
 	case ListBankTagsParamsTypeDomain:
 		return true
-	case ListBankTagsParamsTypeService:
+	case ListBankTagsParamsTypeTopic:
 		return true
 	default:
 		return false
@@ -249,7 +249,7 @@ func (e ListBankTagsParamsType) Valid() bool {
 const (
 	GetMyTagStatsParamsTypeConcept GetMyTagStatsParamsType = "concept"
 	GetMyTagStatsParamsTypeDomain  GetMyTagStatsParamsType = "domain"
-	GetMyTagStatsParamsTypeService GetMyTagStatsParamsType = "service"
+	GetMyTagStatsParamsTypeTopic   GetMyTagStatsParamsType = "topic"
 )
 
 // Valid indicates whether the value is a known member of the GetMyTagStatsParamsType enum.
@@ -259,7 +259,7 @@ func (e GetMyTagStatsParamsType) Valid() bool {
 		return true
 	case GetMyTagStatsParamsTypeDomain:
 		return true
-	case GetMyTagStatsParamsTypeService:
+	case GetMyTagStatsParamsTypeTopic:
 		return true
 	default:
 		return false
@@ -316,8 +316,13 @@ type Bank struct {
 	Id          int64    `json:"id"`
 	Kind        BankKind `json:"kind"`
 	Locale      string   `json:"locale"`
-	Name        string   `json:"name"`
-	Slug        string   `json:"slug"`
+
+	// Meta 题库的**自描述展示元数据**。前端不得写死任何题库特有的词：
+	// 标签轴叫什么（AWS 是「服务」、LPIC 是「命令与工具」）、考纲权重、及格线，
+	// 全部从这里读。换一个题库只有这个对象不同，页面代码零改动。
+	Meta BankMeta `json:"meta"`
+	Name string   `json:"name"`
+	Slug string   `json:"slug"`
 }
 
 // BankKind defines model for Bank.Kind.
@@ -329,8 +334,13 @@ type BankDetail struct {
 	Id          int64          `json:"id"`
 	Kind        BankDetailKind `json:"kind"`
 	Locale      string         `json:"locale"`
-	Name        string         `json:"name"`
-	Slug        string         `json:"slug"`
+
+	// Meta 题库的**自描述展示元数据**。前端不得写死任何题库特有的词：
+	// 标签轴叫什么（AWS 是「服务」、LPIC 是「命令与工具」）、考纲权重、及格线，
+	// 全部从这里读。换一个题库只有这个对象不同，页面代码零改动。
+	Meta BankMeta `json:"meta"`
+	Name string   `json:"name"`
+	Slug string   `json:"slug"`
 
 	// Stats 题库的内容侧统计（与用户无关）
 	Stats BankStats `json:"stats"`
@@ -338,6 +348,20 @@ type BankDetail struct {
 
 // BankDetailKind defines model for BankDetail.Kind.
 type BankDetailKind string
+
+// BankMeta 题库的**自描述展示元数据**。前端不得写死任何题库特有的词：
+// 标签轴叫什么（AWS 是「服务」、LPIC 是「命令与工具」）、考纲权重、及格线，
+// 全部从这里读。换一个题库只有这个对象不同，页面代码零改动。
+type BankMeta struct {
+	// MaxScore 满分
+	MaxScore *int `json:"maxScore,omitempty"`
+
+	// PassScore 官方及格分（无则不显示及格线）
+	PassScore *int `json:"passScore,omitempty"`
+
+	// TagTypes 以标签 type（domain / topic / concept）为键
+	TagTypes *map[string]TagTypeMeta `json:"tagTypes,omitempty"`
+}
 
 // BankStats 题库的内容侧统计（与用户无关）
 type BankStats struct {
@@ -533,6 +557,15 @@ type TagStat struct {
 
 // TagStatType defines model for TagStat.Type.
 type TagStatType string
+
+// TagTypeMeta defines model for TagTypeMeta.
+type TagTypeMeta struct {
+	// Label locale → 该标签轴的显示名
+	Label *map[string]string `json:"label,omitempty"`
+
+	// Weights 标签 value → 官方权重百分比（通常只有 domain 轴有）
+	Weights *map[string]float32 `json:"weights,omitempty"`
+}
 
 // TokenPair access 是 JWT（不落库，TTL 1h）；refresh 是不透明随机串（落库，可吊销）。
 // 对齐 geass-v3：refresh 不做成 JWT —— 生命周期以月计的凭证必须能撤回。

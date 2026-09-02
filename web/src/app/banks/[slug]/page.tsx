@@ -2,16 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, CircleDashed, HelpCircle, Play, Sparkles, XCircle } from "lucide-react";
 import { ApiError, getBank, listBankTags, type Tag } from "@/lib/api";
-import { TagChip, TAG_TYPE_LABEL } from "@/components/TagChip";
+import { TagChip } from "@/components/TagChip";
+import { tagTypeLabel } from "@/lib/claims";
 
 export const revalidate = 60;
 
-function TagGroup({ type, tags, slug }: { type: Tag["type"]; tags: Tag[]; slug: string }) {
+function TagGroup({ label, tags, slug }: { label: string; tags: Tag[]; slug: string }) {
   if (tags.length === 0) return null;
   return (
     <section>
       <h3 className="section-rule">
-        <span className="eyebrow">{TAG_TYPE_LABEL[type].label}</span>
+        <span className="eyebrow">{label}</span>
         <span className="font-mono text-xs text-muted">{tags.length}</span>
       </h3>
       <div className="mt-4 flex flex-wrap gap-2">
@@ -125,9 +126,10 @@ export default async function BankPage({ params }: { params: Promise<{ slug: str
       )}
 
       <div className="space-y-10">
-        <TagGroup type="domain" tags={byType("domain")} slug={slug} />
-        <TagGroup type="service" tags={byType("service")} slug={slug} />
-        <TagGroup type="concept" tags={byType("concept")} slug={slug} />
+        {/* 三条轴的名字来自题库 meta —— 这一页对 AWS 一无所知 */}
+        {(["domain", "topic", "concept"] as const).map((t) => (
+          <TagGroup key={t} label={tagTypeLabel(bank.meta, t)} tags={byType(t)} slug={slug} />
+        ))}
       </div>
     </div>
   );

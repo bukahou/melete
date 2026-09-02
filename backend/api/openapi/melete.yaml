@@ -166,7 +166,7 @@ paths:
         - name: type
           in: query
           required: true
-          schema: { type: string, enum: [domain, service, concept] }
+          schema: { type: string, enum: [domain, topic, concept] }
         - name: minAttempts
           in: query
           description: 至少做过几道才纳入（样本太小的标签正确率没有意义）
@@ -232,7 +232,7 @@ paths:
         - name: type
           in: query
           description: 只返回某一类标签
-          schema: { type: string, enum: [domain, service, concept] }
+          schema: { type: string, enum: [domain, topic, concept] }
       responses:
         "200":
           description: OK
@@ -354,7 +354,7 @@ components:
       required: [tagId, type, value, total, correct, rate]
       properties:
         tagId:   { type: integer, format: int64 }
-        type:    { type: string, enum: [domain, service, concept] }
+        type:    { type: string, enum: [domain, topic, concept] }
         value:   { type: string }
         i18n:
           type: object
@@ -447,7 +447,7 @@ components:
 
     Bank:
       type: object
-      required: [id, slug, name, locale, kind]
+      required: [id, slug, name, locale, kind, meta]
       properties:
         id:          { type: integer, format: int64 }
         slug:        { type: string, example: aws-saa-c03 }
@@ -455,6 +455,33 @@ components:
         description: { type: string }
         locale:      { type: string, example: zh }
         kind:        { type: string, enum: [cert, custom] }
+        meta:        { $ref: "#/components/schemas/BankMeta" }
+
+    BankMeta:
+      type: object
+      description: |
+        题库的**自描述展示元数据**。前端不得写死任何题库特有的词：
+        标签轴叫什么（AWS 是「服务」、LPIC 是「命令与工具」）、考纲权重、及格线，
+        全部从这里读。换一个题库只有这个对象不同，页面代码零改动。
+      properties:
+        tagTypes:
+          type: object
+          description: 以标签 type（domain / topic / concept）为键
+          additionalProperties: { $ref: "#/components/schemas/TagTypeMeta" }
+        passScore: { type: integer, description: 官方及格分（无则不显示及格线） }
+        maxScore:  { type: integer, description: 满分 }
+
+    TagTypeMeta:
+      type: object
+      properties:
+        label:
+          type: object
+          description: locale → 该标签轴的显示名
+          additionalProperties: { type: string }
+        weights:
+          type: object
+          description: 标签 value → 官方权重百分比（通常只有 domain 轴有）
+          additionalProperties: { type: number }
 
     BankDetail:
       allOf:
@@ -479,7 +506,7 @@ components:
       required: [id, type, value]
       properties:
         id:    { type: integer, format: int64 }
-        type:  { type: string, enum: [domain, service, concept] }
+        type:  { type: string, enum: [domain, topic, concept] }
         value: { type: string, example: "S3" }
         i18n:
           type: object

@@ -99,7 +99,7 @@ CREATE TABLE tag (
   bank_id BIGINT       NOT NULL DEFAULT 0,  -- 0 = 全局标签（concept 类）
                                      -- 不用 NULL：MySQL 唯一索引视多个 NULL 为不同值，
                                      -- uk_tag 会对全局标签失效，重跑导入插出重复标签
-  type    VARCHAR(16)  NOT NULL,      -- domain | service | concept
+  type    VARCHAR(16)  NOT NULL,      -- domain | topic | concept（角色；显示名在 bank.meta）
   value   VARCHAR(128) NOT NULL,      -- 'domain-3' | 'S3' | 'cache/cdn'
   i18n    JSON,                       -- {"zh":"高性能架构","ja":"高パフォーマンス設計"}
   PRIMARY KEY (id),
@@ -185,7 +185,7 @@ SELECT t.type, t.value,
 FROM attempt a
 JOIN question_tag qt ON qt.question_id = a.question_id
 JOIN tag t           ON t.id = qt.tag_id
-WHERE a.account_id = ? AND t.type = 'service'
+WHERE a.account_id = ? AND t.type = 'topic'
 GROUP BY t.id
 ORDER BY rate ASC;
 ```

@@ -14,14 +14,28 @@ import (
 func toAPIBank(b bank.Bank) api.Bank {
 	return api.Bank{
 		Id: b.ID, Slug: b.Slug, Name: b.Name, Description: b.Description,
-		Locale: b.Locale, Kind: api.BankKind(b.Kind),
+		Locale: b.Locale, Kind: api.BankKind(b.Kind), Meta: parseBankMeta(b.Meta),
 	}
+}
+
+// parseBankMeta 把 bank.meta JSON 列解成契约类型。
+// 列里可能还有导入侧留下的其它键（如 domains 英文名表），未在契约中的一律忽略；
+// 解析失败退回空 meta —— 展示元数据缺失只该让前端退回默认文案，不该让题库 404。
+func parseBankMeta(raw *string) api.BankMeta {
+	var m api.BankMeta
+	if raw == nil || *raw == "" {
+		return m
+	}
+	if err := json.Unmarshal([]byte(*raw), &m); err != nil {
+		return api.BankMeta{}
+	}
+	return m
 }
 
 func toAPIBankDetail(b *bank.Bank, s *bank.Stats) api.BankDetail {
 	return api.BankDetail{
 		Id: b.ID, Slug: b.Slug, Name: b.Name, Description: b.Description,
-		Locale: b.Locale, Kind: api.BankDetailKind(b.Kind),
+		Locale: b.Locale, Kind: api.BankDetailKind(b.Kind), Meta: parseBankMeta(b.Meta),
 		Stats: api.BankStats{
 			QuestionCount:  s.QuestionCount,
 			EnrichedCount:  s.EnrichedCount,

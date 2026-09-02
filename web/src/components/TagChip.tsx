@@ -1,15 +1,19 @@
 import Link from "next/link";
 import type { Tag } from "@/lib/claims";
 
-const TYPE_STYLE: Record<Tag["type"], { label: string; color: string }> = {
-  domain: { label: "考纲域", color: "var(--color-src-bank)" },
-  service: { label: "服务", color: "var(--color-src-community)" },
-  concept: { label: "概念", color: "var(--color-src-ai)" },
+/**
+ * 角色色是通用的（三条轴各一色，且与来源色复用同一组 token），
+ * 文案不是 —— 文案走 tagTypeLabel(bank.meta, type)，这里不出现任何题库词。
+ */
+export const TAG_TYPE_COLOR: Record<Tag["type"], string> = {
+  domain: "var(--color-src-bank)",
+  topic: "var(--color-src-community)",
+  concept: "var(--color-src-ai)",
 };
 
 /** concept 标签跨题库共享 —— 它回答「缺的是 AWS 知识还是底层原理」。 */
 export function TagChip({ tag, slug }: { tag: Tag; slug?: string }) {
-  const { color } = TYPE_STYLE[tag.type];
+  const color = TAG_TYPE_COLOR[tag.type];
   const name = tag.i18n?.en ?? tag.value;
   const chip = (
     <span className="inline-flex items-center gap-1.5 rounded-sm border border-line bg-raise px-2.5 py-1 text-xs text-ink transition-colors">
@@ -29,4 +33,3 @@ export function TagChip({ tag, slug }: { tag: Tag; slug?: string }) {
   );
 }
 
-export const TAG_TYPE_LABEL = TYPE_STYLE;

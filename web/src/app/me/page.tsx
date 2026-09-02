@@ -1,19 +1,22 @@
 import Link from "next/link";
 import { CircleDashed, HelpCircle, XCircle } from "lucide-react";
-import { getMyProgress, getMyTagStats, type Tag } from "@/lib/api";
+import { getBank, getMyProgress, getMyTagStats } from "@/lib/api";
+import { tagTypeLabel, type TagType } from "@/lib/claims";
 import { RateBar, RateLegend } from "@/components/RateBar";
 
 export const metadata = { title: "我的学习" };
 
-const GROUPS: Array<{ type: Tag["type"]; title: string; hint: string }> = [
-  { type: "domain", title: "考纲域", hint: "离及格还差多少" },
-  { type: "service", title: "AWS 服务", hint: "哪个服务不熟" },
-  { type: "concept", title: "底层概念", hint: "缺的是 AWS 知识还是底层原理" },
+/** 三条轴的角色与提示语是通用的；轴的**名字**从题库 meta 读，这里不写任何题库词。 */
+const GROUPS: Array<{ type: TagType; hint: string }> = [
+  { type: "domain", hint: "离及格还差多少" },
+  { type: "topic", hint: "哪一块不熟" },
+  { type: "concept", hint: "缺的是题库知识还是底层原理" },
 ];
 
 export default async function MePage() {
-  const [progress, ...groups] = await Promise.all([
-    getMyProgress(),
+  const progress = await getMyProgress();
+  const [bank, ...groups] = await Promise.all([
+    getBank(progress.bankSlug),
     ...GROUPS.map((g) => getMyTagStats(g.type, 2)),
   ]);
 
@@ -98,7 +101,7 @@ export default async function MePage() {
             return (
               <section key={g.type}>
                 <h2 className="section-rule">
-                  <span className="eyebrow">{g.title}</span>
+                  <span className="eyebrow">{tagTypeLabel(bank.meta, g.type)}</span>
                   <span className="text-xs text-muted">{g.hint}</span>
                 </h2>
                 <div className="mt-4 space-y-1">

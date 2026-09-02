@@ -93,10 +93,14 @@ atlantis（`~/work/github/atlantis`，114 篇中日双语知识条目）将来**
 | type | 内容 | 回答什么 | 作用域 |
 |---|---|---|---|
 | `domain` | SAA-C03 官方 4 个考纲域 | 「我离及格还差多少」 | 题库私有 |
-| `service` | S3 / EC2 / VPC / Lambda … | 「我哪个服务不熟」 | 题库私有 |
+| `topic` | 知识对象轴：AWS 是服务（S3 / EC2 …），LPIC 是命令，Java 是 API | 「我哪一块不熟」 | 题库私有；**显示名由 `bank.meta.tagTypes` 给** |
 | `concept` | 最终一致性 / 故障转移 / CDN … | 「缺的是 AWS 知识还是底层原理」 | **全局共享，链到知识条目** |
 
 第二个题库进来时 schema 一行不用改，且能通过 `concept` 与 AWS 题目互相关联。
+
+**三个 type 是角色不是名字**：名字（「考纲域」「服务」）、考纲权重、及格线都在 `bank.meta`
+（来自 `pipeline/banks/<slug>/enrich_spec.json` 的 `tag_types` / `pass_score`），
+前端经 `tagTypeLabel(bank.meta, type)` 读取 —— **前端与后端代码里不得出现任何题库词**。
 
 ### 3. FSRS 以「题目」为调度单元
 
@@ -117,7 +121,7 @@ bank          id, slug, name, description, locale, kind(cert|custom), meta json
 question      id, bank_id, external_no, stem, kind(single|multi), pick_count, raw json
 choice        id, question_id, label(A-F), body
 answer_claim  id, question_id, source, answer, confidence, rationale, meta json   ★
-tag           id, bank_id NULL, type(domain|service|concept), value, i18n json
+tag           id, bank_id NULL, type(domain|topic|concept), value, i18n json
 question_tag  question_id, tag_id, weight
 article       id, path, locale, title, description, sections json      -- atlantis 迁入
 article_tag   article_id, tag_id                                       -- 经 concept 关联题目

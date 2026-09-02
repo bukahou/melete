@@ -191,6 +191,25 @@ data_issue  6（结构性不可判）· notes 57（advisory）
 
 ---
 
+## 技术债（发现即登记，不阻塞主线）
+
+- [ ] `web` 的 `npm run lint` 失效：脚本是 `next lint`，Next 16 已移除该命令
+      （报 `Invalid project directory ... /web/lint`）。需换 ESLint CLI 直调。
+- [ ] OpenAPI 的 query 枚举（如 `type: [domain, topic, concept]`）**运行时未校验**：
+      `?type=service` 返回 200 空数组而非 400。oapi-codegen strict-server 只生成类型，
+      需加 `oapi-codegen/nethttp-middleware` 的 OpenAPI 请求校验中间件。
+- [ ] 题干 / 选项译文在 DB 里没有落点（`question.stem` / `choice.body` 单语）。
+      SAP-C02 富化产物带 `translation`，导入前需定多语言方案：`question_i18n` 表 或 加列。
+
+## 首页重构（方案已定，待实施）
+
+方案页：https://claude.ai/code/artifact/<ARTIFACT_ID>
+原则：**每个模块都是入口，不是事实**。12 栏面板；「继续」拆两条轨道（顺序进度 / 上次专项）。
+
+- [ ] 「上次专项」的存储：推荐 `attempt` 加 `context` 列（`{mode, tag}`），**待用户拍板**
+- [ ] 宣言挪去登录页；34% 数据带、打架题删除
+- [ ] 标签轴文案已通用化（`tagTypeLabel(bank.meta, type)`，2026-09-02），实施时直接用
+
 ## 阻塞 / 待定
 
 - [x] ~~GitHub 仓库尚未创建~~ —— 已建，`31f0b36` 已推到 origin/main

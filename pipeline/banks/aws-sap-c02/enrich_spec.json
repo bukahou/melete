@@ -3,6 +3,29 @@
   "translation": {
     "locale": "zh-CN"
   },
+  "tag_types": {
+    "domain": {
+      "label": {
+        "zh": "考纲域",
+        "en": "Domain"
+      },
+      "weights": {
+        "1": 26,
+        "2": 29,
+        "3": 25,
+        "4": 20
+      }
+    },
+    "topic": {
+      "label": {
+        "zh": "服务",
+        "en": "Service"
+      },
+      "enrichment_field": "services"
+    }
+  },
+  "pass_score": 750,
+  "max_score": 1000,
   "domains": {
     "1": "Design Solutions for Organizational Complexity",
     "2": "Design for New Solutions",

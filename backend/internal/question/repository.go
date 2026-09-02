@@ -213,7 +213,7 @@ func (r *mysqlRepository) loadTags(ctx context.Context, id int64) ([]Tag, error)
 		SELECT t.id, t.type, t.value, t.i18n
 		FROM tag t JOIN question_tag qt ON qt.tag_id = t.id
 		WHERE qt.question_id = ?
-		ORDER BY FIELD(t.type, 'domain', 'service', 'concept'), t.value`, id)
+		ORDER BY FIELD(t.type, 'domain', 'topic', 'concept'), t.value`, id)
 	if err != nil {
 		return nil, fmt.Errorf("查询题目 %d 的标签: %w", id, err)
 	}

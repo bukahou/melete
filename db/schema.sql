@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS explanation (
 CREATE TABLE IF NOT EXISTS tag (
   id      BIGINT       NOT NULL AUTO_INCREMENT,
   bank_id BIGINT       NOT NULL DEFAULT 0,
-  type    VARCHAR(16)  NOT NULL,      -- domain | service | concept
+  type    VARCHAR(16)  NOT NULL,      -- domain | topic | concept（角色；显示名在 bank.meta.tagTypes）
   value   VARCHAR(128) NOT NULL,      -- 'domain-3' | 'S3' | 'cache-cdn'
   i18n    JSON,                       -- {"zh":"高性能架构","ja":"高パフォーマンス設計"}
   PRIMARY KEY (id),

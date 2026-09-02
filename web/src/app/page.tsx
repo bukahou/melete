@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Play, TrendingDown } from "lucide-react";
 import { getMyProgress, getMyResume, getMyTagStats } from "@/lib/api";
+import { tagTypeLabel } from "@/lib/claims";
 import { RateBar } from "@/components/RateBar";
 import {
   SOURCE_LABEL,
@@ -46,12 +47,13 @@ async function findTeaser(slug: string): Promise<QuestionDetail | null> {
  * 概览回答「我现在该做什么」—— 后者放在最上面，因为老用户每天都要看它。
  */
 async function StudyOverview() {
-  const [progress, resume, weakest] = await Promise.all([
-    getMyProgress(),
-    getMyResume(),
-    getMyTagStats("service", 2),
-  ]);
+  const progress = await getMyProgress();
   if (progress.seenCount === 0) return null;
+  const [bank, resume, weakest] = await Promise.all([
+    getBank(progress.bankSlug),
+    getMyResume(),
+    getMyTagStats("topic", 2),
+  ]);
 
   const rate = Math.round((progress.correctCount / progress.seenCount) * 100);
   const slug = progress.bankSlug;
@@ -108,7 +110,7 @@ async function StudyOverview() {
         <div className="rounded-md border border-line bg-raise p-5">
           <p className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: "var(--color-warn)" }}>
             <TrendingDown size={13} />
-            最薄弱的服务
+            最薄弱的{tagTypeLabel(bank.meta, "topic")}
           </p>
           <div className="mt-3">
             {weakest.slice(0, 3).map((s) => (
