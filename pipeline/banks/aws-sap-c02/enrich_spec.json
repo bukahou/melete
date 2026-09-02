@@ -1,5 +1,8 @@
 {
   "bank": "aws-sap-c02",
+  "translation": {
+    "locale": "zh-CN"
+  },
   "domains": {
     "1": "Design Solutions for Organizational Complexity",
     "2": "Design for New Solutions",

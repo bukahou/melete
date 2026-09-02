@@ -121,8 +121,13 @@ def is_contested(q: dict) -> tuple[bool, list[str]]:
 
 def check_item(item: dict, q: dict, spec: dict) -> list[str]:
     errs = []
-    extra = set(item) - ITEM_KEYS - OPTIONAL_KEYS
-    missing = ITEM_KEYS - set(item)
+    # 翻译字段由 spec 决定是否要求：英文题库（如 SAP-C02）声明 translation.locale
+    # 即要求每题附中文；中文题库不声明，出现该字段反而报多余。
+    # 放在 item 里而非另开产物，是为了让「一题的所有富化结果」始终在同一个对象里。
+    want_tr = bool(spec.get("translation"))
+    required = ITEM_KEYS | ({"translation"} if want_tr else set())
+    extra = set(item) - required - OPTIONAL_KEYS
+    missing = required - set(item)
     if extra:
         errs.append(f"多余字段 {sorted(extra)}")
     if missing:
@@ -165,9 +170,41 @@ def check_item(item: dict, q: dict, spec: dict) -> list[str]:
         if bad:
             errs.append(f"concepts 须为 kebab-case，违规 {bad}")
 
+    if want_tr:
+        errs += check_translation(item["translation"], q)
+
     contested, _ = is_contested(q)
     if contested and not issue and len(item["reasoning"]) < 80:
         errs.append(f"存在答案分歧的题，reasoning 仅 {len(item['reasoning'])} 字（要求 ≥80，须说明分歧方错在哪）")
+    return errs
+
+
+def check_translation(tr, q: dict) -> list[str]:
+    """
+    translation = {"stem": str, "choices": {label: str}}。
+
+    选项按 label 逐条对应而非整体一段：导入时要落到 choice 行上，
+    且能机械校验「每个选项都译了、没有多译」—— 整段译文做不到这两点。
+    """
+    if not isinstance(tr, dict):
+        return ["translation 须为 {stem, choices} 对象"]
+    errs = []
+    stem = tr.get("stem")
+    if not isinstance(stem, str) or not stem.strip():
+        errs.append("translation.stem 为空")
+    choices = tr.get("choices")
+    labels = {ch["label"] for ch in q["choices"]}
+    if not isinstance(choices, dict):
+        errs.append("translation.choices 须为 {label: 译文} 对象")
+    else:
+        got = set(choices)
+        if got != labels:
+            errs.append(f"translation.choices 的选项 {sorted(got)} ≠ 题目选项 {sorted(labels)}")
+        empty = [k for k, v in choices.items() if not isinstance(v, str) or not v.strip()]
+        if empty:
+            errs.append(f"translation.choices 有空译文 {sorted(empty)}")
+    if set(tr) - {"stem", "choices"}:
+        errs.append(f"translation 多余字段 {sorted(set(tr) - {'stem', 'choices'})}")
     return errs
 
 
@@ -232,6 +269,9 @@ def cmd_next(bank: str, count: int) -> None:
     for r in todo[:count]:
         out = d / shard_name(r)
         print(f"{'='*70}\n写入目标: data/{bank}/enriched/{shard_name(r)}\n{'='*70}\n")
+        if spec.get("translation"):
+            print(f"⚠ 本题库要求每题附 translation（{spec['translation']['locale']}）："
+                  f"{{'stem': 题干译文, 'choices': {{label: 选项译文}}}}，见 enrich_spec.md「翻译」\n")
         for no in sorted(n for n in qmap if r[0] <= n <= r[1]):
             q = qmap[no]
             c = claims_of(q)

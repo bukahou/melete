@@ -87,6 +87,43 @@ SAA 那边已确认多道题的正确答案随 AWS 特性迭代而变。SAP 题�
 
 > 这三条约定直接来自 SAA 中文版的四类译文缺陷 —— 那些坑不该重踩。
 
+## 写入格式（ITEMS 字面量）
+
+与 SAA 相同，多一个 `translation` 字段（**必填**，缺了整批拒写）：
+
+```bash
+cat > /tmp/shard.py <<'PYEOF'
+ITEMS = [
+    {
+        "no": 17,
+        "fp": "3c1f0a9e",          # 必填，从 next 的输出里抄
+        "verdict": "C",
+        "confidence": "high",
+        "reasoning": """三引号里一切都是字面值，不需要转义。
+必须说清对立方（题库标注 / 社区多数）错在哪。""",
+        "explanation": """面向学习者的完整讲解，给可迁移的判据。""",
+        "domain": 1,
+        "services": ["Organizations", "Control Tower", "SCP"],
+        "concepts": ["multi-account-governance", "service-control-policy"],
+        "data_issue": None,
+        "translation": {
+            "stem": """题干中文译文。AWS 服务名保留英文。""",
+            "choices": {
+                "A": "选项 A 译文",
+                "B": "选项 B 译文",
+                "C": "选项 C 译文",
+                "D": "选项 D 译文",
+            },
+        },
+    },
+]
+PYEOF
+python3 pipeline/core/enrich.py write aws-sap-c02 /tmp/shard.py
+```
+
+`translation.choices` 的键必须与题目选项字母**一一对应**（多一个少一个都拒写）——
+导入时译文要落到每个 choice 行上，整段译文做不到这点。
+
 ## 质量基准
 
 动笔前读 `data/aws-saa-c03/enriched/0001-0025.json`（SAA 的样板片）。
