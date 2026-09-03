@@ -234,6 +234,12 @@ Akasha 只追加两条后端回调白名单（prod + localhost）。
 
 ## 技术债（发现即登记，不阻塞主线）
 
+- [ ] **melete 的 ConfigMap / Secret 是普通资源，改了不触发滚动**。2026-09-03 改 DSN 时
+      ArgoCD 报 Synced 但 pod 的 env 仍是启动快照，只好逐个删 pod 才生效 —— 「配置已同步」
+      与「配置已生效」不是一回事。应改成 kustomize 的 configMapGenerator / secretGenerator
+      （带内容哈希后缀，改一行即自动滚动），akasha 的 clients Secret 已是这个模式。
+      顺带把值挪进 .env 文件，注释仍可保留（env 格式支持 #）。
+
 - [ ] `web` 的 `npm run lint` 失效：脚本是 `next lint`，Next 16 已移除该命令
       （报 `Invalid project directory ... /web/lint`）。需换 ESLint CLI 直调。
 - [ ] OpenAPI 的 query 枚举（如 `type: [domain, topic, concept]`）**运行时未校验**：
