@@ -9,7 +9,7 @@
 //     同一 client_id → 同一 sub → 同一账号。web 从此不再持有 client_secret。
 //
 // 流程：客户端打开 /auth/oidc/start?next=… → 302 Akasha → 回 /auth/oidc/callback
-// → 验 state / 换 code / 验 id_token+nonce（pkg/oidcrp）→ EstablishSSO → 签本站双 token
+// → 验 state / 换 code / 验 id_token+nonce（akasha/pkg/oidcrp v0.1.0）→ EstablishSSO → 签本站双 token
 // → 302 回客户端。id_token 到此为止，客户端手里只有本站签的 token。
 //
 // 照搬 geass-v3 的 internal/gateway/account/oidc_handler.go，差别只在「回客户端」那一段：
@@ -29,11 +29,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bukahou/akasha/pkg/oidcrp"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/bukahou/melete/backend/internal/account"
 	"github.com/bukahou/melete/backend/internal/token"
-	"github.com/bukahou/melete/backend/pkg/oidcrp"
 )
 
 // OIDCConfig 后端作为 OIDC client 所需的全部配置。

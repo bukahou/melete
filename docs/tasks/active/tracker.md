@@ -226,7 +226,7 @@ Akasha 只追加两条后端回调白名单（prod + localhost）。
 - web：refresh token 当一次性票据走 query → web 服务端拿去 /auth/refresh 换正式一对（轮换即作废）
 - **已定（2026-09-03，用户拍板，两条独立 task，akasha 会话执行）**：
   - Task A：`pkg/oidcrp` 以嵌套 Go 模块入驻 akasha 仓（PUBLIC，零凭据），tag `pkg/oidcrp/v0.1.0` 零行为变更。
-    **melete 侧待办**：tag 出来后删 `backend/pkg/oidcrp`，换 import `github.com/bukahou/akasha/pkg/oidcrp`，升版部署
+    ✅ melete 已切换（2026-09-03）：删 `backend/pkg/oidcrp`，import `github.com/bukahou/akasha/pkg/oidcrp v0.1.0`（akasha 5922c22）
   - Task B：Akasha clients 由 Secret 挂载的 `clients.yaml` 启动加载，`clients` 表退役（留置 30 天）。
     **melete 侧待办**：按 akasha 定的 schema 把现状（melete 2 条后端回调 + geass 1 条）写进
     `config/clusters/集群甲/apps/akasha/clients.yaml`。这之后白名单变更 = 改 yaml + push + 人点 SYNC，手改生产库的路物理消失
