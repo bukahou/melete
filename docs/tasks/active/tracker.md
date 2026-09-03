@@ -224,8 +224,13 @@ web 与 iOS 都经此进出，同一 client_id → 同一账号；web 不再持�
 Akasha 只追加两条后端回调白名单（prod + localhost）。
 - iOS：token 对走 fragment 到 `melete://auth/callback`；失败 `?oidc_error=`
 - web：refresh token 当一次性票据走 query → web 服务端拿去 /auth/refresh 换正式一对（轮换即作废）
-- 待办：`pkg/oidcrp` 是从 geass-v3 复制的第二份；按其 doc.go 约定应抽成独立仓 `bukahou/oidcrp`。
-  未抽的原因：私有模块会让 Docker 构建需要凭据；抽时一并决定仓库可见性
+- **已定（2026-09-03，用户拍板，两条独立 task，akasha 会话执行）**：
+  - Task A：`pkg/oidcrp` 以嵌套 Go 模块入驻 akasha 仓（PUBLIC，零凭据），tag `pkg/oidcrp/v0.1.0` 零行为变更。
+    **melete 侧待办**：tag 出来后删 `backend/pkg/oidcrp`，换 import `github.com/bukahou/akasha/pkg/oidcrp`，升版部署
+  - Task B：Akasha clients 由 Secret 挂载的 `clients.yaml` 启动加载，`clients` 表退役（留置 30 天）。
+    **melete 侧待办**：按 akasha 定的 schema 把现状（melete 2 条后端回调 + geass 1 条）写进
+    `config/clusters/集群甲/apps/akasha/clients.yaml`。这之后白名单变更 = 改 yaml + push + 人点 SYNC，手改生产库的路物理消失
+  - 设计讨论记录（含 akasha 维护方的五条修正）见本次会话；决策依据：clients 在运行时无合法写路径，是伪装成状态的配置
 
 ## 技术债（发现即登记，不阻塞主线）
 
