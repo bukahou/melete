@@ -19,17 +19,23 @@ function required(name: string): string {
   return v;
 }
 
+/**
+ * OIDC 由 melete-api 代理（2026-09-03）：web 不再持有 client_secret、不再自己走 PKCE。
+ * 登录 = 302 到 api 的 /auth/oidc/start；回来时 api 把一张一次性票据（refresh token）
+ * 交给 web 服务端，web 拿它去 /auth/refresh 换正式的一对并写 cookie。
+ * 这样 Akasha 只见过一个 client（api），web 与 iOS 天然同一账号。
+ */
 export const oidc = {
+  // issuer / clientId 仍由 web 读：登出时要把浏览器送去 Akasha 的 end_session（非敏感）
   get issuer() { return required("MELETE_OIDC_ISSUER"); },
   get clientId() { return required("MELETE_OIDC_CLIENT_ID"); },
-  get clientSecret() { return required("MELETE_OIDC_CLIENT_SECRET"); },
   get origin() { return required("MELETE_WEB_ORIGIN"); },
-  get redirectUri() { return `${this.origin}/auth/callback`; },
+  /** api 的**公网**地址 —— 浏览器要被 302 到这里，不能用集群内的 ClusterIP */
+  get apiPublicBase() { return required("MELETE_API_PUBLIC_BASE"); },
 };
 
 export const ACCESS_COOKIE = "melete_at";
 export const REFRESH_COOKIE = "melete_rt";
-export const TXN_COOKIE = "melete_oidc_txn"; // 登录事务中间态（state/nonce/verifier）
 
 /** API 返回的 token 组合。 */
 export interface TokenPair {
@@ -71,15 +77,4 @@ export function clearAuthCookies(res: {
 }) {
   res.cookies.delete(ACCESS_COOKIE);
   res.cookies.delete(REFRESH_COOKIE);
-}
-
-// ---- PKCE / 随机数（web 侧的 OIDC 流程仍在 web 完成，只是结果交给 API）----
-
-export function randomToken(bytes = 32): string {
-  return Buffer.from(crypto.getRandomValues(new Uint8Array(bytes))).toString("base64url");
-}
-
-export async function s256(verifier: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
-  return Buffer.from(digest).toString("base64url");
 }

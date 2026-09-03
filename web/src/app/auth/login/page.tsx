@@ -11,10 +11,18 @@ import { KeyRound } from "lucide-react";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; return?: string }>;
+  searchParams: Promise<{ error?: string; oidc_error?: string; return?: string }>;
 }) {
   const sp = await searchParams;
   const returnTo = sp.return ?? "/";
+  // 原因码由 api 给，文案在这里按白名单映射 —— 不回显任何来自 URL 的文字
+  const OIDC_ERROR: Record<string, string> = {
+    cancelled: "已取消 Akasha 登录",
+    state: "登录会话已过期，请重试",
+    upstream: "Akasha 暂时不可用，请稍后重试或用密码登录",
+    application: "登录时出了点问题，请重试",
+  };
+  const oidcMessage = sp.oidc_error ? OIDC_ERROR[sp.oidc_error] ?? OIDC_ERROR.application : null;
 
   return (
     <div className="mx-auto flex max-w-sm flex-col items-center pt-14">
@@ -65,6 +73,11 @@ export default async function LoginPage({
         <span className="h-px flex-1 bg-line" />
       </div>
 
+      {oidcMessage && (
+        <p className="mb-3 w-full text-xs" style={{ color: "var(--color-warn)" }}>
+          {oidcMessage}
+        </p>
+      )}
       <Link
         href={`/auth/akasha?return=${encodeURIComponent(returnTo)}`}
         className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-line bg-raise py-2.5 text-sm transition-colors hover:border-muted"

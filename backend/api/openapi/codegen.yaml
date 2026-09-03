@@ -7,3 +7,5 @@ generate:
   strict-server: true
 output-options:
   skip-prune: true
+  # 两个 OIDC 浏览器导航端点（302 + Set-Cookie）由 httpapi/oidc.go 手写挂载，不走 JSON 生成层
+  exclude-operation-ids: [oidcStart, oidcCallback]

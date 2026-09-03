@@ -86,6 +86,44 @@ paths:
         "429":
           $ref: "#/components/responses/TooManyRequests"
 
+  /auth/oidc/start:
+    get:
+      tags: [auth]
+      summary: 发起 Akasha 登录（浏览器导航，302）
+      description: |
+        后端替所有客户端当 Akasha 的 OIDC client（confidential + PKCE），
+        web 与 iOS 共用同一 client_id → 同一 pairwise sub → 同一账号。
+        生成 state / nonce / PKCE 存签名 cookie 后 302 到 Akasha /authorize。
+        本端点由 httpapi/oidc.go 手写挂载，不经生成层。
+      operationId: oidcStart
+      parameters:
+        - name: next
+          in: query
+          description: |
+            登录后去向。web 传本站绝对路径（如 /banks/aws-saa-c03）；
+            iOS 固定传 `melete://auth/callback`（可带 ?then=应用内目标）。其余值一律丢弃。
+          schema: { type: string }
+      responses:
+        "302": { description: 跳转到 Akasha }
+
+  /auth/oidc/callback:
+    get:
+      tags: [auth]
+      summary: Akasha 回调（浏览器导航，302）
+      description: |
+        验 state → 用 client_secret 换 code → 验 id_token 与 nonce → 确立账号 → 签发本站 token。
+        · iOS：302 `melete://auth/callback#access_token=…&refresh_token=…&expires_in=…`
+        · web：302 `{WEB_ORIGIN}/auth/callback?ticket=<refresh_token>&next=…`，
+          web 服务端拿 ticket 去 /auth/refresh 换新的一对（轮换让 URL 里的票用一次即废）
+        · 失败：302 回客户端并带 `oidc_error ∈ {cancelled, state, upstream, application}`
+      operationId: oidcCallback
+      parameters:
+        - { name: code,  in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        "302": { description: 跳转回客户端 }
+
   /auth/refresh:
     post:
       tags: [auth]

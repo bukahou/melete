@@ -1,34 +1,15 @@
 import { NextResponse } from "next/server";
-import { TXN_COOKIE, oidc, randomToken, s256 } from "@/lib/auth";
+import { oidc } from "@/lib/auth";
 
-/** 发起登录：生成 PKCE + state + nonce，暂存事务 cookie，跳 Akasha。 */
+/**
+ * 发起 Akasha 登录：直接把浏览器送去 api 的 /auth/oidc/start。
+ * state / nonce / PKCE 全在 api 侧 —— web 这里没有任何事务状态。
+ * next 只传本站路径；api 侧的白名单会再校一次。
+ */
 export async function GET(req: Request) {
-  const state = randomToken(16);
-  const nonce = randomToken(16);
-  const verifier = randomToken(32);
-
-  // 登录成功后回到用户原本想去的页面
   const returnTo = new URL(req.url).searchParams.get("return") ?? "/";
-
-  const authorize = new URL(`${oidc.issuer}/authorize`);
-  authorize.search = new URLSearchParams({
-    response_type: "code",
-    client_id: oidc.clientId,
-    redirect_uri: oidc.redirectUri,
-    scope: "openid email profile",
-    state,
-    nonce,
-    code_challenge: await s256(verifier),
-    code_challenge_method: "S256",
-  }).toString();
-
-  const res = NextResponse.redirect(authorize);
-  res.cookies.set(TXN_COOKIE, JSON.stringify({ state, nonce, verifier, returnTo }), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: oidc.origin.startsWith("https"),
-    maxAge: 600,
-    path: "/auth",
-  });
-  return res;
+  const next = returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/";
+  const start = new URL(`${oidc.apiPublicBase}/auth/oidc/start`);
+  start.searchParams.set("next", next);
+  return NextResponse.redirect(start);
 }

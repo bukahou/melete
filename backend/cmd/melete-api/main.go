@@ -75,13 +75,8 @@ func run() error {
 	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
 
-	// 刻意【没有 CORS】—— 浏览器从不直连本服务。
-	// 架构（docs/design/active/deployment.md §1①）：浏览器只请求 melete-web 的同源
-	// 路由，web 在集群内经 ClusterIP 调本服务。所以本服务：
-	//   · 不对公网暴露（清单里没有 HTTPRoute，加了就是越权漏洞 ——
-	//     它信任 X-Melete-Account 头，身份由 web 层的会话校验保证）
-	//   · 不需要 CORS（跨域请求根本不会发生）
-	// 若哪天真要开放浏览器直连，先解决身份认证，再谈 CORS。
+	// 没有 CORS：浏览器不用 XHR 直连本服务 —— web 经服务端 BFF 调用，iOS 是原生请求，
+	// OIDC 两个端点是整页导航（302），都不受同源策略约束。
 
 	r.Get("/healthz", func(w http.ResponseWriter, req *http.Request) {
 		if err := db.PingContext(req.Context()); err != nil {
@@ -96,11 +91,24 @@ func run() error {
 	authPrefix := apiBase + "/auth/"
 	loginLimiter := httpauth.NewRateLimit(cfg.LoginRateMax, cfg.LoginRateWindow)
 
+	ctx := context.Background()
+	// 后端替 web 与 iOS 当 Akasha 的 OIDC client（两个浏览器导航端点，绕开 JSON 生成层）
+	oidcHandler := httpapi.NewOIDCHandler(ctx, httpapi.OIDCConfig{
+		Issuer:       cfg.OIDCIssuer,
+		ClientID:     cfg.OIDCClientID,
+		ClientSecret: cfg.OIDCClientSecret,
+		RedirectURL:  cfg.OIDCRedirectURL,
+		CookieSecret: cfg.JWTSecret, // oidcrp 会 HKDF 派生，不直接使用
+		WebOrigin:    cfg.WebOrigin,
+		MountPath:    apiBase + "/auth/oidc",
+	}, accountSvc, tokenIssuer, log)
+
 	r.Route(apiBase, func(v1 chi.Router) {
 		// 认证端点对公网开放，是唯一可被无限试探的入口 —— 按 IP 限流
 		v1.Use(loginLimiter.Middleware(authPrefix))
 		// 业务端点要求 access token；认证端点豁免（那时还没有 token）
 		v1.Use(httpauth.RequireUserExcept(tokenIssuer, authPrefix))
+		oidcHandler.Register(v1) // 在 /auth/ 前缀下：限流与豁免天然覆盖
 		api.HandlerFromMux(api.NewStrictHandler(server, nil), v1)
 	})
 

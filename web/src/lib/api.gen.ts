@@ -44,6 +44,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/oidc/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 发起 Akasha 登录（浏览器导航，302）
+         * @description 后端替所有客户端当 Akasha 的 OIDC client（confidential + PKCE），
+         *     web 与 iOS 共用同一 client_id → 同一 pairwise sub → 同一账号。
+         *     生成 state / nonce / PKCE 存签名 cookie 后 302 到 Akasha /authorize。
+         *     本端点由 httpapi/oidc.go 手写挂载，不经生成层。
+         */
+        get: operations["oidcStart"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/oidc/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Akasha 回调（浏览器导航，302）
+         * @description 验 state → 用 client_secret 换 code → 验 id_token 与 nonce → 确立账号 → 签发本站 token。
+         *     · iOS：302 `melete://auth/callback#access_token=…&refresh_token=…&expires_in=…`
+         *     · web：302 `{WEB_ORIGIN}/auth/callback?ticket=<refresh_token>&next=…`，
+         *       web 服务端拿 ticket 去 /auth/refresh 换新的一对（轮换让 URL 里的票用一次即废）
+         *     · 失败：302 回客户端并带 `oidc_error ∈ {cancelled, state, upstream, application}`
+         */
+        get: operations["oidcCallback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/refresh": {
         parameters: {
             query?: never;
@@ -678,6 +725,52 @@ export interface operations {
                 };
             };
             429: components["responses"]["TooManyRequests"];
+        };
+    };
+    oidcStart: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 登录后去向。web 传本站绝对路径（如 /banks/aws-saa-c03）；
+                 *     iOS 固定传 `melete://auth/callback`（可带 ?then=应用内目标）。其余值一律丢弃。
+                 */
+                next?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 跳转到 Akasha */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    oidcCallback: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 跳转回客户端 */
+            302: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     refreshToken: {

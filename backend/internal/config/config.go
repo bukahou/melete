@@ -23,6 +23,12 @@ type Config struct {
 	// OIDC：验证 Akasha 签发的 id_token（issuer 与 audience 都要对上）
 	OIDCIssuer   string `env:"MELETE_OIDC_ISSUER,required,notEmpty"`
 	OIDCClientID string `env:"MELETE_OIDC_CLIENT_ID,required,notEmpty"`
+	// 后端替所有客户端当 Akasha 的 client（见 httpapi/oidc.go）：secret 只在这里，web 不再持有
+	OIDCClientSecret string `env:"MELETE_OIDC_CLIENT_SECRET,required,notEmpty"`
+	// 本服务的公网回调地址，须与 Akasha 白名单逐字一致
+	OIDCRedirectURL string `env:"MELETE_OIDC_REDIRECT_URL,required,notEmpty"`
+	// web 前端的源：OIDC 登录完成后把浏览器送回这里
+	WebOrigin string `env:"MELETE_WEB_ORIGIN,required,notEmpty"`
 
 	Addr         string `env:"MELETE_ADDR" envDefault:":8080"`
 	// 登录端点限流：每 IP 每窗口的最大尝试次数
