@@ -1,12 +1,13 @@
 // oidc.go：后端替所有客户端当 Akasha 的 OIDC client —— 两个【浏览器导航】端点。
 //
 // 为什么是后端而不是 App / web 自己走 OIDC（2026-09-03，iOS 真机实测得出的结论）：
-//   · Akasha 里 melete 是 confidential client，/token 强制校验 client_secret，
-//     不因带 PKCE 而放行 —— 原生 App 拿不到 secret，兑换必失败
-//   · Akasha 是 pairwise sub（HMAC(client_id, user)）—— 另注册一个 public client
-//     会让同一个人在 iOS 上变成另一个 melete 账号
-//   · 所以 Akasha 只该见过【一个】client：本服务。web 与 iOS 都经这里进出，
-//     同一 client_id → 同一 sub → 同一账号。web 从此不再持有 client_secret。
+//
+//	· Akasha 里 melete 是 confidential client，/token 强制校验 client_secret，
+//	  不因带 PKCE 而放行 —— 原生 App 拿不到 secret，兑换必失败
+//	· Akasha 是 pairwise sub（HMAC(client_id, user)）—— 另注册一个 public client
+//	  会让同一个人在 iOS 上变成另一个 melete 账号
+//	· 所以 Akasha 只该见过【一个】client：本服务。web 与 iOS 都经这里进出，
+//	  同一 client_id → 同一 sub → 同一账号。web 从此不再持有 client_secret。
 //
 // 流程：客户端打开 /auth/oidc/start?next=… → 302 Akasha → 回 /auth/oidc/callback
 // → 验 state / 换 code / 验 id_token+nonce（akasha/pkg/oidcrp v0.1.0）→ EstablishSSO → 签本站双 token
@@ -186,10 +187,13 @@ func (h *OIDCHandler) onAuthenticated(w http.ResponseWriter, r *http.Request, re
 // clientCallbackURL 把 token 交回客户端。
 //
 // 原生：整对 token 走 fragment —— fragment 不发给任何服务器，不进日志与 Referer；
-//       系统认证会话看到这个 scheme 就结束并把 URL 交回 App。
+//
+//	系统认证会话看到这个 scheme 就结束并把 URL 交回 App。
+//
 // web： 只把 refresh token 当票据走 query（web 服务端在 route handler 里读，
-//       浏览器脚本不参与），随后立刻拿它去 /auth/refresh 换一对新的 ——
-//       refresh 轮换让 URL 里那个用一次即废，日志里留下的是张作废的票。
+//
+//	浏览器脚本不参与），随后立刻拿它去 /auth/refresh 换一对新的 ——
+//	refresh 轮换让 URL 里那个用一次即废，日志里留下的是张作废的票。
 func (h *OIDCHandler) clientCallbackURL(pair *token.Pair, next string) string {
 	if isNative(next) {
 		frag := url.Values{}

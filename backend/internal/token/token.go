@@ -1,9 +1,10 @@
 // Package token 负责 access / refresh 双 token 的签发与校验。
 //
 // 形态对齐 geass-v3（见其 internal/auth/DECISIONS.md）：
-//   access  —— HS256 JWT，TTL 1h，**不落库**。验签不查库，撤回的代价由短 TTL 兜住
-//   refresh —— 不透明随机串，**落库**（account_session）。生命周期以月计的凭证
-//              必须能撤回：登出、换设备、密码泄漏。吊销 = is_valid 置 0
+//
+//	access  —— HS256 JWT，TTL 1h，**不落库**。验签不查库，撤回的代价由短 TTL 兜住
+//	refresh —— 不透明随机串，**落库**（account_session）。生命周期以月计的凭证
+//	           必须能撤回：登出、换设备、密码泄漏。吊销 = is_valid 置 0
 //
 // 库里只存 refresh 的 SHA-256：数据库被读走也无法直接冒用。
 package token

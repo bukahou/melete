@@ -109,7 +109,7 @@ func toAPIDetail(d *question.Detail) api.QuestionDetail {
 		Kind: api.QuestionDetailKind(d.Kind), PickCount: d.PickCount,
 		Contested: d.Contested, Enriched: d.Enriched,
 		BankSlug: d.BankSlug, DataIssue: d.DataIssue,
-		Reference: toAPIReference(d.Reference),
+		Reference:    toAPIReference(d.Reference),
 		Choices:      make([]api.Choice, 0, len(d.Choices)),
 		Claims:       make([]api.AnswerClaim, 0, len(d.Claims)),
 		Explanations: make([]api.Explanation, 0, len(d.Explanations)),
@@ -167,8 +167,8 @@ func toAPIResume(r *study.Resume) api.Resume {
 func toAPISession(ss study.Session) api.StudySession {
 	out := api.StudySession{
 		BankSlug: ss.BankSlug, BankName: ss.BankName,
-		Context:  api.DrillContext{Mode: api.DrillContextMode(ss.Mode), TagId: ss.TagID},
-		Label:    ss.Mode, StartedAt: ss.StartedAt, EndedAt: ss.EndedAt, Count: ss.Count, Correct: ss.Correct,
+		Context: api.DrillContext{Mode: api.DrillContextMode(ss.Mode), TagId: ss.TagID},
+		Label:   ss.Mode, StartedAt: ss.StartedAt, EndedAt: ss.EndedAt, Count: ss.Count, Correct: ss.Correct,
 		FirstNo: ss.FirstNo, LastNo: ss.LastNo,
 	}
 	if ss.Tag != nil {

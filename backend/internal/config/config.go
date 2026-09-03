@@ -30,12 +30,12 @@ type Config struct {
 	// web 前端的源：OIDC 登录完成后把浏览器送回这里
 	WebOrigin string `env:"MELETE_WEB_ORIGIN,required,notEmpty"`
 
-	Addr         string `env:"MELETE_ADDR" envDefault:":8080"`
+	Addr string `env:"MELETE_ADDR" envDefault:":8080"`
 	// 登录端点限流：每 IP 每窗口的最大尝试次数
 	LoginRateMax    int           `env:"MELETE_LOGIN_RATE_MAX" envDefault:"10"`
 	LoginRateWindow time.Duration `env:"MELETE_LOGIN_RATE_WINDOW" envDefault:"1m"`
-	MaxOpenConns int    `env:"MELETE_DB_MAX_CONNS" envDefault:"20"`
-	LogLevel     string `env:"MELETE_LOG_LEVEL" envDefault:"info"`
+	MaxOpenConns    int           `env:"MELETE_DB_MAX_CONNS" envDefault:"20"`
+	LogLevel        string        `env:"MELETE_LOG_LEVEL" envDefault:"info"`
 }
 
 func Load() (*Config, error) {

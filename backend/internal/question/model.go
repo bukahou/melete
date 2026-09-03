@@ -28,9 +28,9 @@ type Choice struct {
 // 并列呈现这个分歧，本身就是最好的学习材料。
 // 任何把它压平成单一 correct_answer 的改动，都是在删掉这个项目的核心价值。
 type Claim struct {
-	Source     string          `db:"source"`
-	Answer     string          `db:"answer"`
-	Confidence *int            `db:"confidence"`
+	Source     string  `db:"source"`
+	Answer     string  `db:"answer"`
+	Confidence *int    `db:"confidence"`
 	Rationale  *string `db:"rationale"`
 	Meta       RawJSON `db:"meta"`
 }
