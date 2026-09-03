@@ -215,6 +215,18 @@ SAP-C02：#85→#84、#438→#10，导入 527 题。
 - **待决**：concept 标签膨胀 —— SAP 新造 987 个 concept（72% 只用 1 次），SAA 只有 73 个。见「阻塞 / 待定」
 - 译文（translation）在 enriched.json 里，DB 无落点，未入库
 
+## 已定决策：Akasha 登录由 melete-api 代理（2026-09-03，iOS 真机 bug 引出）
+
+根因：Akasha 里 melete 是 confidential client（/token 强制 secret，PKCE 不免）且 pairwise sub ——
+原生 App 自己走 OIDC 走不通，另注册 public client 会分裂账号。geass-v3 同款结论。
+方案：后端两个导航端点 `/auth/oidc/{start,callback}`（`pkg/oidcrp` 照搬 geass-v3），
+web 与 iOS 都经此进出，同一 client_id → 同一账号；web 不再持有 client_secret。
+Akasha 只追加两条后端回调白名单（prod + localhost）。
+- iOS：token 对走 fragment 到 `melete://auth/callback`；失败 `?oidc_error=`
+- web：refresh token 当一次性票据走 query → web 服务端拿去 /auth/refresh 换正式一对（轮换即作废）
+- 待办：`pkg/oidcrp` 是从 geass-v3 复制的第二份；按其 doc.go 约定应抽成独立仓 `bukahou/oidcrp`。
+  未抽的原因：私有模块会让 Docker 构建需要凭据；抽时一并决定仓库可见性
+
 ## 技术债（发现即登记，不阻塞主线）
 
 - [ ] `web` 的 `npm run lint` 失效：脚本是 `next lint`，Next 16 已移除该命令
