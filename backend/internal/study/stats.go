@@ -92,23 +92,38 @@ const latestAttempt = `
 // LoadProgress 汇总某题库的学习进度。
 func (s *service) LoadProgress(ctx context.Context, accountID int64, slug string) (*Progress, error) {
 	var p Progress
+	// 聚合先按 bank_id 分组算好再 LEFT JOIN 回题库行 —— 这样题库行【永远存在】，
+	// 没有作答只是各项为 0。
+	//
+	// ⚠️ 曾经写成 `LEFT JOIN (最近作答) ON 1 = 1` 再用 WHERE 过滤：账号一旦在
+	// **任何**题库有作答，查另一个题库时所有行都会被那个 WHERE 滤光 → 零行 →
+	// ErrNotFound。0 作答时反而正常，所以单题库时期一直没暴露，第二个题库
+	// 加上、用户做了第一道题的那一刻首页就整页 500 了。
 	err := s.db.GetContext(ctx, &p, `
 		SELECT
 		  b.slug AS bank_slug,
 		  (SELECT COUNT(*) FROM question q WHERE q.bank_id = b.id) AS question_count,
-		  COALESCE(COUNT(la.id), 0)                                AS seen_count,
-		  COALESCE(SUM(la.correct = 1), 0)                         AS correct_count,
-		  COALESCE(SUM(la.correct = 0), 0)                         AS wrong_count,
-		  COALESCE(SUM(la.rating <= 2), 0)                         AS unsure_count,
+		  COALESCE(agg.seen_count, 0)    AS seen_count,
+		  COALESCE(agg.correct_count, 0) AS correct_count,
+		  COALESCE(agg.wrong_count, 0)   AS wrong_count,
+		  COALESCE(agg.unsure_count, 0)  AS unsure_count,
 		  (SELECT COUNT(*) FROM attempt a2
 		     JOIN question q2 ON q2.id = a2.question_id AND q2.bank_id = b.id
-		   WHERE a2.account_id = ?)                                AS attempt_count,
-		  MAX(la.created_at)                                       AS last_active_at
+		   WHERE a2.account_id = ?)      AS attempt_count,
+		  agg.last_active_at
 		FROM bank b
-		LEFT JOIN (`+latestAttempt+`) la ON 1 = 1
-		LEFT JOIN question lq ON lq.id = la.question_id AND lq.bank_id = b.id
-		WHERE b.slug = ? AND (la.id IS NULL OR lq.id IS NOT NULL)
-		GROUP BY b.id, b.slug`, accountID, accountID, slug)
+		LEFT JOIN (
+		  SELECT q.bank_id,
+		         COUNT(*)                 AS seen_count,
+		         SUM(la.correct = 1)      AS correct_count,
+		         SUM(la.correct = 0)      AS wrong_count,
+		         SUM(la.rating <= 2)      AS unsure_count,
+		         MAX(la.created_at)       AS last_active_at
+		  FROM (` + latestAttempt + `) la
+		  JOIN question q ON q.id = la.question_id
+		  GROUP BY q.bank_id
+		) agg ON agg.bank_id = b.id
+		WHERE b.slug = ?`, accountID, accountID, slug)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
