@@ -72,7 +72,10 @@ func run() error {
 	server := httpapi.NewServer(bankSvc, questionSvc, accountSvc, studySvc, tokenIssuer, oidcVerifier, log)
 
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID, middleware.RealIP, middleware.Recoverer)
+	// ⚠️ 刻意【不用】middleware.RealIP：它无条件信任 X-Forwarded-For 的第一个值，
+	// 而 CF 是把真实 IP 追加在客户端自带的 XFF 之后 —— 于是限流键变成攻击者可控。
+	// 2026-09-03 实证可绕过，详见 httpauth/ratelimit.go 的 clientIP 注释。
+	r.Use(middleware.RequestID, middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
 
 	// 没有 CORS：浏览器不用 XHR 直连本服务 —— web 经服务端 BFF 调用，iOS 是原生请求，
