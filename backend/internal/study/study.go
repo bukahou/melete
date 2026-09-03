@@ -46,6 +46,8 @@ type Service interface {
 	LoadProgress(ctx context.Context, accountID int64, slug string) (*Progress, error)
 	LoadTagStats(ctx context.Context, accountID int64, slug, tagType string, minAttempts int) ([]TagStat, error)
 	LoadResume(ctx context.Context, accountID int64, slug string) (*Resume, error)
+	LoadOverview(ctx context.Context, accountID int64) (*Overview, error)
+	LoadRecentSessions(ctx context.Context, accountID int64, limit int) ([]Session, error)
 }
 
 type service struct {

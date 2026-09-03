@@ -163,3 +163,18 @@ func toAPIResume(r *study.Resume) api.Resume {
 	}
 	return out
 }
+
+func toAPISession(ss study.Session) api.StudySession {
+	out := api.StudySession{
+		BankSlug: ss.BankSlug, BankName: ss.BankName,
+		Context:  api.DrillContext{Mode: api.DrillContextMode(ss.Mode), TagId: ss.TagID},
+		Label:    ss.Mode, StartedAt: ss.StartedAt, EndedAt: ss.EndedAt, Count: ss.Count, Correct: ss.Correct,
+		FirstNo: ss.FirstNo, LastNo: ss.LastNo,
+	}
+	if ss.Tag != nil {
+		out.Label = ss.Tag.Value
+		i18n := ss.Tag.I18n.String
+		out.Tag = &api.Tag{Id: ss.Tag.ID, Type: api.TagType(ss.Tag.Type), Value: ss.Tag.Value, I18n: parseI18n(&i18n)}
+	}
+	return out
+}

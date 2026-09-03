@@ -467,6 +467,18 @@ type FocusCursor struct {
 	Total int `json:"total"`
 }
 
+// Overview defines model for Overview.
+type Overview struct {
+	// SeenTotal 跨题库做过的题数（去重）
+	SeenTotal int `json:"seenTotal"`
+
+	// StreakDays 连续有作答的自然日数（含今天；今天没做则从昨天起算）
+	StreakDays int `json:"streakDays"`
+
+	// TodayCount 今天的作答次数
+	TodayCount int `json:"todayCount"`
+}
+
 // Progress defines model for Progress.
 type Progress struct {
 	// AttemptCount 总作答次数（含重做）
@@ -606,6 +618,29 @@ type SsoExchange struct {
 	IdToken string `json:"idToken"`
 }
 
+// StudySession defines model for StudySession.
+type StudySession struct {
+	BankName string `json:"bankName"`
+	BankSlug string `json:"bankSlug"`
+
+	// Context 一次作答的出处 —— 用户是从哪个入口做的这道题
+	Context DrillContext `json:"context"`
+	Correct int          `json:"correct"`
+	Count   int          `json:"count"`
+	EndedAt time.Time    `json:"endedAt"`
+
+	// FirstNo 顺序刷时的起止题号，便于显示 "#400–#413"
+	FirstNo *int `json:"firstNo,omitempty"`
+
+	// Label mode=tag 时为标签名，否则为 mode
+	Label     string    `json:"label"`
+	LastNo    *int      `json:"lastNo,omitempty"`
+	StartedAt time.Time `json:"startedAt"`
+
+	// Tag 通用 (type, value) 结构，不硬编码任何特定题库的分类体系
+	Tag *Tag `json:"tag,omitempty"`
+}
+
 // Tag 通用 (type, value) 结构，不硬编码任何特定题库的分类体系
 type Tag struct {
 	I18n *map[string]string `json:"i18n,omitempty"`
@@ -711,6 +746,11 @@ type GetMyProgressParams struct {
 	Bank *BankQuery `form:"bank,omitempty" json:"bank,omitempty"`
 }
 
+// GetMyRecentParams defines parameters for GetMyRecent.
+type GetMyRecentParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetMyResumeParams defines parameters for GetMyResume.
 type GetMyResumeParams struct {
 	// Bank 题库 slug；缺省 = 当前题库（现阶段为第一个题库）
@@ -719,6 +759,8 @@ type GetMyResumeParams struct {
 
 // GetMyTagStatsParams defines parameters for GetMyTagStats.
 type GetMyTagStatsParams struct {
+	// Bank 题库 slug；缺省 = 当前题库（现阶段为第一个题库）
+	Bank *BankQuery              `form:"bank,omitempty" json:"bank,omitempty"`
 	Type GetMyTagStatsParamsType `form:"type" json:"type"`
 
 	// MinAttempts 至少做过几道才纳入（样本太小的标签正确率没有意义）
@@ -772,9 +814,15 @@ type ServerInterface interface {
 	// 题库的标签列表（用于筛选与正确率热图）
 	// (GET /banks/{slug}/tags)
 	ListBankTags(w http.ResponseWriter, r *http.Request, slug Slug, params ListBankTagsParams)
+	// 跨题库总览（今天 / 连续天数 / 累计）
+	// (GET /me/overview)
+	GetMyOverview(w http.ResponseWriter, r *http.Request)
 	// 我的学习进度总览
 	// (GET /me/progress)
 	GetMyProgress(w http.ResponseWriter, r *http.Request, params GetMyProgressParams)
+	// 最近的学习会话（跨题库）
+	// (GET /me/recent)
+	GetMyRecent(w http.ResponseWriter, r *http.Request, params GetMyRecentParams)
 	// 继续学习（上次刷到哪）
 	// (GET /me/resume)
 	GetMyResume(w http.ResponseWriter, r *http.Request, params GetMyResumeParams)
@@ -844,9 +892,21 @@ func (_ Unimplemented) ListBankTags(w http.ResponseWriter, r *http.Request, slug
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// 跨题库总览（今天 / 连续天数 / 累计）
+// (GET /me/overview)
+func (_ Unimplemented) GetMyOverview(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // 我的学习进度总览
 // (GET /me/progress)
 func (_ Unimplemented) GetMyProgress(w http.ResponseWriter, r *http.Request, params GetMyProgressParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 最近的学习会话（跨题库）
+// (GET /me/recent)
+func (_ Unimplemented) GetMyRecent(w http.ResponseWriter, r *http.Request, params GetMyRecentParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1166,6 +1226,26 @@ func (siw *ServerInterfaceWrapper) ListBankTags(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetMyOverview operation middleware
+func (siw *ServerInterfaceWrapper) GetMyOverview(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyOverview(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMyProgress operation middleware
 func (siw *ServerInterfaceWrapper) GetMyProgress(w http.ResponseWriter, r *http.Request) {
 
@@ -1196,6 +1276,45 @@ func (siw *ServerInterfaceWrapper) GetMyProgress(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMyProgress(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyRecent operation middleware
+func (siw *ServerInterfaceWrapper) GetMyRecent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetMyRecentParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyRecent(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1258,6 +1377,19 @@ func (siw *ServerInterfaceWrapper) GetMyTagStats(w http.ResponseWriter, r *http.
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetMyTagStatsParams
+
+	// ------------- Optional query parameter "bank" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "bank", r.URL.Query(), &params.Bank, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "bank"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bank", Err: err})
+		}
+		return
+	}
 
 	// ------------- Required query parameter "type" -------------
 
@@ -1469,7 +1601,13 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/banks/{slug}/tags", wrapper.ListBankTags)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/overview", wrapper.GetMyOverview)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/progress", wrapper.GetMyProgress)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/recent", wrapper.GetMyRecent)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/resume", wrapper.GetMyResume)
@@ -1807,6 +1945,27 @@ func (response ListBankTags404JSONResponse) VisitListBankTagsResponse(w http.Res
 	return err
 }
 
+type GetMyOverviewRequestObject struct {
+}
+
+type GetMyOverviewResponseObject interface {
+	VisitGetMyOverviewResponse(w http.ResponseWriter) error
+}
+
+type GetMyOverview200JSONResponse Overview
+
+func (response GetMyOverview200JSONResponse) VisitGetMyOverviewResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMyProgressRequestObject struct {
 	Params GetMyProgressParams
 }
@@ -1818,6 +1977,28 @@ type GetMyProgressResponseObject interface {
 type GetMyProgress200JSONResponse Progress
 
 func (response GetMyProgress200JSONResponse) VisitGetMyProgressResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyRecentRequestObject struct {
+	Params GetMyRecentParams
+}
+
+type GetMyRecentResponseObject interface {
+	VisitGetMyRecentResponse(w http.ResponseWriter) error
+}
+
+type GetMyRecent200JSONResponse []StudySession
+
+func (response GetMyRecent200JSONResponse) VisitGetMyRecentResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -1938,9 +2119,15 @@ type StrictServerInterface interface {
 	// 题库的标签列表（用于筛选与正确率热图）
 	// (GET /banks/{slug}/tags)
 	ListBankTags(ctx context.Context, request ListBankTagsRequestObject) (ListBankTagsResponseObject, error)
+	// 跨题库总览（今天 / 连续天数 / 累计）
+	// (GET /me/overview)
+	GetMyOverview(ctx context.Context, request GetMyOverviewRequestObject) (GetMyOverviewResponseObject, error)
 	// 我的学习进度总览
 	// (GET /me/progress)
 	GetMyProgress(ctx context.Context, request GetMyProgressRequestObject) (GetMyProgressResponseObject, error)
+	// 最近的学习会话（跨题库）
+	// (GET /me/recent)
+	GetMyRecent(ctx context.Context, request GetMyRecentRequestObject) (GetMyRecentResponseObject, error)
 	// 继续学习（上次刷到哪）
 	// (GET /me/resume)
 	GetMyResume(ctx context.Context, request GetMyResumeRequestObject) (GetMyResumeResponseObject, error)
@@ -2240,6 +2427,30 @@ func (sh *strictHandler) ListBankTags(w http.ResponseWriter, r *http.Request, sl
 	}
 }
 
+// GetMyOverview operation middleware
+func (sh *strictHandler) GetMyOverview(w http.ResponseWriter, r *http.Request) {
+	var request GetMyOverviewRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyOverview(ctx, request.(GetMyOverviewRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyOverview")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyOverviewResponseObject); ok {
+		if err := validResponse.VisitGetMyOverviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetMyProgress operation middleware
 func (sh *strictHandler) GetMyProgress(w http.ResponseWriter, r *http.Request, params GetMyProgressParams) {
 	var request GetMyProgressRequestObject
@@ -2259,6 +2470,32 @@ func (sh *strictHandler) GetMyProgress(w http.ResponseWriter, r *http.Request, p
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMyProgressResponseObject); ok {
 		if err := validResponse.VisitGetMyProgressResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyRecent operation middleware
+func (sh *strictHandler) GetMyRecent(w http.ResponseWriter, r *http.Request, params GetMyRecentParams) {
+	var request GetMyRecentRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyRecent(ctx, request.(GetMyRecentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyRecent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyRecentResponseObject); ok {
+		if err := validResponse.VisitGetMyRecentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -17,13 +17,13 @@ import "server-only";
 export type {
   Bank, BankDetail, Tag, QuestionSummary, QuestionDetail, QuestionPage,
   AnswerClaim, Choice, Reference, AttemptResult, DrillMode,
-  Progress, TagStat, Resume, FocusCursor, DrillContext,
+  Progress, TagStat, Resume, FocusCursor, DrillContext, Overview, StudySession,
 } from "./claims";
 export { SOURCE_LABEL, voteDistribution, hasDisagreement } from "./claims";
 
 import type {
   Bank, BankDetail, Tag, QuestionDetail, QuestionPage, AttemptResult, DrillMode,
-  Progress, TagStat, Resume, DrillContext,
+  Progress, TagStat, Resume, DrillContext, Overview, StudySession,
 } from "./claims";
 
 import { accessToken } from "./auth";
@@ -104,5 +104,7 @@ export async function recordAttempt(
 const bankQuery = (bank?: string) => (bank ? `?bank=${encodeURIComponent(bank)}` : "");
 export const getMyProgress = (bank?: string) => get<Progress>(`/me/progress${bankQuery(bank)}`, 0, true);
 export const getMyResume = (bank?: string) => get<Resume>(`/me/resume${bankQuery(bank)}`, 0, true);
-export const getMyTagStats = (type: Tag["type"], minAttempts = 3) =>
-  get<TagStat[]>(`/me/tag-stats?type=${type}&minAttempts=${minAttempts}`, 0, true);
+export const getMyTagStats = (type: Tag["type"], minAttempts = 3, bank?: string) =>
+  get<TagStat[]>(`/me/tag-stats?type=${type}&minAttempts=${minAttempts}${bank ? `&bank=${encodeURIComponent(bank)}` : ""}`, 0, true);
+export const getMyOverview = () => get<Overview>("/me/overview", 0, true);
+export const getMyRecent = (limit = 5) => get<StudySession[]>(`/me/recent?limit=${limit}`, 0, true);

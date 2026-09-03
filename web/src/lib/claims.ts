@@ -28,6 +28,8 @@ export type TagStat = components["schemas"]["TagStat"];
 export type Resume = components["schemas"]["Resume"];
 export type FocusCursor = components["schemas"]["FocusCursor"];
 export type DrillContext = components["schemas"]["DrillContext"];
+export type Overview = components["schemas"]["Overview"];
+export type StudySession = components["schemas"]["StudySession"];
 
 /** 答案主张的来源标签。顺序与后端返回一致：题库 → 社区 → AI → 用户。 */
 export const SOURCE_LABEL: Record<AnswerClaim["source"], string> = {

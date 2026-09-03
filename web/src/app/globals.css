@@ -17,6 +17,7 @@
   --color-ink: #23222b;
   --color-muted: #6d6a75;
   --color-line: #e5e1d8;
+  --color-line-2: #efece5;   /* 面板内的行分隔，比外框更淡 */
 
   /* 答案主张的来源三色（categorical，已验证） */
   --color-src-bank: #b45f17;
@@ -42,6 +43,7 @@
     --color-ink: #ece9e2;
     --color-muted: #a09da8;
     --color-line: #35343e;
+    --color-line-2: #2c2b34;
 
     --color-src-bank: #cf7f31;
     --color-src-community: #6394e0;
@@ -135,3 +137,8 @@ body {
 .meter > span { height: 100%; }
 .meter > span:first-child { border-radius: 4px 0 0 4px; }
 .meter > span:last-child { border-radius: 0 4px 4px 0; }
+
+/* ---- 学习台部件 ---- */
+.chip { display: inline-block; border: 1px solid var(--color-line); border-radius: 3px; padding: .1rem .55rem; font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; color: var(--color-muted); }
+.chip-level { color: var(--color-src-bank); border-color: color-mix(in oklab, var(--color-src-bank) 45%, transparent); }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; }

@@ -133,6 +133,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 跨题库总览（今天 / 连续天数 / 累计）
+         * @description 首页统计带。全部从 attempt 推导；连续天数按 Asia/Tokyo 自然日计。
+         */
+        get: operations["getMyOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 最近的学习会话（跨题库）
+         * @description 从 attempt 推导：同一题库、同一 context、相邻间隔 ≤ 30 分钟的连续作答算一次会话。
+         *     不存会话表 —— 会话是对事实的解释，不是事实。
+         */
+        get: operations["getMyRecent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/resume": {
         parameters: {
             query?: never;
@@ -286,6 +327,31 @@ export interface components {
             bankSlug: string;
             sequential: components["schemas"]["SequentialCursor"];
             focus?: components["schemas"]["FocusCursor"];
+        };
+        Overview: {
+            /** @description 今天的作答次数 */
+            todayCount: number;
+            /** @description 连续有作答的自然日数（含今天；今天没做则从昨天起算） */
+            streakDays: number;
+            /** @description 跨题库做过的题数（去重） */
+            seenTotal: number;
+        };
+        StudySession: {
+            bankSlug: string;
+            bankName: string;
+            context: components["schemas"]["DrillContext"];
+            /** @description mode=tag 时为标签名，否则为 mode */
+            label: string;
+            tag?: components["schemas"]["Tag"];
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            endedAt: string;
+            count: number;
+            correct: number;
+            /** @description 顺序刷时的起止题号，便于显示 "#400–#413" */
+            firstNo?: number;
+            lastNo?: number;
         };
         /** @description questionId 缺省 = 题库已全部做过一遍 */
         SequentialCursor: {
@@ -720,6 +786,8 @@ export interface operations {
     getMyTagStats: {
         parameters: {
             query: {
+                /** @description 题库 slug；缺省 = 当前题库（现阶段为第一个题库） */
+                bank?: components["parameters"]["BankQuery"];
                 type: "domain" | "topic" | "concept";
                 /** @description 至少做过几道才纳入（样本太小的标签正确率没有意义） */
                 minAttempts?: number;
@@ -737,6 +805,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TagStat"][];
+                };
+            };
+        };
+    };
+    getMyOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Overview"];
+                };
+            };
+        };
+    };
+    getMyRecent: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudySession"][];
                 };
             };
         };

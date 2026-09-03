@@ -234,8 +234,11 @@ SAP-C02：#85→#84、#438→#10，导入 527 题。
 - [x] 宣言挪去登录页；34% 数据带、打架题删除
 - [x] 标签轴文案通用化（`tagTypeLabel(bank.meta, type)`）
 - [x] 12 栏面板首页上线（2026-09-02）
-- [ ] `/me/tag-stats` 尚无 `bank` 参数（progress / resume 已有）；多题库时补
-- [ ] 「当前题库」= 第一个题库；多题库时改为最近活跃（`currentBank` 一处）
+- [x] 两页结构（2026-09-03）：首页 = 题库选择台（每卡带进度 / 两条轨道 / 继续按钮 + 跨题库统计带 + 最近会话）；
+      `/banks/[slug]` = 学习台（原首页四面板下沉，页头统计带）。所有数据带 `bank` 参数，不再有「第一个题库」假设
+- [x] `/me/tag-stats` 加 `bank`；新增 `/me/overview`（今天 / 连续 / 累计）与 `/me/recent`（会话 = 同题库同 context 相邻 ≤30 分钟，从 attempt 现算不存表）
+- [ ] 连续天数按 JST 写死（`study/sessions.go` 的 studyTZ）；将来进 account 偏好
+- [ ] 题库卡的等级章从名字里正则认（Associate / Professional / Level N）；spec 可加 `level` 进 meta 替代
 
 ## 阻塞 / 待定
 

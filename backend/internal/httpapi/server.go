@@ -307,15 +307,15 @@ func (s *Server) GetMyTagStats(ctx context.Context, req api.GetMyTagStatsRequest
 	if err != nil {
 		return nil, err
 	}
-	banks, err := s.banks.ListBanks(ctx)
-	if err != nil || len(banks) == 0 {
+	slug, err := s.currentBank(ctx, req.Params.Bank)
+	if err != nil {
 		return nil, s.fail("GetMyTagStats.banks", err)
 	}
 	minAttempts := 3
 	if req.Params.MinAttempts != nil {
 		minAttempts = *req.Params.MinAttempts
 	}
-	stats, err := s.studies.LoadTagStats(ctx, accountID, banks[0].Slug, string(req.Params.Type), minAttempts)
+	stats, err := s.studies.LoadTagStats(ctx, accountID, slug, string(req.Params.Type), minAttempts)
 	if err != nil {
 		return nil, s.fail("GetMyTagStats", err)
 	}
@@ -366,4 +366,36 @@ func (s *Server) GetMyResume(ctx context.Context, req api.GetMyResumeRequestObje
 		return nil, s.fail("GetMyResume", err)
 	}
 	return api.GetMyResume200JSONResponse(toAPIResume(r)), nil
+}
+
+func (s *Server) GetMyOverview(ctx context.Context, _ api.GetMyOverviewRequestObject) (api.GetMyOverviewResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "GetMyOverview")
+	if err != nil {
+		return nil, err
+	}
+	o, err := s.studies.LoadOverview(ctx, accountID)
+	if err != nil {
+		return nil, s.fail("GetMyOverview", err)
+	}
+	return api.GetMyOverview200JSONResponse{TodayCount: o.TodayCount, StreakDays: o.StreakDays, SeenTotal: o.SeenTotal}, nil
+}
+
+func (s *Server) GetMyRecent(ctx context.Context, req api.GetMyRecentRequestObject) (api.GetMyRecentResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "GetMyRecent")
+	if err != nil {
+		return nil, err
+	}
+	limit := 5
+	if req.Params.Limit != nil {
+		limit = *req.Params.Limit
+	}
+	sessions, err := s.studies.LoadRecentSessions(ctx, accountID, limit)
+	if err != nil {
+		return nil, s.fail("GetMyRecent", err)
+	}
+	out := api.GetMyRecent200JSONResponse{}
+	for _, ss := range sessions {
+		out = append(out, toAPISession(ss))
+	}
+	return out, nil
 }
