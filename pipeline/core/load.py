@@ -52,12 +52,15 @@ class Loader:
             self.conn.commit()
 
     # ---- bank ----
-    def upsert_bank(self, bank: dict, meta: dict) -> int:
+    # locale 显式传入而不是从 bank 字典里取：那里存的是【素材的语言】，
+    # 而库里这一列是【展示的语言】。SAP-C02 素材是英文、展示是中文译文，
+    # 两者不同 —— 分工是 parse.py 记录素材事实，load.py 决定展示形态。
+    def upsert_bank(self, bank: dict, meta: dict, locale: str) -> int:
         self.cur.execute(
             """INSERT INTO bank (slug, name, locale, kind, meta) VALUES (%s,%s,%s,%s,%s)
                ON DUPLICATE KEY UPDATE name=VALUES(name), locale=VALUES(locale),
                                        kind=VALUES(kind), meta=VALUES(meta)""",
-            (bank["slug"], bank["name"], bank.get("locale", "zh"),
+            (bank["slug"], bank["name"], locale,
              bank.get("kind", "cert"), json.dumps(meta, ensure_ascii=False)))
         self.conn.commit()
         self.cur.execute("SELECT id FROM bank WHERE slug=%s", (bank["slug"],))
@@ -65,7 +68,7 @@ class Loader:
 
     # ---- question ----
     def upsert_questions(self, bank_id: int, qs: list) -> dict:
-        rows = [(bank_id, q["no"], q["stem"], q["kind"], q["pick"],
+        rows = [(bank_id, q["no"], display_text(q)[0], q["kind"], q["pick"],
                  (q.get("enrichment") or {}).get("data_issue"),
                  json.dumps({"warnings": q.get("warnings", []),
                              **({"duplicates": q["duplicates"]} if q.get("duplicates") else {})},
@@ -83,7 +86,8 @@ class Loader:
 
     # ---- choice / claim / explanation ----
     def upsert_choices(self, qmap: dict, qs: list) -> int:
-        rows = [(qmap[q["no"]], ch["label"], ch["body"]) for q in qs for ch in q["choices"]]
+        rows = [(qmap[q["no"]], ch["label"], display_text(q)[1][ch["label"]])
+                for q in qs for ch in q["choices"]]
         self._exec("""INSERT INTO choice (question_id, label, body) VALUES (%s,%s,%s)
                       ON DUPLICATE KEY UPDATE body=VALUES(body)""", rows)
         return len(rows)
@@ -187,6 +191,42 @@ class Loader:
         self._exec("""INSERT INTO question_tag (question_id, tag_id, weight) VALUES (%s,%s,%s)
                       ON DUPLICATE KEY UPDATE weight=VALUES(weight)""", rows)
         return len(rows)
+
+
+def display_text(q: dict) -> tuple[str, dict]:
+    """题面的展示文本：有译文用译文，没有就用原文。
+
+    ⚠️ 这是取题面文本的【唯一入口】—— 题干与选项必须走同一处，
+    否则会出现「题干中文、选项英文」这种半吊子状态，而它不会报任何错。
+
+    ⚠️ 这里的 `or 原文` 回退【只对没有声明 translation 的题库有效】。
+    声明了的题库由 check_translations() 在导入前硬卡，缺一条就不导 ——
+    静默回退会让「这个题库是中文的」悄悄变成「大部分是中文的」。
+    """
+    tr = (q.get("enrichment") or {}).get("translation") or {}
+    tr_choices = tr.get("choices") or {}
+    stem = tr.get("stem") or q["stem"]
+    bodies = {ch["label"]: tr_choices.get(ch["label"]) or ch["body"] for ch in q["choices"]}
+    return stem, bodies
+
+
+def check_translations(qs: list) -> list[str]:
+    """spec 声明了 translation 时，逐题核对译文齐备 —— 缺任何一条都拒绝导入。
+
+    enrich.py 在【产出】那一端已有同名门禁；这里补在【落库】这一端。
+    两端各卡一次的理由：产物可能是手工补过的，也可能来自旧版本 spec。
+    """
+    errs = []
+    for q in qs:
+        tr = (q.get("enrichment") or {}).get("translation") or {}
+        if not (tr.get("stem") or "").strip():
+            errs.append(f"#{q['no']}: 缺 translation.stem")
+        tr_choices = tr.get("choices") or {}
+        missing = [ch["label"] for ch in q["choices"]
+                   if not (tr_choices.get(ch["label"]) or "").strip()]
+        if missing:
+            errs.append(f"#{q['no']}: 缺选项译文 {','.join(missing)}")
+    return errs
 
 
 def validate(qs: list) -> tuple[list[str], list[str]]:
@@ -314,6 +354,28 @@ def main() -> None:
             print(f"    {e}")
         print()
 
+    # 译文门禁 —— 放在这里而不是更早：无选项题与被折叠的重复题都不进库，
+    # 不该因为它们缺译文而拦下整批。
+    #
+    # 展示语言：spec 声明了 translation 就用译文的语言，否则用素材语言。
+    # locale 归一到主语言（zh-CN → zh），与库里既有的 explanation.locale 对齐 ——
+    # 同一个库里混用 zh 和 zh-CN 会让按语言取内容的查询悄悄漏掉一半。
+    tr_spec = spec.get("translation") or {}
+    if tr_spec:
+        tr_errs = check_translations(qs)
+        if tr_errs:
+            print(f"✗ 本题库声明了 translation（{tr_spec.get('locale')}），但有 {len(tr_errs)} 处缺失：")
+            for e in tr_errs[:20]:
+                print(f"    {e}")
+            if len(tr_errs) > 20:
+                print(f"    …… 另有 {len(tr_errs) - 20} 处")
+            sys.exit("  ⛔ 拒绝导入 —— 缺译文不得静默回退到原文")
+        display_locale = (tr_spec.get("locale") or "zh").split("-")[0]
+        print(f"✓ 译文      {len(qs)} 题齐备，题面按 {display_locale} 导入"
+              f"（素材语言 {doc['bank'].get('locale')}）\n")
+    else:
+        display_locale = doc["bank"].get("locale", "zh")
+
     conn = mysql.connect(**parse_go_dsn(args.dsn), charset="utf8mb4", autocommit=False)
     ld = Loader(conn)
     # bank.meta = 题库的自描述展示元数据：标签轴叫什么、考纲权重、及格线。
@@ -328,7 +390,7 @@ def main() -> None:
         "passScore": spec.get("pass_score"),
         "maxScore": spec.get("max_score"),
         "domains": spec.get("domains", {}),
-    })
+    }, display_locale)
     qmap = ld.upsert_questions(bank_id, qs)
     n_ch = ld.upsert_choices(qmap, qs)
     n_cl = ld.upsert_claims(qmap, qs)
