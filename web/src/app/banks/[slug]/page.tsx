@@ -119,6 +119,9 @@ export default async function BankPage({
     .sort((a, b) => a.t.value.localeCompare(b.t.value));
 
   const tiles = [
+    // ⚠️「该复习的」排在最前：它是有时效的 —— 错过复习窗口补不回来，
+    // 而「做错的 / 没做过的」永远在那里等着。顺序本身就是一句建议。
+    { key: "due", label: MODE_LABEL.due, n: progress.dueCount, hint: "记忆快要衰减，先做这些", dot: "var(--color-cta)", href: `/banks/${slug}/drill?mode=due` },
     { key: "wrong", label: MODE_LABEL.wrong, n: progress.wrongCount, hint: "最近一次做错", dot: "var(--color-warn)", href: `/banks/${slug}/drill?mode=wrong` },
     { key: "unsure", label: MODE_LABEL.unsure, n: progress.unsureCount, hint: "自评「模糊」或「不会」", dot: "var(--color-src-bank)", href: `/banks/${slug}/drill?mode=unsure` },
     { key: "unseen", label: MODE_LABEL.unseen, n: unseen, hint: "按题号顺序", dot: "var(--color-muted)", href: `/banks/${slug}/drill?mode=unseen` },

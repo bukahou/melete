@@ -425,7 +425,7 @@ components:
   schemas:
     Progress:
       type: object
-      required: [bankSlug, questionCount, seenCount, correctCount, wrongCount, unsureCount, attemptCount]
+      required: [bankSlug, questionCount, seenCount, correctCount, wrongCount, unsureCount, attemptCount, dueCount]
       properties:
         bankSlug:     { type: string }
         questionCount: { type: integer, description: 题库总题数 }
@@ -434,6 +434,13 @@ components:
         wrongCount:   { type: integer, description: 最近一次作答为错的题数 }
         unsureCount:  { type: integer, description: 最近一次自评 ≤2 的题数 }
         attemptCount: { type: integer, description: 总作答次数（含重做） }
+        dueCount:
+          type: integer
+          description: |
+            FSRS 复习队列里已到期的题数。
+            ⚠️ **不含从没做过的题** —— 那些题没有卡片，属于「没做过」入口。
+            两者混进一个数字，「今天要复习 300 题」就失去意义了，
+            而那正是间隔重复最劝退的失败模式。
         lastActiveAt: { type: string, format: date-time }
 
     TagStat:

@@ -295,6 +295,7 @@ func (s *Server) GetMyProgress(ctx context.Context, req api.GetMyProgressRequest
 		BankSlug: p.BankSlug, QuestionCount: p.QuestionCount, SeenCount: p.SeenCount,
 		CorrectCount: p.CorrectCount, WrongCount: p.WrongCount,
 		UnsureCount: p.UnsureCount, AttemptCount: p.AttemptCount,
+		DueCount: p.DueCount,
 	}
 	if p.LastActiveAt.Valid {
 		t := p.LastActiveAt.Time

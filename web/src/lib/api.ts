@@ -16,10 +16,10 @@ import "server-only";
 // 类型必须用 `export type` 显式列出：isolatedModules 下 `export *` 不透传类型。
 export type {
   Bank, BankDetail, Tag, QuestionSummary, QuestionDetail, QuestionPage,
-  AnswerClaim, Choice, Reference, AttemptResult, DrillMode,
+  AnswerClaim, Choice, Reference, AttemptResult, ScheduleResult, DrillMode,
   Progress, TagStat, Resume, FocusCursor, DrillContext, Overview, StudySession,
 } from "./claims";
-export { SOURCE_LABEL, voteDistribution, hasDisagreement } from "./claims";
+export { SOURCE_LABEL, voteDistribution, hasDisagreement, DRILL_MODES, parseDrillMode } from "./claims";
 
 import type {
   Bank, BankDetail, Tag, QuestionDetail, QuestionPage, AttemptResult, DrillMode,

@@ -1,5 +1,6 @@
 /** 学习模式的显示名（通用，不含题库词）。 */
 export const MODE_LABEL: Record<string, string> = {
+  due: "该复习的",
   unseen: "没做过的",
   wrong: "做错的",
   unsure: "不确定的",

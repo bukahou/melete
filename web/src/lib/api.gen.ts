@@ -344,6 +344,13 @@ export interface components {
             unsureCount: number;
             /** @description 总作答次数（含重做） */
             attemptCount: number;
+            /**
+             * @description FSRS 复习队列里已到期的题数。
+             *     ⚠️ **不含从没做过的题** —— 那些题没有卡片，属于「没做过」入口。
+             *     两者混进一个数字，「今天要复习 300 题」就失去意义了，
+             *     而那正是间隔重复最劝退的失败模式。
+             */
+            dueCount: number;
             /** Format: date-time */
             lastActiveAt?: string;
         };
@@ -431,7 +438,7 @@ export interface components {
         /** @description 一次作答的出处 —— 用户是从哪个入口做的这道题 */
         DrillContext: {
             /** @enum {string} */
-            mode: "all" | "unseen" | "wrong" | "unsure" | "contested" | "tag";
+            mode: "all" | "unseen" | "wrong" | "unsure" | "contested" | "tag" | "due";
             /**
              * Format: int64
              * @description mode=tag 时必填
@@ -452,6 +459,39 @@ export interface components {
             /** @description 服务端按参考答案判定 */
             correct: boolean;
             reference?: components["schemas"]["Reference"];
+            schedule?: components["schemas"]["ScheduleResult"];
+        };
+        /**
+         * @description 这次作答之后的记忆调度结果（FSRS）。
+         *
+         *     **自评的可信度纠正**：`rating` 是用户按下的键、原样落进 attempt 表；
+         *     `effectiveRating` 是实际喂给调度器的值。两者不同时 `reasons` 说明为什么 ——
+         *     ⛔ 界面必须把理由显示出来，不得偷偷改调度。
+         *     这与三方答案主张并列展示是同一条哲学：不替学习者下结论，把分歧摆出来。
+         *
+         *     当前的纠正规则：
+         *     · 答错却自评「掌握 / 轻松」→ 压到 1（作答顺序是【揭晓之后】才自评，
+         *       答案就在眼前，不存在「只是没算准」的解释空间）
+         *     · 答对但用时短到读不完题面 → 压到 2（答对了，但这次答对提供不了「你会」的证据）
+         *     · 没有任何答案主张的题（题库里 6 道）→ 不纠正，判不了对错就不拿对错说事
+         */
+        ScheduleResult: {
+            /** @description 用户按下的自评键 */
+            rating: number;
+            /** @description 实际用于调度的评分，只会 ≤ rating */
+            effectiveRating: number;
+            /** @description 纠正理由，未纠正时为空数组 */
+            reasons: string[];
+            /**
+             * Format: date-time
+             * @description 这道题下次该出现的时间（UTC）
+             */
+            due: string;
+            /**
+             * @description 调度后的卡片状态
+             * @enum {string}
+             */
+            state: "new" | "learning" | "review" | "relearning";
         };
         /**
          * @description 判对错用的参考答案。优先级 ai_verdict > community_vote > bank_label ——
@@ -1048,11 +1088,16 @@ export interface operations {
                 /** @description 只返回已完成 AI 富化的题 */
                 enriched?: boolean;
                 /**
-                 * @description 学习模式过滤（wrong/unsure/unseen 需要 X-Melete-Account 头）：
+                 * @description 学习模式过滤（全部需要会话，账号取自 JWT 而非请求参数）：
                  *     wrong = 最近一次作答是错的；unsure = 最近一次自评 rating ≤ 2；
-                 *     unseen = 从未作答。账号取自会话 JWT，非请求参数
+                 *     unseen = 从未作答；
+                 *     due = FSRS 复习队列，卡片已到期。
+                 *
+                 *     ⚠️ due 与 unseen 互斥且不重叠：没做过的题没有卡片，不算「到期」。
+                 *     两者混进一个数字会让「今天要复习 300 题」失去意义。
+                 *     ⚠️ due 按【到期时间】升序返回，其余模式按原题号 —— 复习队列不是浏览列表。
                  */
-                mode?: "wrong" | "unsure" | "unseen";
+                mode?: "wrong" | "unsure" | "unseen" | "due";
                 limit?: number;
                 offset?: number;
             };

@@ -27,15 +27,27 @@ const (
 	RatingEasy  = int(fsrs.Easy)  // 4 轻松
 )
 
-// readingCharsPerMinute 读题速度下界，用来判断「这个用时根本读不完题面」。
+// scanCharsPerMinute 是「至少扫了一眼题面」的速度上界，用来判断
+// 「这个用时根本【看都没看】题面」。
 //
-// ⚠️ 200 字/分是【保守取值】：常见中文阅读速度是 300-400 字/分，取 200
-// 意味着宁可漏判也不误判 —— 误判会惩罚一个认真答题的人，而漏判只是少纠正一次。
+// ⚠️ 2026-09-04 订正了一个方向性错误。原值 200 字/分，注释写的是
+// 「保守取值，宁可漏判也不误判」—— 方向反了：
 //
-// ⚠️ 它不是从本项目数据测出来的，是常识值。等真实作答积累起来之后，
-// 应该用【答对且自评 ≥3 的那批作答】的用时分布回头校准这个数 ——
-// 那批人最可能是真读了题的。校准前不要把它当成实测结论。
-const readingCharsPerMinute = 200
+//	字/分取得越【低】→ 要求的时间越【长】→ 误判越【多】
+//
+// 开发库里唯一一条真实作答当场证伪了它：359 字的题面用时 30.3 秒
+// （= 711 字/分，完全正常的中文阅读速度），却被规则②判成「读不完」。
+// ⚠️ 而全部单测都没抓到 —— 测试里的数值和这个常量出自同一个错误假设，
+// 一起错就一起对。这是本项目反复出现的那个形状的又一例。
+//
+// 现在的口径不是「读完」而是「有没有看」：这条规则要抓的是 2-4 秒的作答，
+// 不是「读得比我想象的快」。1200 字/分 = 20 字/秒，快到不可能是在阅读，
+// 于是：SAA 平均题面 394 字 → 20 秒，SAP 平均 1474 字 → 74 秒。
+//
+// ⚠️ 它仍然不是从数据测出来的。等真实作答积累起来，应该用
+// 【答对且自评 ≥3】那批作答的用时分布回头校准 —— 那批人最可能真读了题。
+// 校准之前不要把它当成实测结论。
+const scanCharsPerMinute = 1200
 
 // Correction 是一次评分纠正的完整说明。
 //
@@ -100,7 +112,7 @@ func EffectiveRating(raw int, s Signals) Correction {
 	// 判成彻底失败会让正常的快速复习（真的熟了）被误伤。
 	if s.Correct && s.DurationMs != nil && s.StemChars > 0 {
 		if floor := minReadMs(s.StemChars); *s.DurationMs < floor {
-			cap(RatingHard, fmt.Sprintf("用时 %.1f 秒，读完 %d 字的题面至少要 %.0f 秒",
+			cap(RatingHard, fmt.Sprintf("用时 %.1f 秒，%d 字的题面扫一眼也要 %.0f 秒",
 				float64(*s.DurationMs)/1000, s.StemChars, float64(floor)/1000))
 		}
 	}
@@ -108,7 +120,7 @@ func EffectiveRating(raw int, s Signals) Correction {
 	return c
 }
 
-// minReadMs 读完 n 个字的时间下界（毫秒）。
+// minReadMs 扫过 n 个字所需时间的下界（毫秒）。
 func minReadMs(chars int) int {
-	return chars * 60_000 / readingCharsPerMinute
+	return chars * 60_000 / scanCharsPerMinute
 }

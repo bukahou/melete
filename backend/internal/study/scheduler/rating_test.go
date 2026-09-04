@@ -10,12 +10,12 @@ func ms(v int) *int { return &v }
 func TestEffectiveRating(t *testing.T) {
 	// ⚠️ 下界写成【绝对常量】，不由 readingCharsPerMinute 算出。
 	//
-	// 第一版写的是 `floor = stem * 60_000 / readingCharsPerMinute` ——
-	// 基准取自被检查的对象，于是把速度从 200 改成 2000 字/分（十倍宽松，
+	// 第一版写的是 `floor = stem * 60_000 / scanCharsPerMinute` ——
+	// 基准取自被检查的对象，于是把速度改成十倍宽松（
 	// 等于规则②基本失效）测试照样全绿。2026-09-04 变异测试实测过。
 	// 绝对常量不由被检查项导出，改动它必然有测试变红。
-	const stem = 1000     // 题面 1000 字
-	const floor = 300_000 // 按 200 字/分读完要 5 分钟
+	const stem = 1000    // 题面 1000 字
+	const floor = 50_000 // 按 1200 字/分扫一遍要 50 秒
 
 	cases := []struct {
 		name    string
@@ -39,8 +39,12 @@ func TestEffectiveRating(t *testing.T) {
 			Signals{Correct: true, HasReference: true, DurationMs: ms(floor + 1), StemChars: stem}, RatingAgain, ""},
 
 		// ── 规则② 用时不足 ────────────────────────────────────────
-		{"答对但 4 秒读不完题面 → 压到模糊", RatingEasy,
-			Signals{Correct: true, HasReference: true, DurationMs: ms(4_000), StemChars: stem}, RatingHard, "读完"},
+		{"答对但 4 秒连扫一眼都不够 → 压到模糊", RatingEasy,
+			Signals{Correct: true, HasReference: true, DurationMs: ms(4_000), StemChars: stem}, RatingHard, "扫一眼"},
+		// ⚠️ 开发库里那条真实作答：359 字用时 30.3 秒（= 711 字/分，正常阅读速度）。
+		// 旧口径（200 字/分 → 要求 107.7 秒）把它误判成「读不完」。这条守着不再犯。
+		{"359 字用时 30 秒是正常阅读速度 → 不该判", RatingGood,
+			Signals{Correct: true, HasReference: true, DurationMs: ms(30_300), StemChars: 359}, RatingGood, ""},
 		{"答对且用时充足 → 不纠正", RatingEasy,
 			Signals{Correct: true, HasReference: true, DurationMs: ms(floor), StemChars: stem}, RatingEasy, ""},
 		// ⚠️ 这条必须用 raw=4 且 HasReference=false 才有鉴别力：
@@ -110,10 +114,11 @@ func TestEffectiveRatingNeverRaises(t *testing.T) {
 // 改它等于改变整条规则的松紧，必须有测试挡着。
 func TestMinReadMs(t *testing.T) {
 	for _, c := range []struct{ chars, wantMs int }{
-		{200, 60_000},   // 200 字 = 1 分钟
-		{1000, 300_000}, // 1000 字 = 5 分钟
-		{1474, 442_200}, // SAP 平均题面（题干 597 + 选项 877）≈ 7.4 分钟
-		{394, 118_200},  // SAA 平均题面（题干 147 + 选项 247）≈ 2 分钟
+		{1200, 60_000}, // 1200 字 = 1 分钟
+		{1000, 50_000}, // 1000 字 = 50 秒
+		{1474, 73_700}, // SAP 平均题面（题干 597 + 选项 877）≈ 74 秒
+		{394, 19_700},  // SAA 平均题面（题干 147 + 选项 247）≈ 20 秒
+		{359, 17_950},  // 开发库那条真实作答的题面 —— 实际用时 30.3 秒，不该被判
 	} {
 		if got := minReadMs(c.chars); got != c.wantMs {
 			t.Errorf("minReadMs(%d) = %d，期望 %d —— 读题速度常量被改了？", c.chars, got, c.wantMs)

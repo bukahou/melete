@@ -25,6 +25,11 @@ import (
 //	mysql -h 127.0.0.1 -P 13307 -uroot -pt melete < db/schema.sql
 //	MELETE_TEST_DSN='root:t@tcp(127.0.0.1:13307)/melete?parseTime=true&loc=UTC&time_zone=%27%2B00%3A00%27' \
 //	  go test ./internal/study/ -run Integration -v
+//
+//	⛔ 多个包一起跑必须加 -p 1：
+//	   各包的 fixture 都会 DELETE 全表，共用同一个库时并行会互相踩。
+//	   （go test 默认按包并行，实测 study 与 question 一起跑必然有一个红。）
+//	   go test -p 1 ./internal/... 才对。
 func openTestDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 	dsn := os.Getenv("MELETE_TEST_DSN")
@@ -283,6 +288,89 @@ func TestCorrectionActuallyDrivesSchedulingIntegration(t *testing.T) {
 		t.Errorf("⛔ 卡片是按【原始评分】排的（S=%.4f，Again 应为 %.4f、Good 是 %.4f）"+
 			" —— 纠正没有作用到调度上", got.Stability, asAgain.Stability, asGood.Stability)
 	}
+}
+
+// LoadProgress 的 dueCount —— 首页那个「该复习 N 题」的数据来源。
+//
+// ⚠️ 这条是补上来的：加 due_count 那次只验了编译。多出来的占位符绑错位置
+// 不会报错，只会让数字莫名其妙 —— 而首页上一个错的数字没人看得出它是错的。
+func TestLoadProgressDueCountIntegration(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+	acct, qid := fixture(t, db, "短题面")
+	svc := NewService(db, question.NewMySQLRepository(db))
+
+	// ⚠️ 同时断言【其它字段】。LoadProgress 有 4 个占位符，
+	// 只断言 dueCount 的话，占位符整体错位（把 slug 绑到 latestAttempt 的
+	// account_id 上）会让 seen/correct/wrong 全变 0 而 dueCount 恰好还对 ——
+	// 2026-09-04 变异测试实测：那个变异在只查 dueCount 的版本下完全不红。
+	must := func(wantDue, wantSeen int, when string) {
+		t.Helper()
+		p, err := svc.LoadProgress(ctx, acct, "t-bank")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.DueCount != wantDue {
+			t.Errorf("%s：dueCount = %d，期望 %d", when, p.DueCount, wantDue)
+		}
+		if p.SeenCount != wantSeen {
+			t.Errorf("%s：seenCount = %d，期望 %d（占位符错位会打乱这一组）",
+				when, p.SeenCount, wantSeen)
+		}
+		if p.QuestionCount != 1 {
+			t.Errorf("%s：questionCount = %d，期望 1（本题库只有一道题）",
+				when, p.QuestionCount)
+		}
+	}
+
+	// ⚠️ 另建一个题库并给它一张到期卡片：统计必须按题库隔离。
+	// 没有第二个题库，「漏掉 bank_id 条件」这个缺陷测不出来 ——
+	// 单题库时期所有跨题库缺陷都是隐形的（首页 500 那次就是这么来的）。
+	rb, err := db.Exec(`INSERT INTO bank (slug,name,locale,kind) VALUES ('t-other','另一个','zh','cert')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherBank, _ := rb.LastInsertId()
+	rq, err := db.Exec(`INSERT INTO question (bank_id,external_no,stem,kind,pick_count)
+	                    VALUES (?,1,'别的题','single',1)`, otherBank)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherQ, _ := rq.LastInsertId()
+	if _, err := db.Exec(`
+		INSERT INTO card (account_id,question_id,state,due,stability,difficulty,reps,lapses)
+		VALUES (?,?,2, UTC_TIMESTAMP() - INTERVAL 5 DAY, 1,5,1,0)`, acct, otherQ); err != nil {
+		t.Fatal(err)
+	}
+
+	must(0, 0, "还没做过任何题（另一个题库那张到期卡片不得计入）")
+
+	if _, err := svc.RecordAttempt(ctx, Attempt{
+		AccountID: acct, QuestionID: qid, Chosen: "A", Rating: scheduler.RatingGood,
+		DurationMs: ptr(600_000),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	must(0, 1, "刚做完，下次到期在未来")
+
+	if _, err := db.Exec(`UPDATE card SET due = UTC_TIMESTAMP() - INTERVAL 1 DAY
+	                      WHERE account_id=? AND question_id=?`, acct, qid); err != nil {
+		t.Fatal(err)
+	}
+	must(1, 1, "把 due 拨到过去")
+
+	// ⛔ 别人的到期卡片不得计入我的数字
+	r, err := db.Exec(`INSERT INTO account (akasha_sub,display) VALUES ('other','别人')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _ := r.LastInsertId()
+	if _, err := db.Exec(`
+		INSERT INTO card (account_id,question_id,state,due,stability,difficulty,reps,lapses)
+		VALUES (?,?,2, UTC_TIMESTAMP() - INTERVAL 9 DAY, 1,5,1,0)`, other, qid); err != nil {
+		t.Fatal(err)
+	}
+	must(1, 1, "别人也有一张到期卡片")
 }
 
 func ptr(v int) *int { return &v }

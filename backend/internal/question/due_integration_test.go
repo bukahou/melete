@@ -15,6 +15,8 @@ import (
 // ⚠️ 这条查询里的占位符顺序是【最容易静默出错】的地方：排序表达式带一个
 // account_id 参数，它必须排在 LIMIT/OFFSET 之前。顺序错了 SQL 照样执行，
 // 只是把 account_id 当成 LIMIT —— 不报错，只是返回条数莫名其妙。
+// ⛔ 与 study 包共用同一个测试库且都会 DELETE 全表 ——
+// 多包一起跑必须 `go test -p 1`，否则并行时必然互相踩。
 func openDueTestDB(t *testing.T) *sqlx.DB {
 	t.Helper()
 	dsn := os.Getenv("MELETE_TEST_DSN")

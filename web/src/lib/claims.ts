@@ -21,8 +21,18 @@ export type AnswerClaim = components["schemas"]["AnswerClaim"];
 export type Choice = components["schemas"]["Choice"];
 export type Reference = components["schemas"]["Reference"];
 export type AttemptResult = components["schemas"]["AttemptResult"];
+export type ScheduleResult = components["schemas"]["ScheduleResult"];
 
-export type DrillMode = "wrong" | "unsure" | "unseen";
+// ⚠️ 合法值与类型出自同一份数组 —— 曾经是「类型一处、运行时白名单另一处」，
+// 加 due 时类型改了而白名单没改，结果是 mode=due 被静默丢弃、悄悄退回全部题目，
+// 不报错也没有任何症状。现在漏改一处会编译失败。
+export const DRILL_MODES = ["due", "wrong", "unsure", "unseen"] as const;
+export type DrillMode = (typeof DRILL_MODES)[number];
+
+/** parseDrillMode 把 URL 参数收敛成合法模式；非法值一律当作「没有模式」。 */
+export function parseDrillMode(raw: string | undefined): DrillMode | undefined {
+  return (DRILL_MODES as readonly string[]).includes(raw ?? "") ? (raw as DrillMode) : undefined;
+}
 export type Progress = components["schemas"]["Progress"];
 export type TagStat = components["schemas"]["TagStat"];
 export type Resume = components["schemas"]["Resume"];

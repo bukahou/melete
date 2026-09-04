@@ -530,7 +530,13 @@ type Progress struct {
 	BankSlug     string `json:"bankSlug"`
 
 	// CorrectCount 最近一次作答为对的题数
-	CorrectCount int        `json:"correctCount"`
+	CorrectCount int `json:"correctCount"`
+
+	// DueCount FSRS 复习队列里已到期的题数。
+	// ⚠️ **不含从没做过的题** —— 那些题没有卡片，属于「没做过」入口。
+	// 两者混进一个数字，「今天要复习 300 题」就失去意义了，
+	// 而那正是间隔重复最劝退的失败模式。
+	DueCount     int        `json:"dueCount"`
 	LastActiveAt *time.Time `json:"lastActiveAt,omitempty"`
 
 	// QuestionCount 题库总题数

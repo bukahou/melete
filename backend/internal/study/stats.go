@@ -12,14 +12,16 @@ import (
 
 // Progress 是一个账号在某题库上的总体进度。
 type Progress struct {
-	BankSlug      string       `db:"bank_slug"`
-	QuestionCount int          `db:"question_count"`
-	SeenCount     int          `db:"seen_count"`
-	CorrectCount  int          `db:"correct_count"`
-	WrongCount    int          `db:"wrong_count"`
-	UnsureCount   int          `db:"unsure_count"`
-	AttemptCount  int          `db:"attempt_count"`
-	LastActiveAt  sql.NullTime `db:"last_active_at"`
+	BankSlug      string `db:"bank_slug"`
+	QuestionCount int    `db:"question_count"`
+	SeenCount     int    `db:"seen_count"`
+	CorrectCount  int    `db:"correct_count"`
+	WrongCount    int    `db:"wrong_count"`
+	UnsureCount   int    `db:"unsure_count"`
+	AttemptCount  int    `db:"attempt_count"`
+	// DueCount 已到期、等着复习的题数（FSRS）。⛔ 不含从没做过的题。
+	DueCount     int          `db:"due_count"`
+	LastActiveAt sql.NullTime `db:"last_active_at"`
 }
 
 // TagStat 是某个标签下的正确率。
@@ -110,6 +112,11 @@ func (s *service) LoadProgress(ctx context.Context, accountID int64, slug string
 		  (SELECT COUNT(*) FROM attempt a2
 		     JOIN question q2 ON q2.id = a2.question_id AND q2.bank_id = b.id
 		   WHERE a2.account_id = ?)      AS attempt_count,
+		  -- FSRS 到期数。⚠️ 从没做过的题没有 card 行，不算到期 —— 它属于
+		  -- 「没做过」那个入口。两者混进一个数字，「今天要复习 300 题」就没有意义。
+		  (SELECT COUNT(*) FROM card c
+		     JOIN question q3 ON q3.id = c.question_id AND q3.bank_id = b.id
+		   WHERE c.account_id = ? AND c.due <= UTC_TIMESTAMP()) AS due_count,
 		  agg.last_active_at
 		FROM bank b
 		LEFT JOIN (
@@ -119,11 +126,11 @@ func (s *service) LoadProgress(ctx context.Context, accountID int64, slug string
 		         SUM(la.correct = 0)      AS wrong_count,
 		         SUM(la.rating <= 2)      AS unsure_count,
 		         MAX(la.created_at)       AS last_active_at
-		  FROM (` + latestAttempt + `) la
+		  FROM (`+latestAttempt+`) la
 		  JOIN question q ON q.id = la.question_id
 		  GROUP BY q.bank_id
 		) agg ON agg.bank_id = b.id
-		WHERE b.slug = ?`, accountID, accountID, slug)
+		WHERE b.slug = ?`, accountID, accountID, accountID, slug)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

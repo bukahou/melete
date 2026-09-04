@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Play } from "lucide-react";
+import { ArrowRight, Play, RotateCcw } from "lucide-react";
 import {
   getBank,
   getMyOverview,
@@ -46,6 +46,7 @@ function Card({ bank, progress, resume }: BankCard) {
   const focus = resume.focus;
   const level = levelOf(meta, bank.name);
   const unseen = total - progress.seenCount;
+  const due = progress.dueCount;
 
   return (
     <article className={`overflow-hidden rounded-lg border border-line bg-raise transition-colors hover:border-muted ${fresh ? "fresh" : ""}`}>
@@ -129,14 +130,26 @@ function Card({ bank, progress, resume }: BankCard) {
 
       {/* 动作行 */}
       <div className="grid items-center gap-4 px-7 pb-6 pt-5 sm:grid-cols-[auto_1fr_auto]">
-        <div className="flex gap-2.5">
+        <div className="flex flex-wrap gap-2.5">
+          {/* 有题到期时，复习是主行动 —— 间隔重复的全部意义就是「先做快忘的」。
+              新题永远做得完，而错过的复习窗口补不回来。 */}
+          {due > 0 && (
+            <Link href={`/banks/${slug}/drill?mode=due`} className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-[0.9rem] font-semibold" style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}>
+              <RotateCcw size={13} />
+              复习 {due} 题
+            </Link>
+          )}
           {seq.questionId != null && (
-            <Link href={`/banks/${slug}/drill?mode=unseen`} className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-[0.9rem] font-semibold" style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}>
+            <Link
+              href={`/banks/${slug}/drill?mode=unseen`}
+              className={`inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-[0.9rem] font-semibold ${due > 0 ? "border border-ink" : ""}`}
+              style={due > 0 ? undefined : { background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
+            >
               <Play size={12} />
               {fresh ? `开始 #${seq.externalNo}` : `继续 #${seq.externalNo}`}
             </Link>
           )}
-          {focus && (
+          {focus && due === 0 && (
             <Link href={focusHref(slug, focus.context)} className="inline-flex items-center gap-2 rounded-md border border-ink px-5 py-2.5 text-[0.9rem] font-semibold">
               继续 {focus.tag ? tagName(focus.tag) : MODE_LABEL[focus.context.mode]}
             </Link>
@@ -146,6 +159,9 @@ function Card({ bank, progress, resume }: BankCard) {
           <span>做错<b className="display ml-1 text-base text-ink">{progress.wrongCount}</b></span>
           <span>不确定<b className="display ml-1 text-base text-ink">{progress.unsureCount}</b></span>
           <span>没做过<b className="display ml-1 text-base text-ink">{unseen}</b></span>
+          {/* ⚠️ 到期与「没做过」是两个不相交的集合：没做过的题没有卡片，不算到期。
+              合成一个数字会让「今天要复习 300 题」失去意义 —— 那是间隔重复最劝退的失败模式。 */}
+          <span>该复习<b className="display ml-1 text-base" style={{ color: due > 0 ? "var(--color-warn)" : undefined }}>{due}</b></span>
         </div>
         <Link href={`/banks/${slug}`} className="inline-flex items-center gap-1 text-[0.88rem] text-src-community">
           进入学习台 <ArrowRight size={14} />

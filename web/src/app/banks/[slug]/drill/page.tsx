@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertTriangle, ArrowLeft, ArrowRight, ExternalLink } from "lucide-react";
-import { ApiError, getQuestion, listQuestions, type DrillContext, type DrillMode } from "@/lib/api";
+import { AlertTriangle, ArrowLeft, ExternalLink } from "lucide-react";
+import { ApiError, getQuestion, listQuestions, parseDrillMode, type DrillContext, type DrillMode } from "@/lib/api";
 import { ClaimsPanel } from "@/components/ClaimsPanel";
 import { DrillCard } from "@/components/DrillCard";
 import { Markdown } from "@/components/Markdown";
@@ -16,6 +16,7 @@ type Search = {
 };
 
 const MODE_TITLE: Record<DrillMode, string> = {
+  due: "今日复习",
   wrong: "错题本",
   unsure: "不清楚的",
   unseen: "没做过的",
@@ -36,9 +37,7 @@ export default async function DrillPage({
 
   const index = Math.max(0, Number(sp.i ?? 0) || 0);
   const tags = (Array.isArray(sp.tag) ? sp.tag : sp.tag ? [sp.tag] : []).map(Number).filter(Boolean);
-  const mode = (["wrong", "unsure", "unseen"].includes(sp.mode ?? "") ? sp.mode : undefined) as
-    | DrillMode
-    | undefined;
+  const mode = parseDrillMode(sp.mode);
   const filters = {
     contested: sp.contested === "true",
     enriched: sp.enriched === "true",
@@ -65,11 +64,24 @@ export default async function DrillPage({
   };
 
   if (page.items.length === 0) {
+    // ⚠️ 复习队列空了是【好事】，不是「筛选条件没匹配到」——
+    // 同一个空结果，在不同入口下含义完全相反，文案不能共用。
+    const empty =
+      mode === "due"
+        ? page.total === 0
+          ? "今天的复习做完了"
+          : "这一批复习做完了"
+        : page.total === 0
+          ? "当前筛选条件下没有题目"
+          : "已经是最后一题了";
     return (
       <div className="space-y-5 pt-10 text-center">
-        <p className="display text-xl text-muted">
-          {page.total === 0 ? "当前筛选条件下没有题目" : "已经是最后一题了"}
-        </p>
+        <p className="display text-xl text-muted">{empty}</p>
+        {mode === "due" && page.total === 0 && (
+          <p className="text-sm text-muted">
+            没有到期的题。要往前推进，去做<Link href={`/banks/${slug}/drill?mode=unseen`} className="underline underline-offset-4" style={{ color: "var(--color-src-community)" }}>没做过的</Link>。
+          </p>
+        )}
         <Link
           href={`/banks/${slug}`}
           className="inline-flex items-center gap-1.5 text-sm transition-colors hover:text-ink"
@@ -81,6 +93,17 @@ export default async function DrillPage({
       </div>
     );
   }
+
+  // ⚠️ 这四个模式（due/wrong/unsure/unseen）的题目集合会随作答【缩短】
+  // ——做完就离开该集合。所以「答完之后的下一题」是 offset 0 而不是 offset+1，
+  // 后者会漏题且不报错。详见 DrillCard 的 nav 属性注释。
+  const shrinking = mode != null;
+  const nav = {
+    prevHref: index > 0 ? linkTo(index - 1) : undefined,
+    skipHref: index + 1 < page.total ? linkTo(index + 1) : undefined,
+    nextHref: page.total > 1 ? linkTo(0) : undefined,
+    shrinking,
+  };
 
   const q = await getQuestion(page.items[0].id);
   const reference = q.reference ?? null;
@@ -140,7 +163,7 @@ export default async function DrillPage({
         />
       </div>
 
-      <DrillCard questionId={q.id} stem={q.stem} choices={q.choices} pickCount={q.pickCount} reference={reference} context={context}>
+      <DrillCard questionId={q.id} stem={q.stem} choices={q.choices} pickCount={q.pickCount} reference={reference} context={context} nav={nav}>
         <ClaimsPanel claims={q.claims} />
         {q.explanations.map((e) => (
           <section key={`${e.source}-${e.locale}`}>
@@ -166,26 +189,6 @@ export default async function DrillPage({
         )}
       </DrillCard>
 
-      <nav className="flex items-center justify-between border-t border-line pt-6">
-        {index > 0 ? (
-          <Link href={linkTo(index - 1)} className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink">
-            <ArrowLeft size={15} />
-            上一题
-          </Link>
-        ) : (
-          <span />
-        )}
-        {index + 1 < page.total && (
-          <Link
-            href={linkTo(index + 1)}
-            className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium"
-            style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
-          >
-            下一题
-            <ArrowRight size={15} />
-          </Link>
-        )}
-      </nav>
     </div>
   );
 }
