@@ -178,3 +178,22 @@ func toAPISession(ss study.Session) api.StudySession {
 	}
 	return out
 }
+
+// toAPISchedule 把调度结果搬到契约类型。
+//
+// ⚠️ reasons 即便为空也返回空数组而不是 null —— 前端要能无条件 .map()，
+// 而 Go 的 nil slice 会被 encoding/json 编成 null。这类「空 vs 不存在」
+// 的差别在跨语言边界上最容易漏，而且不报错，只是界面上少一块。
+func toAPISchedule(r *study.Result) *api.ScheduleResult {
+	reasons := r.Correction.Reasons
+	if reasons == nil {
+		reasons = []string{}
+	}
+	return &api.ScheduleResult{
+		Rating:          r.Correction.Raw,
+		EffectiveRating: r.Correction.Effective,
+		Reasons:         reasons,
+		Due:             r.NextDue,
+		State:           api.ScheduleResultState(r.NextState.String()),
+	}
+}

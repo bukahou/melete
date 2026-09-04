@@ -344,10 +344,15 @@ paths:
         - name: mode
           in: query
           description: |
-            学习模式过滤（wrong/unsure/unseen 需要 X-Melete-Account 头）：
+            学习模式过滤（全部需要会话，账号取自 JWT 而非请求参数）：
             wrong = 最近一次作答是错的；unsure = 最近一次自评 rating ≤ 2；
-            unseen = 从未作答。账号取自会话 JWT，非请求参数
-          schema: { type: string, enum: [wrong, unsure, unseen] }
+            unseen = 从未作答；
+            due = FSRS 复习队列，卡片已到期。
+
+            ⚠️ due 与 unseen 互斥且不重叠：没做过的题没有卡片，不算「到期」。
+            两者混进一个数字会让「今天要复习 300 题」失去意义。
+            ⚠️ due 按【到期时间】升序返回，其余模式按原题号 —— 复习队列不是浏览列表。
+          schema: { type: string, enum: [wrong, unsure, unseen, due] }
 
         - name: limit
           in: query
@@ -509,7 +514,7 @@ components:
       description: 一次作答的出处 —— 用户是从哪个入口做的这道题
       required: [mode]
       properties:
-        mode:  { type: string, enum: [all, unseen, wrong, unsure, contested, tag] }
+        mode:  { type: string, enum: [all, unseen, wrong, unsure, contested, tag, due] }
         tagId: { type: integer, format: int64, description: mode=tag 时必填 }
 
     AttemptInput:
@@ -532,6 +537,33 @@ components:
       properties:
         correct: { type: boolean, description: 服务端按参考答案判定 }
         reference: { $ref: "#/components/schemas/Reference" }
+        schedule: { $ref: "#/components/schemas/ScheduleResult" }
+
+    ScheduleResult:
+      type: object
+      description: |
+        这次作答之后的记忆调度结果（FSRS）。
+
+        **自评的可信度纠正**：`rating` 是用户按下的键、原样落进 attempt 表；
+        `effectiveRating` 是实际喂给调度器的值。两者不同时 `reasons` 说明为什么 ——
+        ⛔ 界面必须把理由显示出来，不得偷偷改调度。
+        这与三方答案主张并列展示是同一条哲学：不替学习者下结论，把分歧摆出来。
+
+        当前的纠正规则：
+        · 答错却自评「掌握 / 轻松」→ 压到 1（作答顺序是【揭晓之后】才自评，
+          答案就在眼前，不存在「只是没算准」的解释空间）
+        · 答对但用时短到读不完题面 → 压到 2（答对了，但这次答对提供不了「你会」的证据）
+        · 没有任何答案主张的题（题库里 6 道）→ 不纠正，判不了对错就不拿对错说事
+      required: [rating, effectiveRating, reasons, due, state]
+      properties:
+        rating:          { type: integer, minimum: 1, maximum: 4, description: 用户按下的自评键 }
+        effectiveRating: { type: integer, minimum: 1, maximum: 4, description: 实际用于调度的评分，只会 ≤ rating }
+        reasons:
+          type: array
+          description: 纠正理由，未纠正时为空数组
+          items: { type: string }
+        due:   { type: string, format: date-time, description: 这道题下次该出现的时间（UTC） }
+        state: { type: string, enum: [new, learning, review, relearning], description: 调度后的卡片状态 }
 
     Reference:
       type: object

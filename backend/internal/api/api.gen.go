@@ -84,6 +84,7 @@ func (e BankDetailKind) Valid() bool {
 const (
 	DrillContextModeAll       DrillContextMode = "all"
 	DrillContextModeContested DrillContextMode = "contested"
+	DrillContextModeDue       DrillContextMode = "due"
 	DrillContextModeTag       DrillContextMode = "tag"
 	DrillContextModeUnseen    DrillContextMode = "unseen"
 	DrillContextModeUnsure    DrillContextMode = "unsure"
@@ -96,6 +97,8 @@ func (e DrillContextMode) Valid() bool {
 	case DrillContextModeAll:
 		return true
 	case DrillContextModeContested:
+		return true
+	case DrillContextModeDue:
 		return true
 	case DrillContextModeTag:
 		return true
@@ -191,6 +194,30 @@ func (e ReferenceSource) Valid() bool {
 	}
 }
 
+// Defines values for ScheduleResultState.
+const (
+	Learning   ScheduleResultState = "learning"
+	New        ScheduleResultState = "new"
+	Relearning ScheduleResultState = "relearning"
+	Review     ScheduleResultState = "review"
+)
+
+// Valid indicates whether the value is a known member of the ScheduleResultState enum.
+func (e ScheduleResultState) Valid() bool {
+	switch e {
+	case Learning:
+		return true
+	case New:
+		return true
+	case Relearning:
+		return true
+	case Review:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TagType.
 const (
 	TagTypeConcept TagType = "concept"
@@ -235,6 +262,7 @@ func (e TagStatType) Valid() bool {
 
 // Defines values for ListQuestionsParamsMode.
 const (
+	ListQuestionsParamsModeDue    ListQuestionsParamsMode = "due"
 	ListQuestionsParamsModeUnseen ListQuestionsParamsMode = "unseen"
 	ListQuestionsParamsModeUnsure ListQuestionsParamsMode = "unsure"
 	ListQuestionsParamsModeWrong  ListQuestionsParamsMode = "wrong"
@@ -243,6 +271,8 @@ const (
 // Valid indicates whether the value is a known member of the ListQuestionsParamsMode enum.
 func (e ListQuestionsParamsMode) Valid() bool {
 	switch e {
+	case ListQuestionsParamsModeDue:
+		return true
 	case ListQuestionsParamsModeUnseen:
 		return true
 	case ListQuestionsParamsModeUnsure:
@@ -341,6 +371,20 @@ type AttemptResult struct {
 	// 最不该被无条件信任的那个（38% 与社区投票不一致）。
 	// 仅用于给出反馈信号，界面仍并列展示全部主张。
 	Reference *Reference `json:"reference,omitempty"`
+
+	// Schedule 这次作答之后的记忆调度结果（FSRS）。
+	//
+	// **自评的可信度纠正**：`rating` 是用户按下的键、原样落进 attempt 表；
+	// `effectiveRating` 是实际喂给调度器的值。两者不同时 `reasons` 说明为什么 ——
+	// ⛔ 界面必须把理由显示出来，不得偷偷改调度。
+	// 这与三方答案主张并列展示是同一条哲学：不替学习者下结论，把分歧摆出来。
+	//
+	// 当前的纠正规则：
+	// · 答错却自评「掌握 / 轻松」→ 压到 1（作答顺序是【揭晓之后】才自评，
+	//   答案就在眼前，不存在「只是没算准」的解释空间）
+	// · 答对但用时短到读不完题面 → 压到 2（答对了，但这次答对提供不了「你会」的证据）
+	// · 没有任何答案主张的题（题库里 6 道）→ 不纠正，判不了对错就不拿对错说事
+	Schedule *ScheduleResult `json:"schedule,omitempty"`
 }
 
 // Bank defines model for Bank.
@@ -594,6 +638,40 @@ type Resume struct {
 	Sequential SequentialCursor `json:"sequential"`
 }
 
+// ScheduleResult 这次作答之后的记忆调度结果（FSRS）。
+//
+// **自评的可信度纠正**：`rating` 是用户按下的键、原样落进 attempt 表；
+// `effectiveRating` 是实际喂给调度器的值。两者不同时 `reasons` 说明为什么 ——
+// ⛔ 界面必须把理由显示出来，不得偷偷改调度。
+// 这与三方答案主张并列展示是同一条哲学：不替学习者下结论，把分歧摆出来。
+//
+// 当前的纠正规则：
+// · 答错却自评「掌握 / 轻松」→ 压到 1（作答顺序是【揭晓之后】才自评，
+//
+//	答案就在眼前，不存在「只是没算准」的解释空间）
+//
+// · 答对但用时短到读不完题面 → 压到 2（答对了，但这次答对提供不了「你会」的证据）
+// · 没有任何答案主张的题（题库里 6 道）→ 不纠正，判不了对错就不拿对错说事
+type ScheduleResult struct {
+	// Due 这道题下次该出现的时间（UTC）
+	Due time.Time `json:"due"`
+
+	// EffectiveRating 实际用于调度的评分，只会 ≤ rating
+	EffectiveRating int `json:"effectiveRating"`
+
+	// Rating 用户按下的自评键
+	Rating int `json:"rating"`
+
+	// Reasons 纠正理由，未纠正时为空数组
+	Reasons []string `json:"reasons"`
+
+	// State 调度后的卡片状态
+	State ScheduleResultState `json:"state"`
+}
+
+// ScheduleResultState 调度后的卡片状态
+type ScheduleResultState string
+
 // SequentialCursor questionId 缺省 = 题库已全部做过一遍
 type SequentialCursor struct {
 	// DoneCount 做过的题数（去重）
@@ -720,9 +798,14 @@ type ListQuestionsParams struct {
 	// Enriched 只返回已完成 AI 富化的题
 	Enriched *bool `form:"enriched,omitempty" json:"enriched,omitempty"`
 
-	// Mode 学习模式过滤（wrong/unsure/unseen 需要 X-Melete-Account 头）：
+	// Mode 学习模式过滤（全部需要会话，账号取自 JWT 而非请求参数）：
 	// wrong = 最近一次作答是错的；unsure = 最近一次自评 rating ≤ 2；
-	// unseen = 从未作答。账号取自会话 JWT，非请求参数
+	// unseen = 从未作答；
+	// due = FSRS 复习队列，卡片已到期。
+	//
+	// ⚠️ due 与 unseen 互斥且不重叠：没做过的题没有卡片，不算「到期」。
+	// 两者混进一个数字会让「今天要复习 300 题」失去意义。
+	// ⚠️ due 按【到期时间】升序返回，其余模式按原题号 —— 复习队列不是浏览列表。
 	Mode   *ListQuestionsParamsMode `form:"mode,omitempty" json:"mode,omitempty"`
 	Limit  *int                     `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *int                     `form:"offset,omitempty" json:"offset,omitempty"`

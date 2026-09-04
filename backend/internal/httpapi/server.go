@@ -262,6 +262,7 @@ func (s *Server) RecordAttempt(ctx context.Context, req api.RecordAttemptRequest
 	if res.Reference != nil {
 		out.Reference = toAPIReference(res.Reference)
 	}
+	out.Schedule = toAPISchedule(res)
 	return out, nil
 }
 

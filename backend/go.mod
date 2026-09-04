@@ -11,6 +11,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/oapi-codegen/runtime v1.7.0
+	github.com/open-spaced-repetition/go-fsrs/v3 v3.3.1
 	golang.org/x/crypto v0.55.0
 )
 
