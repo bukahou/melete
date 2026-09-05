@@ -1,0 +1,15 @@
+{
+  "bank_name": "ITパスポート試験（令和8年度公開問題）",
+  "locale": "ja",
+  "session": "2026r08",
+  "questions_pdf": "2026r08_ip_qs.pdf",
+  "answers_pdf": "2026r08_ip_ans.pdf",
+  "choice_labels": [
+    "ア",
+    "イ",
+    "ウ",
+    "エ"
+  ],
+  "first_content_page": 2,
+  "_note_first_content_page": "問1・問2 在第 2 页 —— 第 1 页是封面。2026-09-05 靠答案哨兵「答案里有但还没转写 [1,2,...]」发现的"
+}
