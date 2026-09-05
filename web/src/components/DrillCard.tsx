@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, Check, Eye, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, X } from "lucide-react";
 import { SOURCE_LABEL, type Choice, type DrillContext, type Reference, type ScheduleResult } from "@/lib/claims";
 import { QuestionBody } from "./QuestionBody";
 
@@ -64,15 +64,35 @@ export function DrillCard({
   children: React.ReactNode;
 }) {
   const [picked, setPicked] = useState<string[]>([]);
-  const [revealed, setRevealed] = useState(false);
   const [rated, setRated] = useState<number | null>(null);
   const [schedule, setSchedule] = useState<ScheduleResult | null>(null);
-  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
+  // ⚠️ expired 与 failed 分开：会话过期时重试【永远不会成功】，
+  // 而原来两者都显示「记录失败了，可以重试」—— 用户会反复点，
+  // 每一题都记不上，且完全不知道原因（刷了半小时白刷）。
+  const [saveState, setSaveState] =
+    useState<"idle" | "saving" | "saved" | "failed" | "expired">("idle");
   const startedAt = useRef(Date.now());
 
   const chosen = picked.join("");
   const correct = reference != null && chosen === reference.answer;
   const ready = picked.length === pickCount;
+
+  // ⭐ 选够即揭晓，没有单独的「揭晓」按钮。
+  //
+  // Anki 里翻面是必需的：正面没有选项，翻面【就是】你提交答案的动作。
+  // 而选择题里【选中已经是提交】—— 多选题选够 pickCount 那一刻答案就完整了。
+  // 那个按钮是在让人确认一件刚刚已经做过的事，是一次纯粹的形式，
+  // 而形式在「刷题」这种高频重复的动作里是实打实的摩擦。
+  // （2026-09-05 用户判断：「揭晓不属于刷题的感觉，会阻挡顺畅」。）
+  //
+  // ⚠️ 但【只有单选】自动揭晓。多选必须留一次确认：
+  //   单选：点下去【就是】提交，不存在「还没想好」的中间态
+  //   多选：选够 N 项 ≠ 我确认了 —— 你可能想换一项，而纸质考试也是能擦的
+  // QuestionBody 的 toggle 里有 `if (revealed) return`，所以一旦揭晓就锁死；
+  // 多选题若也自动揭晓，第二项点错就再也改不回来。
+  // ⚠️ 这是 2026-09-05 我自己在自动揭晓那一版里引入的回归，审查时逮到。
+  const [confirmed, setConfirmed] = useState(false);
+  const revealed = pickCount === 1 ? ready : confirmed;
 
   async function rate(rating: number) {
     if (saveState === "saving" || saveState === "saved") return;
@@ -93,8 +113,11 @@ export function DrillCard({
       if (res.ok) {
         const body = (await res.json().catch(() => null)) as { schedule?: ScheduleResult } | null;
         setSchedule(body?.schedule ?? null);
+        setSaveState("saved");
+      } else {
+        // 401 = 会话过期（BFF 在转发前先查了会话）。重试无用，只能重新登录。
+        setSaveState(res.status === 401 ? "expired" : "failed");
       }
-      setSaveState(res.ok ? "saved" : "failed");
     } catch {
       setSaveState("failed");
     }
@@ -113,18 +136,34 @@ export function DrillCard({
       />
 
       {!revealed ? (
-        <button
-          type="button"
-          disabled={!ready}
-          onClick={() => setRevealed(true)}
-          className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium transition-opacity disabled:opacity-35"
-          style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
-        >
-          <Eye size={15} />
-          {ready ? "揭晓" : pickCount > 1 ? `请选 ${pickCount} 项（已选 ${picked.length}）` : "请先作答"}
-        </button>
+        pickCount === 1 ? (
+          // 单选：没有需要点的东西，只提示
+          <p className="text-sm text-muted">选一个答案</p>
+        ) : (
+          // 多选：留一次确认，在此之前可以随意改选
+          <button
+            type="button"
+            disabled={!ready}
+            onClick={() => setConfirmed(true)}
+            className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium transition-opacity disabled:opacity-35"
+            style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
+          >
+            {ready ? `提交这 ${pickCount} 项` : `请选 ${pickCount} 项（已选 ${picked.length}）`}
+          </button>
+        )
       ) : (
         <>
+          {/* ⚠️ 6 道题一条答案主张都没有（素材本身的缺陷）。
+              原来这里是 `{reference && ...}` —— 没有参考答案时【什么都不显示】，
+              用户选完答案看不到任何反馈，会以为界面坏了。
+              判不了对错要明说，这跟「不偷偷改调度」是同一条：把状况摆出来。 */}
+          {!reference && (
+            <div className="rounded-md border border-line bg-raise p-4 text-sm text-muted"
+                 style={{ boxShadow: "inset 3px 0 0 var(--color-muted)" }}>
+              这道题没有任何答案来源，<b className="text-ink">无法判定对错</b> ——
+              素材里就缺，不是你选错了。自评仍会记录，但它不参与正确率统计。
+            </div>
+          )}
           {reference && (
             <div
               className="flex items-center gap-3 rounded-md border border-line bg-raise p-4 text-sm"
@@ -159,9 +198,27 @@ export function DrillCard({
                   ? nextLine(schedule)
                   : "已记录。这个自评会进入你的复习计划。"
                 : saveState === "failed"
-                  ? "记录失败了，可以重试。"
-                  : "这道题你答得怎么样？—— 自评决定它何时回到你的复习队列"}
+                  ? "记录失败了，再点一次自评可以重试。"
+                  : saveState === "expired"
+                    ? "登录已过期 —— 这一题没有记录下来。"
+                    : "这道题你答得怎么样？—— 自评决定它何时回到你的复习队列"}
             </p>
+            {saveState === "expired" && (
+              <div
+                className="mt-3 rounded-md border px-3 py-2.5 text-[0.8rem]"
+                style={{ borderColor: "var(--color-warn)",
+                         background: "color-mix(in oklab, var(--color-warn) 8%, transparent)" }}
+              >
+                <div className="font-semibold text-ink">重新登录后这一题需要再做一次</div>
+                <p className="mt-1 text-muted">
+                  ⚠️ 继续往下刷也不会被记录。
+                  <Link href="/auth/login" className="ml-1 underline underline-offset-4"
+                        style={{ color: "var(--color-src-community)" }}>
+                    去登录
+                  </Link>
+                </p>
+              </div>
+            )}
             {/* ⭐ 自评被下调时把理由摆出来，⛔ 不偷偷改调度。
                 与三方答案主张并列展示是同一条哲学：不替学习者下结论，把分歧摆出来。 */}
             {schedule && schedule.effectiveRating !== schedule.rating && (
@@ -186,7 +243,7 @@ export function DrillCard({
                   <button
                     key={r.value}
                     type="button"
-                    disabled={saveState === "saving" || saveState === "saved"}
+                    disabled={saveState === "saving" || saveState === "saved" || saveState === "expired"}
                     onClick={() => rate(r.value)}
                     className="rounded-md border py-2.5 text-center transition-all disabled:cursor-default"
                     style={{

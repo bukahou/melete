@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { AlertTriangle, ArrowLeft, ExternalLink } from "lucide-react";
+import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { ApiError, getQuestion, listQuestions, parseDrillMode, type DrillContext, type DrillMode } from "@/lib/api";
 import { ClaimsPanel } from "@/components/ClaimsPanel";
 import { DrillCard } from "@/components/DrillCard";
@@ -155,13 +155,13 @@ export default async function DrillPage({
             答案有分歧
           </span>
         )}
-        <Link
-          href={`/questions/${q.id}`}
-          className="ml-auto inline-flex items-center gap-1 text-xs text-muted transition-colors hover:text-ink"
-        >
-          详情页
-          <ExternalLink size={12} />
-        </Link>
+        {/* ⛔ 这里曾经有一个「详情页」链接，已删。
+            理由不是它不好，是它在刷题流里【什么都不提供】：详情页渲染的是
+            QuestionBody + ClaimsPanel + 解析 + 标签 —— 与揭晓后完全相同，
+            只是少了自评。点进去看不到新东西，而它头上的 ← 会把你扔到学习台，
+            刷题位置全丢。⚠️ 一个内容为零、代价是丢失位置的出口 = 陷阱。
+            详情页本身保留（错题本 / 标签列表 / 分享单题的固定链接要用），
+            只是不该出现在刷题过程中。2026-09-05 用户实测报告。 */}
       </header>
 
       {/* 进度条：hairline 轨道 + 墨色进度（dataviz：数据是唯一允许大声的东西） */}

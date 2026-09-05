@@ -75,8 +75,14 @@ type drillContext struct {
 	TagID *int64 `json:"tagId,omitempty"`
 }
 
-// sequentialModes 视同「顺序刷」的出处：不构成专项。
-var sequentialModes = map[string]bool{"unseen": true, "all": true, "": true}
+// sequentialModes 不构成「上次专项」的出处。
+//
+// ⚠️ due 也在里面，虽然它不是「顺序刷」——
+// 复习队列在首页与学习台都有【独立且更醒目】的入口（「复习 N 题」），
+// 若它也算专项，每复习一轮「上次专项」就变成「该复习的」，
+// 把你真正在攻的那个专项挤掉，而且与旁边的复习入口重复。
+// ⛔「上次专项」要回答的是「我上次在攻哪一块」，复习队列不回答这个。
+var sequentialModes = map[string]bool{"unseen": true, "all": true, "due": true, "": true}
 
 // latestAttempt 取每题的最近一次作答。
 //
