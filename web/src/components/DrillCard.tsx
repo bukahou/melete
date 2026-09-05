@@ -226,8 +226,19 @@ function DrillNav({
   nav: { prevHref?: string; skipHref?: string; nextHref?: string; shrinking: boolean };
   answered: boolean;
 }) {
-  const forward = nav.shrinking && answered ? nav.nextHref : nav.skipHref;
-  const label = nav.shrinking && !answered ? "跳过" : "下一题";
+  // ⛔⛔ 未自评时【不能】把前进按钮做成主 CTA。
+  //
+  // 2026-09-05 实测的后果：用户选完答案、看到揭晓，按钮已经是个醒目的
+  // 主色块写着「跳过」—— 看起来就是前进的路，点下去这道题**从未被记录**，
+  // FSRS 拿不到任何信号。当天浏览了一轮，attempt 表一条都没多。
+  //
+  // ⚠️ 问题不在文案而在【视觉权重】：把丢弃这道题的动作做得比记录它更醒目。
+  // 现在未评分时它是一个安静的文字链接，并明写「不记录」。
+  // ⚠️ 只有【会缩短的集合】才用 nextHref（它指向 offset 0）。
+  // 普通浏览（无 mode）的下一题永远是 offset+1 —— 那种列表不会缩短。
+  // 第一版写成 `nextHref ?? skipHref`，于是普通浏览也跳去了 offset 0。
+  const skipping = nav.shrinking && !answered;
+  const forward = nav.shrinking ? (answered ? nav.nextHref : nav.skipHref) : nav.skipHref;
   if (!nav.prevHref && !forward) return null;
   return (
     <nav className="flex items-center justify-between border-t border-line pt-6">
@@ -240,14 +251,25 @@ function DrillNav({
         <span />
       )}
       {forward && (
-        <Link
-          href={forward}
-          className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium"
-          style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
-        >
-          {label}
-          <ArrowRight size={15} />
-        </Link>
+        skipping ? (
+          <Link
+            href={forward}
+            className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink"
+            title="不做自评就前进，这道题不会进入复习计划"
+          >
+            跳过（不记录）
+            <ArrowRight size={14} />
+          </Link>
+        ) : (
+          <Link
+            href={forward}
+            className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium"
+            style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
+          >
+            下一题
+            <ArrowRight size={15} />
+          </Link>
+        )
       )}
     </nav>
   );

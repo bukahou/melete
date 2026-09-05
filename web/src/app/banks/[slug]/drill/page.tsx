@@ -12,6 +12,7 @@ type Search = {
   contested?: string;
   enriched?: string;
   mode?: string;
+  done?: string;
   tag?: string | string[];
 };
 
@@ -36,6 +37,7 @@ export default async function DrillPage({
   const sp = await searchParams;
 
   const index = Math.max(0, Number(sp.i ?? 0) || 0);
+  const done = Math.max(0, Number(sp.done ?? 0) || 0);
   const tags = (Array.isArray(sp.tag) ? sp.tag : sp.tag ? [sp.tag] : []).map(Number).filter(Boolean);
   const mode = parseDrillMode(sp.mode);
   const filters = {
@@ -53,9 +55,14 @@ export default async function DrillPage({
     throw e;
   }
 
-  const linkTo = (i: number) => {
+  // done = 本轮已完成几题。⚠️ 它有两个用途，缺一不可：
+  //  · 会缩短的题目集合里 i 恒为 0，进度只能靠它算（i 不再有意义）
+  //  · 让「下一题」的 URL 与当前 URL【不同】—— 否则 Next.js 认为没有导航，
+  //    页面不会重新渲染，你会以为点了没反应
+  const linkTo = (i: number, done?: number) => {
     const q = new URLSearchParams();
     q.set("i", String(i));
+    if (done != null) q.set("done", String(done));
     if (filters.contested) q.set("contested", "true");
     if (filters.enriched) q.set("enriched", "true");
     if (mode) q.set("mode", mode);
@@ -100,8 +107,11 @@ export default async function DrillPage({
   const shrinking = mode != null;
   const nav = {
     prevHref: index > 0 ? linkTo(index - 1) : undefined,
-    skipHref: index + 1 < page.total ? linkTo(index + 1) : undefined,
-    nextHref: page.total > 1 ? linkTo(0) : undefined,
+    skipHref: index + 1 < page.total ? linkTo(index + 1, done) : undefined,
+    // ⚠️ 会缩短的集合里【总是】给 nextHref，哪怕这是最后一题 ——
+    // 答完最后一题跳到 offset 0，落到「今天的复习做完了」那个空状态，
+    // 那正是这条队列应有的结尾。若这里给 undefined，答完最后一题就没有出口了。
+    nextHref: shrinking ? linkTo(0, done + 1) : undefined,
     shrinking,
   };
 
@@ -155,15 +165,27 @@ export default async function DrillPage({
       </header>
 
       {/* 进度条：hairline 轨道 + 墨色进度（dataviz：数据是唯一允许大声的东西） */}
+      {/* ⚠️ 会缩短的集合（due/wrong/unsure/unseen）里 index 恒为 0 而 total 一直在减，
+          用 (index+1)/total 画出来的进度会【往回走】。这类模式改用
+          已完成 / (已完成 + 剩余) —— 分母随作答自然增长，进度单调向前。 */}
       <div className="h-[3px] overflow-hidden rounded-full bg-line" role="progressbar"
-           aria-valuenow={index + 1} aria-valuemin={1} aria-valuemax={page.total}>
+           aria-valuenow={shrinking ? done : index + 1} aria-valuemin={0}
+           aria-valuemax={shrinking ? done + page.total : page.total}>
         <div
           className="h-full rounded-full transition-all"
-          style={{ width: `${((index + 1) / page.total) * 100}%`, background: "var(--color-ink)" }}
+          style={{
+            width: `${shrinking
+              ? (done / Math.max(done + page.total, 1)) * 100
+              : ((index + 1) / page.total) * 100}%`,
+            background: "var(--color-ink)",
+          }}
         />
       </div>
 
-      <DrillCard questionId={q.id} stem={q.stem} choices={q.choices} pickCount={q.pickCount} reference={reference} context={context} nav={nav}>
+      {/* ⛔ key 不能省：不加它 React 会复用同一个 DrillCard 实例，
+          上一题的 picked / revealed / saveState 全都留到下一题 ——
+          表现就是「下一题默认选中了上一题的选项」。2026-09-05 实测。 */}
+      <DrillCard key={q.id} questionId={q.id} stem={q.stem} choices={q.choices} pickCount={q.pickCount} reference={reference} context={context} nav={nav}>
         <ClaimsPanel claims={q.claims} />
         {q.explanations.map((e) => (
           <section key={`${e.source}-${e.locale}`}>
