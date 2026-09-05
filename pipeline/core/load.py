@@ -151,7 +151,13 @@ class Loader:
             # 富化产物里的字段名由题库 spec 自己声明（SAA/SAP 沿用 services），
             # 这样 core 不认识任何题库词汇，题库也不必为了 core 改产物。
             wanted.update((bank_id, "topic", s) for s in e[topic_field])
-            wanted.update((0, "concept", c) for c in e["concepts"])
+            # ⚠️ concepts 是可选的：题库可以声明本轮不产（IPA 2026-09-05）。
+            # 判据与 enrich.py 的 wants_concepts 一致 —— 用 .get 而不是 e["concepts"]，
+            # 否则「不产 concept」这个决定在导入端会崩。
+            # ⭐ 这是「通用化只做了一半」的第三个现场（前两处：enrich.py 的
+            # ITEM_KEYS 与校验器）—— 同一个决定要在三处分别兑现，
+            # 而前两处改了、这处没改，直到真的导入才炸。
+            wanted.update((0, "concept", c) for c in e.get("concepts") or [])
 
         domains = spec.get("domains", {})
         domains_zh = spec.get("domains_zh", {})
@@ -189,7 +195,7 @@ class Loader:
             # weight 2 = 主标签（考纲域），1 = 次要
             rows.append((question_id, tmap[(bank_id, "domain", f"domain-{e['domain']}")], 2))
             rows += [(question_id, tmap[(bank_id, "topic", s)], 1) for s in e[topic_field]]
-            rows += [(question_id, tmap[(0, "concept", c)], 1) for c in e["concepts"]]
+            rows += [(question_id, tmap[(0, "concept", c)], 1) for c in e.get("concepts") or []]
         self._exec("""INSERT INTO question_tag (question_id, tag_id, weight) VALUES (%s,%s,%s)
                       ON DUPLICATE KEY UPDATE weight=VALUES(weight)""", rows)
         return len(rows)
@@ -420,7 +426,13 @@ def main() -> None:
     print(f"✓ 选项      {n_ch}")
     print(f"✓ 答案主张  {n_cl}")
     print(f"✓ 解析      {n_ex}")
-    print(f"✓ 标签      {len(tmap)}   关联 {n_qt}")
+    # ⚠️ 只报【本题库的】标签数。tmap 里还有全部全局 concept（bank_id=0，
+    # 目前 1075 个），把它算进来会打印出「标签 1100」这种数字 ——
+    # 而 IPA 只有 25 个。⛔ 一个会让人以为出了事的数字本身就是缺陷：
+    # 2026-09-05 我就是被它绊了一下，回头查库才确认导入是对的。
+    own = sum(1 for (bid, _, _) in tmap if bid == bank_id)
+    print(f"✓ 标签      {own}   关联 {n_qt}"
+          + (f"   （另引用全局 concept {len(tmap) - own} 个）" if len(tmap) > own else ""))
 
 
 if __name__ == "__main__":
