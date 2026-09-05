@@ -351,6 +351,19 @@ def cmd_next(bank: str, count: int) -> None:
         if spec.get("translation"):
             print(f"⚠ 本题库要求每题附 translation（{spec['translation']['locale']}）："
                   f"{{'stem': 题干译文, 'choices': {{label: 选项译文}}}}，见 enrich_spec.md「翻译」\n")
+        if vocab := spec.get("topic_vocabulary"):
+            field = topic_field_of(spec)
+            print(f"⛔ 本题库的 {field} 是【封闭词表】，只能从下面挑，不得新造。\n")
+            print(f"⭐ 用法：先找这道题在讲哪一个【小分類】（· 号那一层，共 "
+                  f"{sum(len(v.get('items', [])) for v in vocab)} 个），再取它的父中分類。")
+            print(f"   ⚠️ 直接在 {len(vocab)} 个中分類里凭印象挑，正是最容易错的做法 ——")
+            print(f"   而「同一分野内挑错」这种错，交叉校验【看不见】（它只卡跨分野）。\n")
+            for v in vocab:
+                items = "、".join(v.get("items", []))
+                print(f"  [分野{v['field']}] {v['name']}")
+                if items:
+                    print(f"        · {items}")
+            print()
         for no in sorted(n for n in qmap if r[0] <= n <= r[1]):
             q = qmap[no]
             c = claims_of(q)
