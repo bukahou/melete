@@ -68,25 +68,27 @@ class Loader:
 
     # ---- question ----
     def upsert_questions(self, bank_id: int, qs: list) -> dict:
-        rows = [(bank_id, q["no"], display_text(q)[0], q["kind"], q["pick"],
+        rows = [(bank_id, q["no"], q.get("session", ""), display_text(q)[0], q["kind"], q["pick"],
                  (q.get("enrichment") or {}).get("data_issue"),
                  json.dumps({"warnings": q.get("warnings", []),
                              **({"duplicates": q["duplicates"]} if q.get("duplicates") else {})},
                             ensure_ascii=False))
                 for q in qs]
         self._exec(
-            """INSERT INTO question (bank_id, external_no, stem, kind, pick_count, data_issue, raw)
-               VALUES (%s,%s,%s,%s,%s,%s,%s)
+            """INSERT INTO question (bank_id, external_no, session, stem, kind, pick_count, data_issue, raw)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
                ON DUPLICATE KEY UPDATE stem=VALUES(stem), kind=VALUES(kind),
                    pick_count=VALUES(pick_count), data_issue=VALUES(data_issue), raw=VALUES(raw)""",
             rows)
-        # 不假设 id 连续，回查建映射
-        self.cur.execute("SELECT external_no, id FROM question WHERE bank_id=%s", (bank_id,))
-        return dict(self.cur.fetchall())
+        # 不假设 id 连续，回查建映射。
+        # ⚠️ 键是 (session, external_no) 而不是 external_no —— 多套卷子的题库里
+        # 光凭题号不唯一（IPA 15 套各有一个 問1）。单套题库 session 是空串，行为不变。
+        self.cur.execute("SELECT session, external_no, id FROM question WHERE bank_id=%s", (bank_id,))
+        return {(sess, no): qid for sess, no, qid in self.cur.fetchall()}
 
     # ---- choice / claim / explanation ----
     def upsert_choices(self, qmap: dict, qs: list) -> int:
-        rows = [(qmap[q["no"]], ch["label"], display_text(q)[1][ch["label"]])
+        rows = [(qid(qmap, q), ch["label"], display_text(q)[1][ch["label"]])
                 for q in qs for ch in q["choices"]]
         self._exec("""INSERT INTO choice (question_id, label, body) VALUES (%s,%s,%s)
                       ON DUPLICATE KEY UPDATE body=VALUES(body)""", rows)
@@ -99,8 +101,8 @@ class Loader:
         # 先清掉本次不再产出的管道主张：纯 upsert 会让上一次导入留下的行成为幽灵
         # （#125 实证：解析器判定字母主张不可信后，旧的 community_vote 行仍在库里）。
         # 只删管道来源；按 (question_id, source) 精确删，不碰用户写入的来源。
-        wanted = {(qmap[q["no"]], c["source"]) for q in qs for c in q["claims"]}
-        qids = [qmap[q["no"]] for q in qs]
+        wanted = {(qid(qmap, q), c["source"]) for q in qs for c in q["claims"]}
+        qids = [qid(qmap, q) for q in qs]
         stale = []
         for i in range(0, len(qids), BATCH):
             chunk = qids[i:i + BATCH]
@@ -118,7 +120,7 @@ class Loader:
             for c in q["claims"]:
                 meta = {k: v for k, v in c.items()
                         if k not in ("source", "answer", "confidence", "rationale")}
-                rows.append((qmap[q["no"]], c["source"], c["answer"], c.get("confidence"),
+                rows.append((qid(qmap, q), c["source"], c["answer"], c.get("confidence"),
                              c.get("rationale"),
                              json.dumps(meta, ensure_ascii=False) if meta else None))
         self._exec("""INSERT INTO answer_claim (question_id, source, answer, confidence, rationale, meta)
@@ -128,7 +130,7 @@ class Loader:
         return len(rows)
 
     def upsert_explanations(self, qmap: dict, qs: list, locale: str) -> int:
-        rows = [(qmap[q["no"]], "ai", locale, q["enrichment"]["explanation"])
+        rows = [(qid(qmap, q), "ai", locale, q["enrichment"]["explanation"])
                 for q in qs if q.get("enrichment", {}).get("explanation")]
         self._exec("""INSERT INTO explanation (question_id, source, locale, body)
                       VALUES (%s,%s,%s,%s)
@@ -170,7 +172,7 @@ class Loader:
 
     def link_question_tags(self, bank_id: int, qmap: dict, qs: list, tmap: dict, topic_field: str) -> int:
         """标签关联先删后插 —— 重跑富化时标签可能变少，纯 upsert 无法清理旧关联。"""
-        qids = [qmap[q["no"]] for q in qs if q.get("enrichment")]
+        qids = [qid(qmap, q) for q in qs if q.get("enrichment")]
         for i in range(0, len(qids), BATCH):
             chunk = qids[i:i + BATCH]
             self.cur.execute(
@@ -183,14 +185,24 @@ class Loader:
             e = q.get("enrichment")
             if not e:
                 continue
-            qid = qmap[q["no"]]
+            question_id = qid(qmap, q)
             # weight 2 = 主标签（考纲域），1 = 次要
-            rows.append((qid, tmap[(bank_id, "domain", f"domain-{e['domain']}")], 2))
-            rows += [(qid, tmap[(bank_id, "topic", s)], 1) for s in e[topic_field]]
-            rows += [(qid, tmap[(0, "concept", c)], 1) for c in e["concepts"]]
+            rows.append((question_id, tmap[(bank_id, "domain", f"domain-{e['domain']}")], 2))
+            rows += [(question_id, tmap[(bank_id, "topic", s)], 1) for s in e[topic_field]]
+            rows += [(question_id, tmap[(0, "concept", c)], 1) for c in e["concepts"]]
         self._exec("""INSERT INTO question_tag (question_id, tag_id, weight) VALUES (%s,%s,%s)
                       ON DUPLICATE KEY UPDATE weight=VALUES(weight)""", rows)
         return len(rows)
+
+
+def qid(qmap: dict, q: dict) -> int:
+    """取一道题在库里的 id。
+
+    ⚠️ 键是 (session, external_no) 而不是光凭题号 —— 多套卷子的题库里
+    题号不唯一（IPA 15 套各有一个 問1）。这里是键的【唯一组成处】：
+    七个调用点都走它，不各写各的元组，免得哪天加维度时漏改一处。
+    """
+    return qmap[(q.get("session", ""), q["no"])]
 
 
 def display_text(q: dict) -> tuple[str, dict]:

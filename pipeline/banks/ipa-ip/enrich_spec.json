@@ -1,0 +1,184 @@
+{
+  "bank": "ipa-ip",
+  "explanation_locale": "ja",
+  "_note_locale": "解析用日文（用户 2026-09-05 拍板）。这是第一个 locale=ja 的题库；SAA/SAP 是 zh。",
+  "tag_types": {
+    "domain": {
+      "label": {
+        "ja": "分野",
+        "zh": "考纲域",
+        "en": "Field"
+      },
+      "weights": {
+        "1": 32,
+        "2": 18,
+        "3": 42
+      },
+      "_note_weights": "IPA 官方口径：総合評価 92 問のうち ストラテジ系32・マネジメント系18・テクノロジ系42。剩余 8 题不计分（今後出題する問題の評価用）。"
+    },
+    "topic": {
+      "label": {
+        "ja": "中分類",
+        "zh": "中分类",
+        "en": "Category"
+      },
+      "enrichment_field": "topics",
+      "_note": "IPA 官方シラバス的中分類，23 个，见下方 topic_vocabulary。"
+    }
+  },
+  "domains": {
+    "1": "ストラテジ系",
+    "2": "マネジメント系",
+    "3": "テクノロジ系"
+  },
+  "_note_domain": "⛔ domain 不由 AI 判断 —— 卷子上印着题号区间（「問1から問34までは，ストラテジ系の問題です。」），转写时已抄进 transcribed/*.json 的 sections，按区间机械映射即可。AI 若给出与 sections 矛盾的 domain，以 sections 为准。",
+  "topic_vocabulary": [
+    {
+      "id": 1,
+      "field": 1,
+      "major": "企業と法務",
+      "name": "企業活動"
+    },
+    {
+      "id": 2,
+      "field": 1,
+      "major": "企業と法務",
+      "name": "法務"
+    },
+    {
+      "id": 3,
+      "field": 1,
+      "major": "経営戦略",
+      "name": "経営戦略マネジメント"
+    },
+    {
+      "id": 4,
+      "field": 1,
+      "major": "経営戦略",
+      "name": "技術戦略マネジメント"
+    },
+    {
+      "id": 5,
+      "field": 1,
+      "major": "経営戦略",
+      "name": "ビジネスインダストリ"
+    },
+    {
+      "id": 6,
+      "field": 1,
+      "major": "システム戦略",
+      "name": "システム戦略"
+    },
+    {
+      "id": 7,
+      "field": 1,
+      "major": "システム戦略",
+      "name": "システム企画"
+    },
+    {
+      "id": 8,
+      "field": 2,
+      "major": "開発技術",
+      "name": "システム開発技術"
+    },
+    {
+      "id": 9,
+      "field": 2,
+      "major": "開発技術",
+      "name": "ソフトウェア開発管理技術"
+    },
+    {
+      "id": 10,
+      "field": 2,
+      "major": "プロジェクトマネジメント",
+      "name": "プロジェクトマネジメント"
+    },
+    {
+      "id": 11,
+      "field": 2,
+      "major": "サービスマネジメント",
+      "name": "サービスマネジメント"
+    },
+    {
+      "id": 12,
+      "field": 2,
+      "major": "サービスマネジメント",
+      "name": "システム監査"
+    },
+    {
+      "id": 13,
+      "field": 3,
+      "major": "基礎理論",
+      "name": "基礎理論"
+    },
+    {
+      "id": 14,
+      "field": 3,
+      "major": "基礎理論",
+      "name": "アルゴリズムとプログラミング"
+    },
+    {
+      "id": 15,
+      "field": 3,
+      "major": "コンピュータシステム",
+      "name": "コンピュータ構成要素"
+    },
+    {
+      "id": 16,
+      "field": 3,
+      "major": "コンピュータシステム",
+      "name": "システム構成要素"
+    },
+    {
+      "id": 17,
+      "field": 3,
+      "major": "コンピュータシステム",
+      "name": "ソフトウェア"
+    },
+    {
+      "id": 18,
+      "field": 3,
+      "major": "コンピュータシステム",
+      "name": "ハードウェア"
+    },
+    {
+      "id": 19,
+      "field": 3,
+      "major": "技術要素",
+      "name": "情報デザイン"
+    },
+    {
+      "id": 20,
+      "field": 3,
+      "major": "技術要素",
+      "name": "情報メディア"
+    },
+    {
+      "id": 21,
+      "field": 3,
+      "major": "技術要素",
+      "name": "データベース"
+    },
+    {
+      "id": 22,
+      "field": 3,
+      "major": "技術要素",
+      "name": "ネットワーク"
+    },
+    {
+      "id": 23,
+      "field": 3,
+      "major": "技術要素",
+      "name": "セキュリティ"
+    }
+  ],
+  "_note_topic_closed": "⛔⛔ topic 是【封闭词表】：只能从上面 23 个 name 里挑，不得新造。这是本题库与 SAA/SAP 最重要的差别，理由是账已经吃过一次 —— SAP 用开放词表产出 1002 个独有 concept、72% 只挂一道题、跨库共用仅 70 个，而 concept 按设计该是全局共享的。⚠️ 开放词表的问题在【写的时候】看不出来（每个标签单看都合理），要到【聚合的时候】才暴露，那时已经几百题写完了。封闭词表让这个缺陷写不出来。",
+  "_note_topic_field_consistency": "⚠️ 每题的 topic 必须属于该题 domain 对应的 field（见 vocabulary 的 field 列）。跨 field 的组合说明 domain 或 topic 至少有一个判错了 —— 这是一条免费的交叉校验，因为 domain 来自卷子而非 AI。",
+  "concept_seeds": [],
+  "_note_no_concept": "⛔ 本轮【不产 concept】（用户 2026-09-05 拍板）。concept 是跨题库共享轴，而它现在本身就是烂账（1075 个待归并，见 tracker 技术债）—— 在归并完成前再往里加只会让账更难还。P5 迁入 atlantis 时统一处理。",
+  "pass_score": 600,
+  "max_score": 1000,
+  "_note_score": "IPA 官方：総合評価点 1000 点満点・600 点以上で合格，かつ 分野別評価点 各 300 点以上（1000 点満点）。⚠️ 分野別的及格线本 schema 表达不了（bank.meta 只有单一 passScore），界面上只显示总分线。",
+  "authoritative_answer_source": "bank_label",
+  "_note_authoritative": "IPA 官方解答是权威的 —— 与 源站 那种「38% 与社区不一致」的题库标注不是同一种东西。⚠️ 所以 verdict ≠ 官方答案不是「有价值的分歧」而是缺陷信号，且同时覆盖两种缺陷：AI 判错，或【我们转写错了】。后者尤其值钱 —— 转写错误在别处几乎没有检出手段。"
+}

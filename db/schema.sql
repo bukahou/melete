@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS question (
   id          BIGINT       NOT NULL AUTO_INCREMENT,
   bank_id     BIGINT       NOT NULL,
   external_no INT          NOT NULL,               -- 原题号，用于溯源
+  -- session 是「哪一套卷子」。IPA IT パスポート 一个题库有 15 套公开问题，
+  -- 各自从 問1 数起 —— 没有它，15 套一起导会撞唯一键。
+  -- ⚠️ NOT NULL DEFAULT ''：MySQL 的 UNIQUE 把多个 NULL 视为互不相同，
+  -- 可空列进唯一键等于放弃去重。单套题库（SAA/SAP）留空串。
+  session     VARCHAR(16)  NOT NULL DEFAULT '',
   stem        TEXT         NOT NULL,
   kind        VARCHAR(16)  NOT NULL,               -- single | multi
   pick_count  TINYINT      NOT NULL DEFAULT 1,
@@ -33,7 +38,7 @@ CREATE TABLE IF NOT EXISTS question (
   created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uk_q_bank_no (bank_id, external_no),
+  UNIQUE KEY uk_q_bank_no (bank_id, session, external_no),
   KEY idx_q_bank (bank_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

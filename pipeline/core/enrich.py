@@ -37,8 +37,15 @@ REPO = Path(__file__).resolve().parents[2]
 SHARD_SIZE = 25
 KEBAB = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 CONFIDENCE = {"high", "medium", "low"}
+# ⚠️ 这里【不含】知识对象轴与 concept 轴的字段名 —— 它们由 spec 决定：
+#   · 知识对象轴的字段名来自 spec.tag_types.topic.enrichment_field
+#     （AWS 是 "services"，IPA IT パスポート 是 "topics"）
+#   · concept 是否要求，由 spec 是否声明 concept 词表决定
+# 2026-09-05 之前 services / concepts 是写死在这里的 —— 而 load.py 那边
+# enrichment_field 早就可配了。⚠️ 「通用化」只做了一半，第三个题库进来才暴露：
+# 一个只在导入端可配、在校验端写死的字段名，等于没有可配。
 ITEM_KEYS = {"no", "verdict", "confidence", "reasoning", "explanation",
-             "domain", "services", "concepts", "data_issue"}
+             "domain", "data_issue"}
 # fp 是 write 时的题面指纹门禁，校验后即丢弃，不落进产物。
 # notes 是 advisory 级：题目有瑕疵但答案仍可判定时的登记处（如译文撞词）。
 # 与 data_issue 的分工：data_issue = 结构性不可判（verdict 必须留空），
@@ -122,13 +129,39 @@ def is_contested(q: dict) -> tuple[bool, list[str]]:
 
 # ---------- 校验 ----------
 
+def topic_field_of(spec: dict) -> str:
+    """知识对象轴在富化产物里的字段名。AWS 是 services，IPA 是 topics。"""
+    return spec.get("tag_types", {}).get("topic", {}).get("enrichment_field", "services")
+
+
+def wants_concepts(spec: dict) -> bool:
+    """本题库这一轮要不要产 concept。
+
+    ⚠️ 判据是 spec 里有没有 concept_seeds 这个键，而不是它非不非空 ——
+    显式写 "concept_seeds": [] 的意思是「本轮不产」（IPA 2026-09-05），
+    与「没写这个键」（旧题库，默认要产）要分得开。
+    """
+    if "concept_seeds" not in spec:
+        return True
+    return bool(spec["concept_seeds"])
+
+
+def topic_vocabulary(spec: dict) -> dict[str, int]:
+    """封闭词表 {中分類名: 所属分野编号}；spec 没给就返回空（= 开放词表）。"""
+    return {v["name"]: v["field"] for v in spec.get("topic_vocabulary", [])}
+
+
 def check_item(item: dict, q: dict, spec: dict) -> list[str]:
     errs = []
     # 翻译字段由 spec 决定是否要求：英文题库（如 SAP-C02）声明 translation.locale
     # 即要求每题附中文；中文题库不声明，出现该字段反而报多余。
     # 放在 item 里而非另开产物，是为了让「一题的所有富化结果」始终在同一个对象里。
     want_tr = bool(spec.get("translation"))
-    required = ITEM_KEYS | ({"translation"} if want_tr else set())
+    topic_field = topic_field_of(spec)
+    want_concepts = wants_concepts(spec)
+    required = (ITEM_KEYS | {topic_field}
+                | ({"translation"} if want_tr else set())
+                | ({"concepts"} if want_concepts else set()))
     extra = set(item) - required - OPTIONAL_KEYS
     missing = required - set(item)
     if extra:
@@ -162,19 +195,62 @@ def check_item(item: dict, q: dict, spec: dict) -> list[str]:
             errs.append(f"{k} 为空")
     if str(item["domain"]) not in spec["domains"]:
         errs.append(f"domain {item['domain']!r} 不在 {sorted(spec['domains'])}")
-    for k in ("services", "concepts"):
-        v = item[k]
+    for k in [topic_field] + (["concepts"] if want_concepts else []):
+        v = item.get(k)
         if not isinstance(v, list) or not v or not all(isinstance(x, str) and x.strip() for x in v):
             errs.append(f"{k} 须为非空字符串列表")
+
+    # ⭐ 封闭词表：spec 给了 topic_vocabulary 就必须从里面挑，⛔ 不得新造。
+    #
+    # ⚠️ 一个不被校验的封闭词表【不是封闭的】—— 它只是一句建议，
+    # 而建议在几百题的规模上必然被突破。这条校验才是「封闭」二字的全部实现。
+    #
+    # 账已经吃过一次：SAP-C02 用开放词表产出 1002 个独有 concept、
+    # 72% 只挂一道题，而问题在【写的时候】看不出来（每个标签单看都合理），
+    # 要到【聚合的时候】才暴露，那时已经几百题写完了。
+    vocab = topic_vocabulary(spec)
+    if vocab and isinstance(item.get(topic_field), list):
+        unknown = [t for t in item[topic_field] if t not in vocab]
+        if unknown:
+            errs.append(f"{topic_field} 含词表外的值 {unknown} —— "
+                        f"本题库的 {topic_field} 是封闭词表（{len(vocab)} 项），不得新造")
+        # 交叉校验：topic 必须属于该题 domain 所在的分野。
+        # ⭐ 这条是免费的 —— domain 来自卷子上印的题号区间而非 AI 判断，
+        # 所以它是一个独立于 AI 的参照物。跨分野的组合说明两者至少一个错了。
+        want_field = str(item.get("domain"))
+        cross = [t for t in item[topic_field]
+                 if t in vocab and str(vocab[t]) != want_field]
+        if cross:
+            errs.append(f"{topic_field} {cross} 不属于 domain={want_field} 那个分野 —— "
+                        f"domain 来自卷面（可信），所以是 {topic_field} 判错了")
+
     if "notes" in item and (not isinstance(item["notes"], str) or not item["notes"].strip()):
         errs.append("notes 存在时须为非空字符串")
-    if isinstance(item["concepts"], list):
+    if want_concepts and isinstance(item.get("concepts"), list):
         bad = [c for c in item["concepts"] if isinstance(c, str) and not KEBAB.match(c)]
         if bad:
             errs.append(f"concepts 须为 kebab-case，违规 {bad}")
 
     if want_tr:
         errs += check_translation(item["translation"], q)
+
+    # ⭐ 权威答案源：spec 声明了就要求 verdict 与它一致。
+    #
+    # IPA 的官方解答与 源站 那种题库标注【不是同一种东西】——
+    # 后者 38% 与社区投票不一致（这正是 answer_claim 多来源设计的由来），
+    # 前者是出题机构自己公布的正解，不存在「它错了」这种情形。
+    #
+    # ⚠️ 所以对这类题库，verdict ≠ 官方答案不是「有价值的分歧」，而是一个【缺陷信号】，
+    # 且它同时覆盖两种缺陷：AI 判错了，或者【我们转写错了】（选项抄串、字母错位）。
+    # 后者尤其值钱 —— 转写错误在别处几乎没有检出手段。
+    auth = spec.get("authoritative_answer_source")
+    if auth and not issue:
+        official = next((c["answer"] for c in q.get("claims", []) if c["source"] == auth), None)
+        if official and verdict and verdict != official:
+            errs.append(
+                f"verdict {verdict!r} ≠ 官方解答 {official!r}。本题库的 {auth} 是权威来源，"
+                f"不一致只可能是【AI 判错】或【转写错了】—— ⛔ 不要改 verdict 去迎合，"
+                f"先对着原图核对选项，确认转写无误后再报给人工")
 
     contested, _ = is_contested(q)
     if contested and not issue and len(item["reasoning"]) < 80:
