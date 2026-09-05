@@ -268,13 +268,18 @@ def cmd_next(bank: str, count: int) -> None:
         print(f"""
 格式（Python 字面量，用 transcribe.py write 写入）：
 
-    {{"items": [
+    {{"pages": [{lo}, {hi}],       # ⚠️ 必填，与上面「写入目标」的页范围一致
+     "sections": [],            # 见下方 ⭐；本片没有分域说明就留空
+     "items": [
         {{"no": 3,
           "stem": "题干原文。换行照原样保留。\\n\\n表格转成 Markdown：\\n"
                   "|      | 列1 | 列2 |\\n|---|---|---|\\n| 行1 | .. | .. |",
           "choices": {{{", ".join(f'"{c}": "..."' for c in spec["choice_labels"])}}},
           "has_figure": false}},
     ]}}
+
+  💡 write 是【合并】语义（按 no 去重）—— 可以分几次写，先写读完的几页也行。
+     要整片重来就把分片文件删掉。
 
 ⚠️ 规则：
   · 題番号、选项标签必须与原图一致 —— 校验会卡 {spec["choice_labels"]} 这一组标签
@@ -315,14 +320,52 @@ def cmd_write(bank: str, src: Path) -> None:
         sys.exit(f"✗ 页范围 {(lo, hi)} 不是合法分片，合法的有 {ranges}")
 
     out = shard_dir(bank) / shard_name(lo, hi)
-    payload = {"pages": [lo, hi], "items": items}
-    if data.get("sections"):
-        payload["sections"] = data["sections"]
-    out.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    errs = check_shard(out, spec)
-    print(f"{'✓' if not errs else '✗'} 写入 {out.relative_to(REPO)}  {len(items)} 题")
-    for e in errs[:10]:
-        print(f"    {e}")
+
+    # ⚠️ 2026-09-05：合并而不是覆盖。
+    #
+    # 原本是整片覆盖 —— 会话先写問1-20、再写問21-30，前 20 题就【无声消失】了，
+    # 而 check 那时只报「答案里有但还没转写」，看不出是覆盖造成的。
+    # 这与 enrich.py 也不一致（那边一直是读出已有再合并）。
+    #
+    # 按 no 去重：重写同一题即更正它。要整片重来就删文件 ——
+    # 那是已有的「坏片删掉重跑」流程，语义清楚且不会误伤。
+    merged: dict[int, dict] = {}
+    sections = list(data.get("sections") or [])
+    if out.exists():
+        try:
+            prev = json.loads(out.read_text(encoding="utf-8"))
+            merged = {it["no"]: it for it in prev.get("items", [])}
+            for sec in prev.get("sections") or []:
+                if sec not in sections:
+                    sections.append(sec)
+        except json.JSONDecodeError:
+            pass  # 上次写坏的半成品：重建，不试图挽救（与 enrich.py 同）
+
+    before = set(merged)
+    for it in items:
+        merged[it["no"]] = it
+    n_new = len(set(merged) - before)
+    n_over = len({it["no"] for it in items} & before)
+
+    payload = {"pages": [lo, hi], "items": [merged[n] for n in sorted(merged)]}
+    if sections:
+        payload["sections"] = sorted(sections, key=lambda x: x.get("from", 0))
+
+    # ⚠️ 先校验再落地：坏数据不该先写到盘上、再靠 check 去发现（enrich.py 的纪律）
+    tmp = out.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    errs = check_shard(tmp, spec)
+    if errs:
+        tmp.unlink()
+        print(f"✗ 校验未通过（{len(errs)} 个问题），⛔ 未写入任何文件：")
+        for e in errs[:15]:
+            print(f"    {e}")
+        sys.exit(1)
+    tmp.replace(out)
+    print(f"✓ 写入 {out.relative_to(REPO)}  本片共 {len(merged)} 题"
+          f"（新增 {n_new}，覆盖 {n_over}）")
+    for sec in sections:
+        print(f"  分域：問{sec['from']}-{sec['to']} {sec['name']}")
 
 
 def cmd_merge(bank: str) -> None:
