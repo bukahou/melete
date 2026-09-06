@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/bukahou/melete/backend/internal/userid"
 	"time"
 )
 
@@ -36,14 +37,14 @@ const sessionGap = 30 * time.Minute
 // 连续天数按学习者所在时区的自然日算；开发者在东京，先写死，将来进 account 偏好。
 var studyTZ = time.FixedZone("JST", 9*3600)
 
-func (s *service) LoadOverview(ctx context.Context, accountID int64) (*Overview, error) {
+func (s *service) LoadOverview(ctx context.Context, accountID userid.UserID) (*Overview, error) {
 	o := &Overview{}
 	now := time.Now().In(studyTZ)
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, studyTZ).UTC()
 	err := s.db.QueryRowContext(ctx, `
 		SELECT
-		  (SELECT COUNT(*) FROM attempt WHERE account_id = ? AND created_at >= ?),
-		  (SELECT COUNT(DISTINCT question_id) FROM attempt WHERE account_id = ?)`,
+		  (SELECT COUNT(*) FROM attempt WHERE user_id = ? AND created_at >= ?),
+		  (SELECT COUNT(DISTINCT question_id) FROM attempt WHERE user_id = ?)`,
 		accountID, dayStart, accountID).Scan(&o.TodayCount, &o.SeenTotal)
 	if err != nil {
 		return nil, fmt.Errorf("统计总览: %w", err)
@@ -52,7 +53,7 @@ func (s *service) LoadOverview(ctx context.Context, accountID int64) (*Overview,
 	// 连续天数：取最近 400 天有作答的自然日集合，从今天（或昨天）往回数
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT DISTINCT DATE(CONVERT_TZ(created_at, '+00:00', '+09:00'))
-		FROM attempt WHERE account_id = ? AND created_at >= ?
+		FROM attempt WHERE user_id = ? AND created_at >= ?
 		ORDER BY 1 DESC`, accountID, now.AddDate(0, 0, -400).UTC())
 	if err != nil {
 		return nil, fmt.Errorf("统计连续天数: %w", err)
@@ -78,7 +79,7 @@ func (s *service) LoadOverview(ctx context.Context, accountID int64) (*Overview,
 
 // LoadRecentSessions 把最近的作答聚合成会话。
 // 只拉最近 300 条 attempt 在内存里切分 —— 首页只要前几个会话，不必在 SQL 里做窗口函数。
-func (s *service) LoadRecentSessions(ctx context.Context, accountID int64, limit int) ([]Session, error) {
+func (s *service) LoadRecentSessions(ctx context.Context, accountID userid.UserID, limit int) ([]Session, error) {
 	type row struct {
 		Context   sql.NullString `db:"context"`
 		Correct   bool           `db:"correct"`
@@ -93,7 +94,7 @@ func (s *service) LoadRecentSessions(ctx context.Context, accountID int64, limit
 		FROM attempt a
 		JOIN question q ON q.id = a.question_id
 		JOIN bank b     ON b.id = q.bank_id
-		WHERE a.account_id = ?
+		WHERE a.user_id = ?
 		ORDER BY a.id DESC LIMIT 300`, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("查询最近作答: %w", err)

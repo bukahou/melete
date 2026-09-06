@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bukahou/melete/backend/internal/userid"
 	"strings"
 	"time"
 )
@@ -93,12 +94,12 @@ const latestAttempt = `
 	SELECT a.* FROM attempt a
 	JOIN (
 		SELECT question_id, MAX(id) AS max_id
-		FROM attempt WHERE account_id = ?
+		FROM attempt WHERE user_id = ?
 		GROUP BY question_id
 	) m ON m.max_id = a.id`
 
 // LoadProgress 汇总某题库的学习进度。
-func (s *service) LoadProgress(ctx context.Context, accountID int64, slug string) (*Progress, error) {
+func (s *service) LoadProgress(ctx context.Context, accountID userid.UserID, slug string) (*Progress, error) {
 	var p Progress
 	// 聚合先按 bank_id 分组算好再 LEFT JOIN 回题库行 —— 这样题库行【永远存在】，
 	// 没有作答只是各项为 0。
@@ -117,12 +118,12 @@ func (s *service) LoadProgress(ctx context.Context, accountID int64, slug string
 		  COALESCE(agg.unsure_count, 0)  AS unsure_count,
 		  (SELECT COUNT(*) FROM attempt a2
 		     JOIN question q2 ON q2.id = a2.question_id AND q2.bank_id = b.id
-		   WHERE a2.account_id = ?)      AS attempt_count,
+		   WHERE a2.user_id = ?)      AS attempt_count,
 		  -- FSRS 到期数。⚠️ 从没做过的题没有 card 行，不算到期 —— 它属于
 		  -- 「没做过」那个入口。两者混进一个数字，「今天要复习 300 题」就没有意义。
 		  (SELECT COUNT(*) FROM card c
 		     JOIN question q3 ON q3.id = c.question_id AND q3.bank_id = b.id
-		   WHERE c.account_id = ? AND c.due <= UTC_TIMESTAMP()) AS due_count,
+		   WHERE c.user_id = ? AND c.due <= UTC_TIMESTAMP()) AS due_count,
 		  agg.last_active_at
 		FROM bank b
 		LEFT JOIN (
@@ -147,7 +148,7 @@ func (s *service) LoadProgress(ctx context.Context, accountID int64, slug string
 }
 
 // LoadTagStats 按标签聚合正确率 —— 「我哪里不会」的数据来源。
-func (s *service) LoadTagStats(ctx context.Context, accountID int64, slug, tagType string, minAttempts int) ([]TagStat, error) {
+func (s *service) LoadTagStats(ctx context.Context, accountID userid.UserID, slug, tagType string, minAttempts int) ([]TagStat, error) {
 	out := []TagStat{}
 	err := s.db.SelectContext(ctx, &out, `
 		SELECT t.id AS tag_id, t.type, t.value, t.i18n,
@@ -168,7 +169,7 @@ func (s *service) LoadTagStats(ctx context.Context, accountID int64, slug, tagTy
 }
 
 // LoadResume 组装「继续学习」的两条轨道。
-func (s *service) LoadResume(ctx context.Context, accountID int64, slug string) (*Resume, error) {
+func (s *service) LoadResume(ctx context.Context, accountID userid.UserID, slug string) (*Resume, error) {
 	var bankID int64
 	err := s.db.GetContext(ctx, &bankID, `SELECT id FROM bank WHERE slug = ?`, slug)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -184,7 +185,7 @@ func (s *service) LoadResume(ctx context.Context, accountID int64, slug string) 
 		SELECT q.id AS question_id, q.external_no, q.stem
 		FROM question q
 		WHERE q.bank_id = ?
-		  AND NOT EXISTS (SELECT 1 FROM attempt a WHERE a.account_id = ? AND a.question_id = q.id)
+		  AND NOT EXISTS (SELECT 1 FROM attempt a WHERE a.user_id = ? AND a.question_id = q.id)
 		ORDER BY q.external_no LIMIT 1`, bankID, accountID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("查询顺序断点: %w", err)
@@ -193,10 +194,10 @@ func (s *service) LoadResume(ctx context.Context, accountID int64, slug string) 
 		SELECT (SELECT COUNT(*) FROM question WHERE bank_id = ?),
 		       (SELECT COUNT(DISTINCT a.question_id) FROM attempt a
 		          JOIN question q ON q.id = a.question_id AND q.bank_id = ?
-		         WHERE a.account_id = ?),
+		         WHERE a.user_id = ?),
 		       (SELECT MAX(a.created_at) FROM attempt a
 		          JOIN question q ON q.id = a.question_id AND q.bank_id = ?
-		         WHERE a.account_id = ?
+		         WHERE a.user_id = ?
 		           AND (a.context IS NULL OR JSON_UNQUOTE(JSON_EXTRACT(a.context, '$.mode')) IN ('unseen', 'all')))`,
 		bankID, bankID, accountID, bankID, accountID,
 	).Scan(&r.Sequential.TotalCount, &r.Sequential.DoneCount, &r.Sequential.LastAt)
@@ -210,7 +211,7 @@ func (s *service) LoadResume(ctx context.Context, accountID int64, slug string) 
 	err = s.db.QueryRowContext(ctx, `
 		SELECT a.context, a.created_at
 		FROM attempt a JOIN question q ON q.id = a.question_id
-		WHERE a.account_id = ? AND q.bank_id = ? AND a.context IS NOT NULL
+		WHERE a.user_id = ? AND q.bank_id = ? AND a.context IS NOT NULL
 		  AND JSON_UNQUOTE(JSON_EXTRACT(a.context, '$.mode')) NOT IN ('unseen', 'all')
 		ORDER BY a.id DESC LIMIT 1`, accountID, bankID).Scan(&raw, &at)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -234,7 +235,7 @@ func (s *service) LoadResume(ctx context.Context, accountID int64, slug string) 
 // fillFocusSize 算出专项集合的当前大小（与做过的数量）。
 // 集合定义须与 question 域的 mode 过滤、bank 域的 contested 统计**同一口径**，
 // 否则首页写「EC2 27/490」、点进去却是 489 题。
-func (s *service) fillFocusSize(ctx context.Context, accountID, bankID int64, f *FocusCursor) error {
+func (s *service) fillFocusSize(ctx context.Context, accountID userid.UserID, bankID int64, f *FocusCursor) error {
 	switch f.Mode {
 	case "tag":
 		if f.TagID == nil {
@@ -251,7 +252,7 @@ func (s *service) fillFocusSize(ctx context.Context, accountID, bankID int64, f 
 		var done int
 		err := s.db.QueryRowContext(ctx, `
 			SELECT COUNT(*),
-			       SUM(EXISTS (SELECT 1 FROM attempt a WHERE a.account_id = ? AND a.question_id = q.id))
+			       SUM(EXISTS (SELECT 1 FROM attempt a WHERE a.user_id = ? AND a.question_id = q.id))
 			FROM question_tag qt JOIN question q ON q.id = qt.question_id
 			WHERE qt.tag_id = ? AND q.bank_id = ?`, accountID, *f.TagID, bankID).Scan(&f.Total, &done)
 		if err != nil {
@@ -263,7 +264,7 @@ func (s *service) fillFocusSize(ctx context.Context, accountID, bankID int64, f 
 		var done int
 		err := s.db.QueryRowContext(ctx, `
 			SELECT COUNT(*),
-			       SUM(EXISTS (SELECT 1 FROM attempt a WHERE a.account_id = ? AND a.question_id = q.id))
+			       SUM(EXISTS (SELECT 1 FROM attempt a WHERE a.user_id = ? AND a.question_id = q.id))
 			FROM question q
 			WHERE q.bank_id = ? AND EXISTS (
 			  SELECT 1 FROM answer_claim bl

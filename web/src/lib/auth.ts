@@ -42,7 +42,14 @@ export interface TokenPair {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
-  accountId: number;
+  /**
+   * 账号 id —— canonical UUIDv7 文本。
+   *
+   * ⚠️ 2026-09-07 breaking change：曾经是 number（BIGINT 自增）。
+   * 换 UUID 的理由见 cross-exam 005 §22.2：TiDB 跳号严重，
+   * 且 v7 时间有序，避免 v4 的索引页分裂。
+   */
+  accountId: string;
   display: string;
 }
 

@@ -1,4 +1,4 @@
-package localauthx
+package userid
 
 import (
 	"go/ast"
@@ -16,20 +16,20 @@ import (
 
 func TestRoundTrip(t *testing.T) {
 	for range 200 {
-		id, err := NewUserID()
+		id, err := New()
 		if err != nil {
-			t.Fatalf("NewUserID: %v", err)
+			t.Fatalf("New: %v", err)
 		}
-		b, err := encodeID(id)
+		b, err := Encode(id)
 		if err != nil {
-			t.Fatalf("encodeID(%q): %v", id, err)
+			t.Fatalf("Encode(%q): %v", id, err)
 		}
 		if len(b) != 16 {
-			t.Fatalf("encodeID 应产出 16 字节，实得 %d", len(b))
+			t.Fatalf("Encode 应产出 16 字节，实得 %d", len(b))
 		}
-		back, err := decodeID(b)
+		back, err := Decode(b)
 		if err != nil {
-			t.Fatalf("decodeID: %v", err)
+			t.Fatalf("Decode: %v", err)
 		}
 		if back != id {
 			t.Fatalf("往返不一致：%q → %q", id, back)
@@ -48,10 +48,10 @@ func TestRejectsNonCanonical(t *testing.T) {
 	canonical := u.String()
 
 	for name, bad := range map[string]string{
-		"大写":      strings.ToUpper(canonical),
-		"去掉连字符":   strings.ReplaceAll(canonical, "-", ""),
-		"花括号":     "{" + canonical + "}",
-		"urn 前缀":  "urn:uuid:" + canonical,
+		"大写":     strings.ToUpper(canonical),
+		"去掉连字符":  strings.ReplaceAll(canonical, "-", ""),
+		"花括号":    "{" + canonical + "}",
+		"urn 前缀": "urn:uuid:" + canonical,
 	} {
 		t.Run(name, func(t *testing.T) {
 			// 前提自检：这些写法 uuid.Parse 【本来是接受的】——
@@ -60,8 +60,8 @@ func TestRejectsNonCanonical(t *testing.T) {
 			if _, err := uuid.Parse(bad); err != nil {
 				t.Skipf("上游 uuid.Parse 已拒绝 %q，本用例失去意义（需重写）", bad)
 			}
-			if _, err := encodeID(bad); err == nil {
-				t.Fatalf("encodeID 接受了非 canonical 形式 %q —— 它会产生一个与 %q 不相等的 string", bad, canonical)
+			if _, err := Encode(bad); err == nil {
+				t.Fatalf("Encode 接受了非 canonical 形式 %q —— 它会产生一个与 %q 不相等的 string", bad, canonical)
 			}
 		})
 	}
@@ -69,8 +69,8 @@ func TestRejectsNonCanonical(t *testing.T) {
 
 func TestDecodeRejectsWrongLength(t *testing.T) {
 	for _, n := range []int{0, 15, 17, 32} {
-		if _, err := decodeID(make([]byte, n)); err == nil {
-			t.Fatalf("decodeID 接受了 %d 字节 —— 静默截断会产生一个「看起来像 id 的 id」", n)
+		if _, err := Decode(make([]byte, n)); err == nil {
+			t.Fatalf("Decode 接受了 %d 字节 —— 静默截断会产生一个「看起来像 id 的 id」", n)
 		}
 	}
 }
@@ -81,9 +81,9 @@ func TestIDsAreTimeOrdered(t *testing.T) {
 	const n = 300
 	got := make([]string, n)
 	for i := range got {
-		id, err := NewUserID()
+		id, err := New()
 		if err != nil {
-			t.Fatalf("NewUserID: %v", err)
+			t.Fatalf("New: %v", err)
 		}
 		got[i] = id
 	}
@@ -118,14 +118,14 @@ func TestUUIDConversionHasSingleHome(t *testing.T) {
 	// 正常工作的样子。放行它之前想清楚了理由，⛔ 不是反射性加白名单：
 	//   · 它只用 uuid 【生成】契约测试要的确定性 id（NewSHA1 名字空间 UUID），
 	//     产出的是 canonical 文本，⛔ 从不接触 BINARY(16)
-	//   · 真正的编解码仍然只发生在 uuid.go 的 encodeID / decodeID 里
+	//   · 真正的编解码仍然只发生在 uuid.go 的 Encode / Decode 里
 	//
 	// ⛔ 什么情况【不能】加白名单：某个文件自己把 string 转成 []byte 去写库，
 	//    或自己拼 hex 去查库 —— 那正是本测试要挡的东西，
 	//    「测试文件而已」不构成理由。
 	allowed := map[string]bool{
-		filepath.Join("internal", "localauthx", "uuid.go"):                          true,
-		filepath.Join("internal", "localauthx", "uuid_test.go"):                     true,
+		filepath.Join("internal", "userid", "userid.go"):                             true,
+		filepath.Join("internal", "userid", "userid_test.go"):                        true,
 		filepath.Join("internal", "localauthx", "session_store_integration_test.go"): true,
 	}
 
@@ -170,7 +170,7 @@ func TestUUIDConversionHasSingleHome(t *testing.T) {
 	}
 	if len(offenders) > 0 {
 		t.Fatalf("这些文件也在直接用 %s：%v\n"+
-			"⛔ 编解码只能在 internal/localauthx/uuid.go —— 见该文件顶部注释", pkg, offenders)
+			"⛔ 编解码只能在 internal/localauthx/uuid.go —— 见 internal/userid/userid.go 顶部注释", pkg, offenders)
 	}
 }
 

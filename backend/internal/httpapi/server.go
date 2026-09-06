@@ -17,6 +17,7 @@ import (
 	"github.com/bukahou/melete/backend/internal/question"
 	"github.com/bukahou/melete/backend/internal/study"
 	"github.com/bukahou/melete/backend/internal/token"
+	"github.com/bukahou/melete/backend/internal/userid"
 )
 
 // Server 实现 api.StrictServerInterface。
@@ -127,7 +128,7 @@ func (s *Server) ListQuestions(ctx context.Context, req api.ListQuestionsRequest
 	}
 	// 账号来自已验签的会话 JWT，不是请求参数 —— 无从伪造
 	if id, ok := httpauth.AccountID(ctx); ok {
-		f.AccountID = id
+		f.AccountID = userid.UserID(id)
 	}
 
 	page, err := s.questions.ListQuestions(ctx, b.ID, f)
@@ -215,7 +216,7 @@ func (s *Server) Logout(ctx context.Context, req api.LogoutRequestObject) (api.L
 	return api.Logout204Response{}, nil
 }
 
-func toTokenPair(p *token.Pair, accountID int64, display string) api.TokenPair {
+func toTokenPair(p *token.Pair, accountID string, display string) api.TokenPair {
 	return api.TokenPair{
 		AccessToken:  p.AccessToken,
 		RefreshToken: p.RefreshToken,
@@ -233,10 +234,12 @@ func deref(s *string) string {
 }
 
 func (s *Server) RecordAttempt(ctx context.Context, req api.RecordAttemptRequestObject) (api.RecordAttemptResponseObject, error) {
-	accountID, ok := httpauth.AccountID(ctx)
-	if !ok {
-		// 中间件已挡住无 token 的请求，走到这里说明路由挂错了中间件
-		return nil, s.fail("RecordAttempt", errors.New("上下文缺少已认证账号"))
+	// ⭐ 与其它端点一样走 requireAccount —— 它是 HTTP 层到业务层
+	// 唯一的账号 id 转换点。⛔ 这里曾经自己取一次 AccountID，
+	// 于是它是唯一一处绕过那个转换点的地方。
+	accountID, err := s.requireAccount(ctx, "RecordAttempt")
+	if err != nil {
+		return nil, err
 	}
 	var contextJSON *string
 	if req.Body.Context != nil {
@@ -270,12 +273,19 @@ func (s *Server) RecordAttempt(ctx context.Context, req api.RecordAttemptRequest
 
 // requireAccount 是三个个人统计端点的共同前置。
 // 中间件已挡住无 token 的请求，这里拿不到即为路由配置错误。
-func (s *Server) requireAccount(ctx context.Context, op string) (int64, error) {
+// ⭐ 返回 userid.UserID 而不是 string —— 这是 HTTP 层与业务层之间
+// 【唯一】的账号 id 转换点。
+//
+// ⚠️ 类型不同不是形式主义：study/question 的函数只收 userid.UserID，
+// 所以「把一个普通 string 当账号 id 传进去」是编译错误，
+// ⛔ 而不是一次静默的空结果（BINARY(16) 列拿字符串比对，匹配不到任何行，
+// 界面上看起来就是「你还没有作答」——完全正常的样子）。
+func (s *Server) requireAccount(ctx context.Context, op string) (userid.UserID, error) {
 	id, ok := httpauth.AccountID(ctx)
 	if !ok {
-		return 0, s.fail(op, errors.New("上下文缺少已认证账号"))
+		return "", s.fail(op, errors.New("上下文缺少已认证账号"))
 	}
-	return id, nil
+	return userid.UserID(id), nil
 }
 
 func (s *Server) GetMyProgress(ctx context.Context, req api.GetMyProgressRequestObject) (api.GetMyProgressResponseObject, error) {

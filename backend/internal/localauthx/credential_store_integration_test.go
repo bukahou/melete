@@ -7,6 +7,8 @@ import (
 
 	"github.com/bukahou/gokit/localauth"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/bukahou/melete/backend/internal/userid"
 )
 
 // ⚠️ 这一组没有模块提供的契约套件（gokit 只为三个 Store 提供），
@@ -90,12 +92,12 @@ func TestStatusIsWhitelistIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	uid, _ := encodeID(id)
+	uid, _ := userid.Encode(id)
 
 	for name, status := range map[string]int{
-		"停用":     StatusInactive,
-		"封禁":     StatusBanned,
-		"未知(零值)": StatusUnknown,
+		"停用":      StatusInactive,
+		"封禁":      StatusBanned,
+		"未知(零值)":  StatusUnknown,
 		"将来新增的状态": 99, // ⭐ 白名单的价值就在这一行：新状态默认被拒
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -134,7 +136,7 @@ func TestStatusIsWhitelistIntegration(t *testing.T) {
 // 而前者是攻击者可探测的。
 func TestAccountStatusUnknownUserIntegration(t *testing.T) {
 	s, _ := newAccounts(t)
-	ghost, _ := NewUserID()
+	ghost, _ := userid.New()
 	st, err := s.AccountStatus(context.Background(), ghost)
 	if err != nil {
 		t.Fatalf("不存在的账号不该报错: %v", err)

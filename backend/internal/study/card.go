@@ -9,6 +9,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/bukahou/melete/backend/internal/userid"
+
 	"github.com/bukahou/melete/backend/internal/study/scheduler"
 )
 
@@ -42,34 +44,34 @@ func (r cardRow) toCard() scheduler.Card {
 //
 // ⚠️ 必须在事务内调用：读出来的状态马上要被算新值写回去，
 // 读与写之间隔着一次调度运算，中间被并发插一脚会丢更新。
-func loadCard(ctx context.Context, tx *sqlx.Tx, accountID, questionID int64) (scheduler.Card, error) {
+func loadCard(ctx context.Context, tx *sqlx.Tx, accountID userid.UserID, questionID int64) (scheduler.Card, error) {
 	var row cardRow
 	err := tx.GetContext(ctx, &row, `
 		SELECT state, due, stability, difficulty, reps, lapses, last_review
-		FROM card WHERE account_id = ? AND question_id = ? FOR UPDATE`,
+		FROM card WHERE user_id = ? AND question_id = ? FOR UPDATE`,
 		accountID, questionID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return scheduler.NewCard(), nil
 	}
 	if err != nil {
-		return scheduler.Card{}, fmt.Errorf("查询卡片 (%d,%d): %w", accountID, questionID, err)
+		return scheduler.Card{}, fmt.Errorf("查询卡片 (%s,%d): %w", accountID, questionID, err)
 	}
 	return row.toCard(), nil
 }
 
 // saveCard 写回卡片状态。
 //
-// 用 ON DUPLICATE KEY UPDATE 而不是「先查后插」：主键是 (account_id, question_id)，
+// 用 ON DUPLICATE KEY UPDATE 而不是「先查后插」：主键是 (user_id, question_id)，
 // 交给数据库幂等处理，省掉一次往返也省掉一个竞态。
 // ⚠️ 用 VALUES() 而不是 MySQL 8.0.20+ 的 `AS new` 别名写法 —— 后者在 TiDB 上的
 // 支持情况没核实过，而本项目生产库是 TiDB。VALUES() 两边都吃得下。
-func saveCard(ctx context.Context, tx *sqlx.Tx, accountID, questionID int64, c scheduler.Card) error {
+func saveCard(ctx context.Context, tx *sqlx.Tx, accountID userid.UserID, questionID int64, c scheduler.Card) error {
 	var lastReview any
 	if !c.LastReview.IsZero() {
 		lastReview = c.LastReview.UTC()
 	}
 	_, err := tx.ExecContext(ctx, `
-		INSERT INTO card (account_id, question_id, state, due, stability, difficulty, reps, lapses, last_review)
+		INSERT INTO card (user_id, question_id, state, due, stability, difficulty, reps, lapses, last_review)
 		VALUES (?,?,?,?,?,?,?,?,?)
 		ON DUPLICATE KEY UPDATE
 			state=VALUES(state), due=VALUES(due), stability=VALUES(stability),
@@ -78,7 +80,7 @@ func saveCard(ctx context.Context, tx *sqlx.Tx, accountID, questionID int64, c s
 		accountID, questionID, int8(c.State), c.Due.UTC(),
 		c.Stability, c.Difficulty, c.Reps, c.Lapses, lastReview)
 	if err != nil {
-		return fmt.Errorf("写入卡片 (%d,%d): %w", accountID, questionID, err)
+		return fmt.Errorf("写入卡片 (%s,%d): %w", accountID, questionID, err)
 	}
 	return nil
 }
@@ -97,7 +99,7 @@ type DueSummary struct {
 // 「到期」= card.due <= now。新卡（没有 card 行）不算到期 —— 它们是「没做过」，
 // 是另一个入口；把两者混在一个数字里，会让「今天要复习 300 题」这种数字
 // 变得毫无意义，而那正是间隔重复最劝退的失败模式。
-func (s *service) LoadDueSummary(ctx context.Context, accountID int64) ([]DueSummary, error) {
+func (s *service) LoadDueSummary(ctx context.Context, accountID userid.UserID) ([]DueSummary, error) {
 	out := []DueSummary{}
 	err := s.db.SelectContext(ctx, &out, `
 		SELECT b.slug,
@@ -105,7 +107,7 @@ func (s *service) LoadDueSummary(ctx context.Context, accountID int64) ([]DueSum
 		       COALESCE(SUM(c.question_id IS NULL), 0)                                  AS unseen_count
 		FROM bank b
 		JOIN question q ON q.bank_id = b.id
-		LEFT JOIN card c ON c.question_id = q.id AND c.account_id = ?
+		LEFT JOIN card c ON c.question_id = q.id AND c.user_id = ?
 		GROUP BY b.id, b.slug
 		ORDER BY b.slug`, accountID)
 	if err != nil {

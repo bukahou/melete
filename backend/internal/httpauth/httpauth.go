@@ -21,14 +21,18 @@ const accountKey ctxKey = iota
 
 // TokenParser 是本包对 token 域的全部依赖 —— 接口定义在使用方，便于测试替换。
 type TokenParser interface {
-	ParseAccessToken(raw string) (int64, error)
+	ParseAccessToken(raw string) (string, error)
 }
 
-// AccountID 从请求上下文取出已认证的账号 id。
+// AccountID 从请求上下文取出已认证的账号 id（canonical UUID 文本）。
 // 只有经过 RequireUserExcept 的请求才有值。
-func AccountID(ctx context.Context) (int64, bool) {
-	id, ok := ctx.Value(accountKey).(int64)
-	return id, ok && id > 0
+//
+// ⚠️ 2026-09-07 起是 string 而不是 int64（案卷 §22.2 的 UUIDv7）。
+// 空串一律视为未认证 —— ⛔ 与旧的 `id > 0` 同一条纪律：
+// 零值不得被当成一个合法身份。
+func AccountID(ctx context.Context) (string, bool) {
+	id, ok := ctx.Value(accountKey).(string)
+	return id, ok && id != ""
 }
 
 // RequireUserExcept 验签 access token 并把 accountID 注入上下文，

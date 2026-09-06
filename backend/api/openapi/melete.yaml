@@ -615,7 +615,18 @@ components:
         accessToken:  { type: string }
         refreshToken: { type: string }
         expiresIn:    { type: integer, description: access token 剩余秒数（非绝对时间，免受客户端时钟偏差影响） }
-        accountId:    { type: integer, format: int64 }
+        # ⚠️ 2026-09-07 breaking change：integer/int64 → string（canonical UUID）。
+        # 账号 id 从 BIGINT 自增换成 UUIDv7（cross-exam 005 §22.2）——
+        # 理由是 TiDB 跳号严重，且 v7 时间有序避免 v4 的索引页分裂。
+        # ⛔ 消费方（web / iOS）必须同步改，⚠️ 旧 token 里的数字 sub 会被拒。
+        # ⛔ 刻意【不写 format: uuid】：那会让 oapi-codegen 产出
+        # openapi_types.UUID，于是 httpapi 层要多一次 UUID↔string 转换 ——
+        # 而「编解码只有一处」是本项目的硬规则（见 internal/localauthx/uuid.go）。
+        # 契约上它就是一个字符串；形态由 pattern 说明，⛔ 不由类型强加。
+        accountId:
+          type: string
+          pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          description: 账号 id（canonical UUIDv7 文本）
         display:      { type: string }
 
     Error:

@@ -3,6 +3,8 @@ package study
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"github.com/bukahou/melete/backend/internal/userid"
 	"os"
 	"testing"
 	"time"
@@ -45,7 +47,7 @@ func openTestDB(t *testing.T) *sqlx.DB {
 }
 
 // fixture 建一个题库、一道四选一的题、一条 ai_verdict 主张（正确答案 A）和一个账号。
-func fixture(t *testing.T, db *sqlx.DB, stem string) (accountID, questionID int64) {
+func fixture(t *testing.T, db *sqlx.DB, stem string) (accountID userid.UserID, questionID int64) {
 	t.Helper()
 	ctx := context.Background()
 	for _, s := range []string{
@@ -81,19 +83,15 @@ func fixture(t *testing.T, db *sqlx.DB, stem string) (accountID, questionID int6
 		`INSERT INTO answer_claim (question_id,source,answer) VALUES (?,'ai_verdict','A')`, questionID); err != nil {
 		t.Fatal(err)
 	}
-	r, err = db.ExecContext(ctx, `INSERT INTO account (akasha_sub,display) VALUES ('t-sub','测试')`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	accountID, _ = r.LastInsertId()
+	accountID = mkUser(t, db, fmt.Sprintf("t-%d", time.Now().UnixNano()%1e9))
 	return accountID, questionID
 }
 
-func readCard(t *testing.T, db *sqlx.DB, acct, q int64) cardRow {
+func readCard(t *testing.T, db *sqlx.DB, acct userid.UserID, q int64) cardRow {
 	t.Helper()
 	var row cardRow
 	err := db.Get(&row, `SELECT state,due,stability,difficulty,reps,lapses,last_review
-	                     FROM card WHERE account_id=? AND question_id=?`, acct, q)
+	                     FROM card WHERE user_id=? AND question_id=?`, acct, q)
 	if err != nil {
 		t.Fatalf("读卡片: %v", err)
 	}
@@ -177,7 +175,7 @@ func TestRecordAttemptIntegration(t *testing.T) {
 
 	t.Run("同一张卡反复作答只有一行，reps 递增", func(t *testing.T) {
 		var n int
-		if err := db.Get(&n, `SELECT COUNT(*) FROM card WHERE account_id=? AND question_id=?`, acct, qid); err != nil {
+		if err := db.Get(&n, `SELECT COUNT(*) FROM card WHERE user_id=? AND question_id=?`, acct, qid); err != nil {
 			t.Fatal(err)
 		}
 		if n != 1 {
@@ -208,7 +206,7 @@ func TestRecordAttemptIntegration(t *testing.T) {
 
 	t.Run("把 due 拨到过去 → 该题变成到期", func(t *testing.T) {
 		if _, err := db.Exec(`UPDATE card SET due = UTC_TIMESTAMP() - INTERVAL 1 DAY
-		                      WHERE account_id=? AND question_id=?`, acct, qid); err != nil {
+		                      WHERE user_id=? AND question_id=?`, acct, qid); err != nil {
 			t.Fatal(err)
 		}
 		sum, err := svc.LoadDueSummary(ctx, acct)
@@ -302,7 +300,7 @@ func TestLoadProgressDueCountIntegration(t *testing.T) {
 
 	// ⚠️ 同时断言【其它字段】。LoadProgress 有 4 个占位符，
 	// 只断言 dueCount 的话，占位符整体错位（把 slug 绑到 latestAttempt 的
-	// account_id 上）会让 seen/correct/wrong 全变 0 而 dueCount 恰好还对 ——
+	// user_id 上）会让 seen/correct/wrong 全变 0 而 dueCount 恰好还对 ——
 	// 2026-09-04 变异测试实测：那个变异在只查 dueCount 的版本下完全不红。
 	must := func(wantDue, wantSeen int, when string) {
 		t.Helper()
@@ -338,7 +336,7 @@ func TestLoadProgressDueCountIntegration(t *testing.T) {
 	}
 	otherQ, _ := rq.LastInsertId()
 	if _, err := db.Exec(`
-		INSERT INTO card (account_id,question_id,state,due,stability,difficulty,reps,lapses)
+		INSERT INTO card (user_id,question_id,state,due,stability,difficulty,reps,lapses)
 		VALUES (?,?,2, UTC_TIMESTAMP() - INTERVAL 5 DAY, 1,5,1,0)`, acct, otherQ); err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +352,7 @@ func TestLoadProgressDueCountIntegration(t *testing.T) {
 	must(0, 1, "刚做完，下次到期在未来")
 
 	if _, err := db.Exec(`UPDATE card SET due = UTC_TIMESTAMP() - INTERVAL 1 DAY
-	                      WHERE account_id=? AND question_id=?`, acct, qid); err != nil {
+	                      WHERE user_id=? AND question_id=?`, acct, qid); err != nil {
 		t.Fatal(err)
 	}
 	must(1, 1, "把 due 拨到过去")
@@ -366,7 +364,7 @@ func TestLoadProgressDueCountIntegration(t *testing.T) {
 	}
 	other, _ := r.LastInsertId()
 	if _, err := db.Exec(`
-		INSERT INTO card (account_id,question_id,state,due,stability,difficulty,reps,lapses)
+		INSERT INTO card (user_id,question_id,state,due,stability,difficulty,reps,lapses)
 		VALUES (?,?,2, UTC_TIMESTAMP() - INTERVAL 9 DAY, 1,5,1,0)`, other, qid); err != nil {
 		t.Fatal(err)
 	}
@@ -376,3 +374,24 @@ func TestLoadProgressDueCountIntegration(t *testing.T) {
 func ptr(v int) *int { return &v }
 
 var _ = sql.ErrNoRows
+
+// mkUser 建一个测试账号，返回 canonical UUID。
+//
+// ⚠️ 2026-09-07 起账号在 users 表、id 是 BINARY(16) 的 UUIDv7 ——
+// ⛔ 不再有自增 id 可以从 LastInsertId 拿。
+func mkUser(t *testing.T, db *sqlx.DB, name string) userid.UserID {
+	t.Helper()
+	id, err := userid.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin, err := userid.Encode(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO users (id,username,status,created_at,updated_at,display_name)
+	                      VALUES (?,?,1,UTC_TIMESTAMP(),UTC_TIMESTAMP(),?)`, bin, name, name); err != nil {
+		t.Fatal(err)
+	}
+	return userid.UserID(id)
+}

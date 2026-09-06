@@ -9,6 +9,8 @@ import (
 
 	"github.com/bukahou/gokit/localauth"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/bukahou/melete/backend/internal/userid"
 )
 
 // verificationStore 是 localauth.VerificationStore 的 MySQL 实现。
@@ -33,11 +35,11 @@ func NewVerificationStore(db *sqlx.DB) localauth.VerificationStore {
 // 【一个码都没有】的窗口，并发重发会让先到的那个码被后到的作废掉，
 // 而后到的那封信可能永远送不到用户手里。
 func (s *verificationStore) Issue(ctx context.Context, rec localauth.VerificationRecord, verifierHash []byte) (string, error) {
-	id, err := NewUserID()
+	id, err := userid.New()
 	if err != nil {
 		return "", fmt.Errorf("生成验证记录 id: %w", err)
 	}
-	idBin, err := encodeID(id)
+	idBin, err := userid.Encode(id)
 	if err != nil {
 		return "", err
 	}
@@ -75,7 +77,7 @@ type verificationRow struct {
 }
 
 func (r verificationRow) toRecord() (localauth.VerificationRecord, error) {
-	id, err := decodeID(r.ID)
+	id, err := userid.Decode(r.ID)
 	if err != nil {
 		return localauth.VerificationRecord{}, fmt.Errorf("验证记录 id: %w", err)
 	}
@@ -116,7 +118,7 @@ func (s *verificationStore) FindPending(ctx context.Context, purpose localauth.T
 // ⚠️ 与 FailureStore.Bump 同一条理由：自增与回读必须同属一个原子区间，
 // 否则并发时返回的不是"我这一次"的值，而尝试次数上限正是靠它判定的。
 func (s *verificationStore) BumpAttempts(ctx context.Context, id string) (int, error) {
-	idBin, err := encodeID(id)
+	idBin, err := userid.Encode(id)
 	if err != nil {
 		return 0, err
 	}
@@ -144,7 +146,7 @@ func (s *verificationStore) BumpAttempts(ctx context.Context, id string) (int, e
 // 判胜负。⛔ 反面教材就在本仓 internal/token/token.go —— 它把条件放在
 // 先前的 SELECT 里、UPDATE 只按 id 匹配，于是两个并发请求都"成功"了。
 func (s *verificationStore) Consume(ctx context.Context, id string, at time.Time) (bool, error) {
-	idBin, err := encodeID(id)
+	idBin, err := userid.Encode(id)
 	if err != nil {
 		return false, err
 	}

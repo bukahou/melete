@@ -174,7 +174,7 @@ CREATE TABLE IF NOT EXISTS account_session (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS card (                  -- FSRS 状态，一个用户 × 一道题
-  account_id  BIGINT    NOT NULL,
+  user_id     BINARY(16) NOT NULL,
   question_id BIGINT    NOT NULL,
   state       TINYINT   NOT NULL DEFAULT 0,  -- 0 new / 1 learning / 2 review / 3 relearning
   due         DATETIME  NOT NULL,
@@ -183,13 +183,13 @@ CREATE TABLE IF NOT EXISTS card (                  -- FSRS 状态，一个用户
   reps        INT       NOT NULL DEFAULT 0,
   lapses      INT       NOT NULL DEFAULT 0,
   last_review DATETIME,
-  PRIMARY KEY (account_id, question_id),
-  KEY idx_card_due (account_id, due)          -- 「今天该复习什么」的主查询
+  PRIMARY KEY (user_id, question_id),
+  KEY idx_card_due (user_id, due)          -- 「今天该复习什么」的主查询
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS attempt (
   id          BIGINT     NOT NULL AUTO_INCREMENT,
-  account_id  BIGINT     NOT NULL,
+  user_id     BINARY(16) NOT NULL,
   question_id BIGINT     NOT NULL,
   chosen      VARCHAR(8) NOT NULL,
   correct     TINYINT(1) NOT NULL,
@@ -202,8 +202,8 @@ CREATE TABLE IF NOT EXISTS attempt (
   context     JSON,
   created_at  DATETIME   NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  KEY idx_attempt_acc_q (account_id, question_id),
-  KEY idx_attempt_time (account_id, created_at)
+  KEY idx_attempt_user_q (user_id, question_id),
+  KEY idx_attempt_time (user_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ═══════════════════════════════════════════════════════════════════

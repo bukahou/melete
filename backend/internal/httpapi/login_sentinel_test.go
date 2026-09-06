@@ -32,10 +32,10 @@ func (r *sentinelRepo) FindByUsername(context.Context, string) (*account.Account
 	}
 	return r.acct, nil
 }
-func (r *sentinelRepo) FindByID(context.Context, int64) (*account.Account, error) {
+func (r *sentinelRepo) FindByID(context.Context, string) (*account.Account, error) {
 	return nil, account.ErrNotFound
 }
-func (r *sentinelRepo) UpsertByAkashaSub(context.Context, string, string) (*account.Account, error) {
+func (r *sentinelRepo) EstablishFederated(context.Context, string, string, string) (*account.Account, error) {
 	return nil, account.ErrNotFound
 }
 

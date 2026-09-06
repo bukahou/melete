@@ -16,8 +16,8 @@ func (p *probeRepo) FindByUsername(_ context.Context, _ string) (*Account, error
 	}
 	return p.acct, nil
 }
-func (p *probeRepo) FindByID(context.Context, int64) (*Account, error) { return nil, ErrNotFound }
-func (p *probeRepo) UpsertByAkashaSub(context.Context, string, string) (*Account, error) {
+func (p *probeRepo) FindByID(context.Context, string) (*Account, error) { return nil, ErrNotFound }
+func (p *probeRepo) EstablishFederated(context.Context, string, string, string) (*Account, error) {
 	return nil, ErrNotFound
 }
 

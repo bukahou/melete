@@ -96,8 +96,9 @@ func hasAnyPrefix(path string, prefixes []string) bool {
 // 带任意伪造 XFF 的请求全部 401 通过 —— **每次换一个值即可无限试探，防护为零**。
 //
 // 修法：只认由可信代理写入、且客户端伪造无效的头。
-//   1. CF-Connecting-IP —— Cloudflare 总是**覆盖**它（不是追加），客户端伪造不了
-//   2. 退回 RemoteAddr（TCP 对端，无法伪造）
+//  1. CF-Connecting-IP —— Cloudflare 总是**覆盖**它（不是追加），客户端伪造不了
+//  2. 退回 RemoteAddr（TCP 对端，无法伪造）
+//
 // 刻意**不读** X-Forwarded-For / X-Real-IP：在本服务的拓扑里它们没有可信来源。
 //
 // 退回 RemoteAddr 时外部流量会共用网关 pod 的 IP → 退化成全局限流。

@@ -1,13 +1,18 @@
-// Package localauthx 是 melete 与共享认证模块之间的【适配层】。
+// Package userid 是账号标识的唯一定义处：生成、编解码、以及可直接
+// 当 SQL 参数用的类型。
 //
-// 它的唯一职责是把模块定义的接口翻译成 melete 的存储，⛔ 不含任何决策 ——
-// 退避策略、轮换语义、吊销时机全在模块里，这里只负责读写。
+// ⚠️ 为什么它【不在】 internal/localauthx 里（2026-09-07 从那里搬出来）：
+// 账号 id 不是认证适配层的东西 —— study / question / httpapi 都要用它，
+// 而它们与共享认证模块毫无关系。把 id 原语留在 localauthx 会逼着
+// 业务包 import 一个认证适配器，分层就歪了。
 //
-// ⚠️ 为什么不叫 `auth`：那个名字会诱使后人把业务逻辑塞回来。
-// 名字里的 x = adapter，读到它的人应该立刻知道「这里没有逻辑」。
-package localauthx
+// ⭐ 搬出来还有一个更硬的收益：`UserID` 这个类型可以进业务包的函数签名，
+// 于是「把一个普通 string 当账号 id 传进 SQL」变成【编译错误】，
+// 而不是一次静默的空结果。见下方 UserID 的注释。
+package userid
 
 import (
+	"database/sql/driver"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -41,14 +46,14 @@ import (
 // ⛔ 不保留兼容路径 —— 保留兼容路径等于让两种 id 长期并存，
 // 而「两个都对但不一样」比「只有一个」难查得多。
 
-// NewUserID 生成一个新的账号 id。
+// New 生成一个新的账号 id。
 //
 // ⭐ 用 v7 而不是 v4：v7 的高位是毫秒时间戳，因此**索引上是时间有序的**，
 // 插入总在 B+ 树右端，避免 v4 的随机插入造成页分裂与索引膨胀。
 // 用户 2026-09-05 选 UUID 的直接理由是「TiDB 跳号严重」——
 // ⚠️ 而在 TiDB 上，v4 的随机性还会额外造成写热点分散过度、
 // v7 的单调性正好与它的 range 分片对齐。
-func NewUserID() (string, error) {
+func New() (string, error) {
 	u, err := uuid.NewV7()
 	if err != nil {
 		// uuid.NewV7 只在熵源失败时报错，与 bcrypt 的 dummy 生成同源：
@@ -58,12 +63,20 @@ func NewUserID() (string, error) {
 	return u.String(), nil
 }
 
-// encodeID 文本 → BINARY(16)，写库前用。
+// Encode 文本 → BINARY(16)，写库前用。
+//
+// ⭐ 导出（原本是包内私有）：internal/account 等包也要读写 users.id，
+// 而「编解码只有一处」这条规则要求它们【调这个函数】而不是各自实现。
+// ⚠️ 守门测试因此仍然成立 —— 它查的是谁 import 了 github.com/google/uuid，
+// 而调用方只 import localauthx，⛔ 碰不到 uuid 包。
+// ⇒ 导出反而让规则更硬：以前别的包想转换只能自己写（守门会红），
+//
+//	现在有一条合法的路，⛔ 没有理由再自己写。
 //
 // ⚠️ 严格解析：uuid.Parse 接受多种宽松写法（带花括号、带 urn: 前缀、无连字符），
 // 这里【不做归一化后放行】，而是要求调用方给的就是 canonical 形式 ——
 // 因为宽松解析意味着同一个 id 有多种文本形态，而那正是上面警告的失败模式。
-func encodeID(s string) ([]byte, error) {
+func Encode(s string) ([]byte, error) {
 	u, err := uuid.Parse(s)
 	if err != nil {
 		return nil, fmt.Errorf("账号 id %q 不是合法 UUID: %w", s, err)
@@ -77,8 +90,8 @@ func encodeID(s string) ([]byte, error) {
 	return out, nil
 }
 
-// decodeID BINARY(16) → 文本，读库后用。
-func decodeID(b []byte) (string, error) {
+// Decode BINARY(16) → 文本，读库后用。
+func Decode(b []byte) (string, error) {
 	if len(b) != 16 {
 		// ⚠️ 长度不对多半意味着列类型被改过（或查错了列）。
 		// 报出实际长度，⛔ 别静默截断 —— 截断会产生一个「看起来像 id 的 id」。
@@ -88,3 +101,21 @@ func decodeID(b []byte) (string, error) {
 	copy(u[:], b)
 	return u.String(), nil
 }
+
+// UserID 让 canonical UUID 文本可以直接当 SQL 参数用。
+//
+// ⭐ 存在理由：业务代码里账号 id 是 string（进 JWT、进日志、进 API），
+// 而库里是 BINARY(16)。若每个查询点各自调一次 Encode，就会散出几十处
+// 「转换 + 处理转换错误」的样板 —— 而样板正是不一致的温床。
+//
+// ⚠️ 它没有绕开「编解码只有一处」：转换仍然发生在下面这个 Value() 里，
+// 而 Value() 调的是本文件的 Encode。⛔ 别的包拿到的是一个可以直接
+// 塞进 SQL 参数的值，碰不到编码细节。
+//
+// ⚠️ 转换失败会以【查询错误】的形式冒出来，而不是编译错误。这是可接受的，
+// 因为 id 的形态在入口就被 token.ParseAccessToken 校验过了 ——
+// 到这一层还不是合法 UUID，说明有一条路径绕过了入口校验，
+// ⭐ 那种情况本来就该整个查询失败，而不是悄悄查出空集。
+type UserID string
+
+func (u UserID) Value() (driver.Value, error) { return Encode(string(u)) }

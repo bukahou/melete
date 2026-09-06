@@ -770,8 +770,10 @@ type TagTypeMeta struct {
 // 对齐 geass-v3：refresh 不做成 JWT —— 生命周期以月计的凭证必须能撤回。
 type TokenPair struct {
 	AccessToken string `json:"accessToken"`
-	AccountId   int64  `json:"accountId"`
-	Display     string `json:"display"`
+
+	// AccountId 账号 id（canonical UUIDv7 文本）
+	AccountId string `json:"accountId"`
+	Display   string `json:"display"`
 
 	// ExpiresIn access token 剩余秒数（非绝对时间，免受客户端时钟偏差影响）
 	ExpiresIn    int    `json:"expiresIn"`

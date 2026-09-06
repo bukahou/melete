@@ -1,5 +1,7 @@
 package question
 
+import "github.com/bukahou/melete/backend/internal/userid"
+
 import "fmt"
 
 // Summary 是列表页用的题目摘要。
@@ -117,7 +119,7 @@ type ListFilter struct {
 	OnlyContested bool
 	OnlyEnriched  bool
 	Mode          string
-	AccountID     int64
+	AccountID     userid.UserID
 	Limit         int
 	Offset        int
 }

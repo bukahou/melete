@@ -27,7 +27,8 @@ func NewService(repo Repository) Service { return &service{repo: repo} }
 // ListQuestions 在进仓储之前把分页参数收敛到合法范围，
 // 避免 limit=100000 这类请求打穿数据库。
 func (s *service) ListQuestions(ctx context.Context, bankID int64, f ListFilter) (*Page, error) {
-	if f.Mode != "" && f.AccountID <= 0 {
+	// ⚠️ 空串 = 未认证。⛔ 与旧的 `<= 0` 同一条纪律：零值不是合法身份。
+	if f.Mode != "" && f.AccountID == "" {
 		return nil, ErrModeNeedsAccount
 	}
 	if f.Limit <= 0 {

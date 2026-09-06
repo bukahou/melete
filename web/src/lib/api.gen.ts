@@ -529,8 +529,8 @@ export interface components {
             refreshToken: string;
             /** @description access token 剩余秒数（非绝对时间，免受客户端时钟偏差影响） */
             expiresIn: number;
-            /** Format: int64 */
-            accountId: number;
+            /** @description 账号 id（canonical UUIDv7 文本） */
+            accountId: string;
             display: string;
         };
         Error: {

@@ -32,10 +32,11 @@ import (
 	"github.com/jmoiron/sqlx"
 
 	"github.com/bukahou/melete/backend/internal/study/scheduler"
+	"github.com/bukahou/melete/backend/internal/userid"
 )
 
 type attemptRow struct {
-	AccountID  int64         `db:"account_id"`
+	AccountID  []byte        `db:"user_id"`
 	QuestionID int64         `db:"question_id"`
 	Correct    bool          `db:"correct"`
 	Rating     sql.NullInt64 `db:"rating"`
@@ -43,7 +44,11 @@ type attemptRow struct {
 	CreatedAt  time.Time     `db:"created_at"`
 }
 
-type key struct{ account, question int64 }
+// account 是 canonical UUID 文本（2026-09-07 起，案卷 §22.2）
+type key struct {
+	account  string
+	question int64
+}
 
 func main() {
 	dsn := flag.String("dsn", os.Getenv("MELETE_DB_DSN"), "数据库连接串，默认取 MELETE_DB_DSN")
@@ -93,8 +98,8 @@ func main() {
 	// 同一毫秒内的多条用 id 兜底，让重放可复现。
 	var rows []attemptRow
 	if err := db.SelectContext(ctx, &rows, `
-		SELECT account_id, question_id, correct, rating, duration_ms, created_at
-		FROM attempt ORDER BY account_id, question_id, created_at, id`); err != nil {
+		SELECT user_id, question_id, correct, rating, duration_ms, created_at
+		FROM attempt ORDER BY user_id, question_id, created_at, id`); err != nil {
 		exit("读取作答记录: " + err.Error())
 	}
 
@@ -109,7 +114,11 @@ func main() {
 			skipped++
 			continue
 		}
-		k := key{a.AccountID, a.QuestionID}
+		aid, derr := userid.Decode(a.AccountID)
+		if derr != nil {
+			exit("解析作答的 user_id: " + derr.Error())
+		}
+		k := key{aid, a.QuestionID}
 		c, ok := cards[k]
 		if !ok {
 			c = scheduler.NewCard()
@@ -136,15 +145,19 @@ func main() {
 	// 孤儿不该存在（卡片只在作答时创建），但真出现了要报出来，不静默删。
 	existing := map[key]bool{}
 	var ex []struct {
-		AccountID  int64 `db:"account_id"`
-		QuestionID int64 `db:"question_id"`
+		AccountID  []byte `db:"user_id"`
+		QuestionID int64  `db:"question_id"`
 	}
-	if err := db.SelectContext(ctx, &ex, `SELECT account_id, question_id FROM card`); err != nil {
+	if err := db.SelectContext(ctx, &ex, `SELECT user_id, question_id FROM card`); err != nil {
 		exit("读取现有卡片: " + err.Error())
 	}
 	var orphans []key
 	for _, e := range ex {
-		k := key{e.AccountID, e.QuestionID}
+		uid, derr := userid.Decode(e.AccountID)
+		if derr != nil {
+			exit("解析卡片的 user_id: " + derr.Error())
+		}
+		k := key{uid, e.QuestionID}
 		existing[k] = true
 		if _, ok := cards[k]; !ok {
 			orphans = append(orphans, k)
@@ -164,7 +177,7 @@ func main() {
 	fmt.Printf("评分纠正    %d 次\n", corrected)
 	fmt.Printf("卡片        新建 %d，覆盖 %d，孤儿 %d\n", created, updated, len(orphans))
 	for _, k := range orphans {
-		fmt.Printf("  ⚠️ 孤儿卡片 account=%d question=%d（没有任何作答记录）\n", k.account, k.question)
+		fmt.Printf("  ⚠️ 孤儿卡片 account=%s question=%d（没有任何作答记录）\n", k.account, k.question)
 	}
 	if len(cards) > 0 {
 		printSample(cards, sch)
@@ -183,7 +196,7 @@ func main() {
 
 	for _, k := range orphans {
 		if _, err := tx.ExecContext(ctx,
-			`DELETE FROM card WHERE account_id=? AND question_id=?`, k.account, k.question); err != nil {
+			`DELETE FROM card WHERE user_id=? AND question_id=?`, mustEncode(k.account), k.question); err != nil {
 			exit("删除孤儿卡片: " + err.Error())
 		}
 	}
@@ -193,13 +206,13 @@ func main() {
 			lastReview = c.LastReview.UTC()
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO card (account_id, question_id, state, due, stability, difficulty, reps, lapses, last_review)
+			INSERT INTO card (user_id, question_id, state, due, stability, difficulty, reps, lapses, last_review)
 			VALUES (?,?,?,?,?,?,?,?,?)
 			ON DUPLICATE KEY UPDATE
 				state=VALUES(state), due=VALUES(due), stability=VALUES(stability),
 				difficulty=VALUES(difficulty), reps=VALUES(reps), lapses=VALUES(lapses),
 				last_review=VALUES(last_review)`,
-			k.account, k.question, int8(c.State), c.Due.UTC(),
+			mustEncode(k.account), k.question, int8(c.State), c.Due.UTC(),
 			c.Stability, c.Difficulty, c.Reps, c.Lapses, lastReview); err != nil {
 			exit("写入卡片: " + err.Error())
 		}
@@ -229,7 +242,7 @@ func printSample(cards map[key]scheduler.Card, sch *scheduler.Scheduler) {
 			break
 		}
 		c := cards[k]
-		fmt.Printf("  account=%d question=%d  %-10v reps=%d lapses=%d S=%.2f D=%.2f  due=%s  此刻 R=%.3f\n",
+		fmt.Printf("  account=%s question=%d  %-10v reps=%d lapses=%d S=%.2f D=%.2f  due=%s  此刻 R=%.3f\n",
 			k.account, k.question, c.State, c.Reps, c.Lapses, c.Stability, c.Difficulty,
 			c.Due.Format("2006-01-02 15:04"), sch.Retrievability(c, now))
 	}
@@ -267,4 +280,15 @@ func hasParams(dsn string) bool {
 func exit(msg string) {
 	fmt.Fprintln(os.Stderr, "✗ "+msg)
 	os.Exit(1)
+}
+
+// mustEncode 把 canonical UUID 转成 BINARY(16)。
+// ⚠️ 本工具是一次性回填器，id 全部来自库里刚读出来的行 —— 转不回去
+// 说明库里有脏数据，⛔ 那种情况该整个停下而不是跳过这一行。
+func mustEncode(id string) []byte {
+	b, err := userid.Encode(id)
+	if err != nil {
+		exit("编码 user_id: " + err.Error())
+	}
+	return b
 }

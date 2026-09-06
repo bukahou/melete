@@ -2,6 +2,8 @@ package question
 
 import (
 	"context"
+	"fmt"
+	"github.com/bukahou/melete/backend/internal/userid"
 	"os"
 	"testing"
 	"time"
@@ -13,8 +15,8 @@ import (
 // mode=due 的集成测试 —— 需要真数据库，设 MELETE_TEST_DSN 才跑。
 //
 // ⚠️ 这条查询里的占位符顺序是【最容易静默出错】的地方：排序表达式带一个
-// account_id 参数，它必须排在 LIMIT/OFFSET 之前。顺序错了 SQL 照样执行，
-// 只是把 account_id 当成 LIMIT —— 不报错，只是返回条数莫名其妙。
+// user_id 参数，它必须排在 LIMIT/OFFSET 之前。顺序错了 SQL 照样执行，
+// 只是把 user_id 当成 LIMIT —— 不报错，只是返回条数莫名其妙。
 // ⛔ 与 study 包共用同一个测试库且都会 DELETE 全表 ——
 // 多包一起跑必须 `go test -p 1`，否则并行时必然互相踩。
 func openDueTestDB(t *testing.T) *sqlx.DB {
@@ -37,7 +39,7 @@ func openDueTestDB(t *testing.T) *sqlx.DB {
 //	#4 未到期（3 天后） #5 没有卡片（没做过）
 //
 // 期望 due 模式返回 {3, 1, 2}，按到期时间升序 —— 最该复习的排最前。
-func dueFixture(t *testing.T, db *sqlx.DB) (bankID, accountID int64) {
+func dueFixture(t *testing.T, db *sqlx.DB) (bankID int64, accountID userid.UserID) {
 	t.Helper()
 	ctx := context.Background()
 	for _, s := range []string{
@@ -54,19 +56,11 @@ func dueFixture(t *testing.T, db *sqlx.DB) (bankID, accountID int64) {
 		t.Fatal(err)
 	}
 	bankID, _ = r.LastInsertId()
-	r, err = db.ExecContext(ctx, `INSERT INTO account (akasha_sub,display) VALUES ('due-sub','测试')`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	accountID, _ = r.LastInsertId()
+	accountID = mkUser(t, db, "due-"+randSuffix())
 
-	// ⚠️ 另建一个账号并给它反向的到期时间：若查询漏了 account_id 条件，
+	// ⚠️ 另建一个账号并给它反向的到期时间：若查询漏了 user_id 条件，
 	// 或把它绑错了位置，这些行就会混进结果里 —— 没有它，跨账号泄漏测不出来。
-	r2, err := db.ExecContext(ctx, `INSERT INTO account (akasha_sub,display) VALUES ('other-sub','别人')`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	otherID, _ := r2.LastInsertId()
+	otherID := mkUser(t, db, "other-"+randSuffix())
 
 	qids := map[int]int64{}
 	for no := 1; no <= 5; no++ {
@@ -85,7 +79,7 @@ func dueFixture(t *testing.T, db *sqlx.DB) (bankID, accountID int64) {
 	// 天数为负 = 已到期
 	for no, days := range map[int]int{1: -3, 2: -1, 3: -10, 4: 3} {
 		if _, err := db.ExecContext(ctx, `
-			INSERT INTO card (account_id,question_id,state,due,stability,difficulty,reps,lapses)
+			INSERT INTO card (user_id,question_id,state,due,stability,difficulty,reps,lapses)
 			VALUES (?,?,2, UTC_TIMESTAMP() + INTERVAL ? DAY, 1,5,1,0)`,
 			accountID, qids[no], days); err != nil {
 			t.Fatal(err)
@@ -94,7 +88,7 @@ func dueFixture(t *testing.T, db *sqlx.DB) (bankID, accountID int64) {
 	// 别人的卡片：把【本人未到期】的 #4 和【本人没做过】的 #5 都设成已到期
 	for _, no := range []int{4, 5} {
 		if _, err := db.ExecContext(ctx, `
-			INSERT INTO card (account_id,question_id,state,due,stability,difficulty,reps,lapses)
+			INSERT INTO card (user_id,question_id,state,due,stability,difficulty,reps,lapses)
 			VALUES (?,?,2, UTC_TIMESTAMP() - INTERVAL 30 DAY, 1,5,1,0)`,
 			otherID, qids[no]); err != nil {
 			t.Fatal(err)
@@ -173,7 +167,7 @@ func TestListQuestionsDueModeIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(page.Items) != 2 {
-			t.Fatalf("limit=2 却返回 %d 条 —— 占位符很可能错位了（account_id 被当成 LIMIT）",
+			t.Fatalf("limit=2 却返回 %d 条 —— 占位符很可能错位了（user_id 被当成 LIMIT）",
 				len(page.Items))
 		}
 		if page.Items[0].ExternalNo != 3 || page.Items[1].ExternalNo != 1 {
@@ -206,3 +200,27 @@ func TestListQuestionsDueModeIntegration(t *testing.T) {
 
 	_ = time.Now
 }
+
+// mkUser 建一个测试账号，返回 canonical UUID。
+//
+// ⚠️ 2026-09-07 起账号在 users 表、id 是 BINARY(16) 的 UUIDv7 ——
+// ⛔ 不再有自增 id 可以从 LastInsertId 拿。
+func mkUser(t *testing.T, db *sqlx.DB, name string) userid.UserID {
+	t.Helper()
+	id, err := userid.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin, err := userid.Encode(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO users (id,username,status,created_at,updated_at,display_name)
+	                      VALUES (?,?,1,UTC_TIMESTAMP(),UTC_TIMESTAMP(),?)`, bin, name, name); err != nil {
+		t.Fatal(err)
+	}
+	return userid.UserID(id)
+}
+
+// randSuffix 让同一张 users 表上重复跑测试不撞 uk_username。
+func randSuffix() string { return fmt.Sprintf("%d", time.Now().UnixNano()%1e9) }

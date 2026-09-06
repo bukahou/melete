@@ -11,6 +11,8 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/bukahou/melete/backend/internal/userid"
+
 	"github.com/bukahou/melete/backend/internal/question"
 	"github.com/bukahou/melete/backend/internal/study/scheduler"
 )
@@ -25,7 +27,7 @@ type referenceSource interface {
 
 // Attempt 是一次作答记录。
 type Attempt struct {
-	AccountID  int64
+	AccountID  userid.UserID
 	QuestionID int64
 	Chosen     string
 	Rating     int // FSRS 四键：1=Again 2=Hard 3=Good 4=Easy
@@ -54,12 +56,12 @@ var ErrNotFound = errors.New("bank not found")
 // Service 是学习记录域的门面。
 type Service interface {
 	RecordAttempt(ctx context.Context, a Attempt) (*Result, error)
-	LoadProgress(ctx context.Context, accountID int64, slug string) (*Progress, error)
-	LoadTagStats(ctx context.Context, accountID int64, slug, tagType string, minAttempts int) ([]TagStat, error)
-	LoadResume(ctx context.Context, accountID int64, slug string) (*Resume, error)
-	LoadOverview(ctx context.Context, accountID int64) (*Overview, error)
-	LoadRecentSessions(ctx context.Context, accountID int64, limit int) ([]Session, error)
-	LoadDueSummary(ctx context.Context, accountID int64) ([]DueSummary, error)
+	LoadProgress(ctx context.Context, accountID userid.UserID, slug string) (*Progress, error)
+	LoadTagStats(ctx context.Context, accountID userid.UserID, slug, tagType string, minAttempts int) ([]TagStat, error)
+	LoadResume(ctx context.Context, accountID userid.UserID, slug string) (*Resume, error)
+	LoadOverview(ctx context.Context, accountID userid.UserID) (*Overview, error)
+	LoadRecentSessions(ctx context.Context, accountID userid.UserID, limit int) ([]Session, error)
+	LoadDueSummary(ctx context.Context, accountID userid.UserID) ([]DueSummary, error)
 }
 
 type service struct {
@@ -106,7 +108,7 @@ func (s *service) RecordAttempt(ctx context.Context, a Attempt) (*Result, error)
 	defer tx.Rollback() //nolint:errcheck // 已提交后的 Rollback 是空操作
 
 	if _, err = tx.ExecContext(ctx, `
-		INSERT INTO attempt (account_id, question_id, chosen, correct, duration_ms, rating, context)
+		INSERT INTO attempt (user_id, question_id, chosen, correct, duration_ms, rating, context)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		a.AccountID, a.QuestionID, chosen, correct, a.DurationMs, a.Rating, a.Context); err != nil {
 		return nil, fmt.Errorf("写入作答记录: %w", err)

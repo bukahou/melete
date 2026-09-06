@@ -42,19 +42,19 @@ const enrichedExpr = `EXISTS(SELECT 1 FROM explanation e WHERE e.question_id = q
 // lastAttemptExpr 取该账号对这道题**最近一次**作答的某个字段。
 // 错题本的语义是「最近一次是错的」—— 后来做对了就该出本子。
 const lastAttemptExpr = `(SELECT a.%s FROM attempt a
-	WHERE a.account_id = ? AND a.question_id = q.id
+	WHERE a.user_id = ? AND a.question_id = q.id
 	ORDER BY a.id DESC LIMIT 1)`
 
 // dueExpr 判定「这道题已到期」。UTC_TIMESTAMP() 而非 NOW()：
 // card.due 按 UTC 存（2026-09-03 时区迁移后全库统一），NOW() 取的是会话时区。
 const dueExpr = `EXISTS (SELECT 1 FROM card c
-	WHERE c.account_id = ? AND c.question_id = q.id AND c.due <= UTC_TIMESTAMP())`
+	WHERE c.user_id = ? AND c.question_id = q.id AND c.due <= UTC_TIMESTAMP())`
 
 // dueOrderExpr 让复习队列按【到期时间】排，最该复习的排在最前。
 // 其余模式按原题号排 —— 那是浏览列表，「第 N 题」要可预期；
 // 复习队列不是浏览列表，按题号排等于把最危险的题排到最后。
 const dueOrderExpr = `(SELECT c.due FROM card c
-	WHERE c.account_id = ? AND c.question_id = q.id)`
+	WHERE c.user_id = ? AND c.question_id = q.id)`
 
 // buildFilter 拼出 WHERE 子句与参数。
 // 多个标签取**交集**（同时命中全部标签），用 HAVING 计数实现。
@@ -84,7 +84,7 @@ func buildFilter(bankID int64, f ListFilter) (where string, having string, args 
 		args = append(args, f.AccountID)
 	case "unseen":
 		conds = append(conds, `NOT EXISTS (SELECT 1 FROM attempt a
-			WHERE a.account_id = ? AND a.question_id = q.id)`)
+			WHERE a.user_id = ? AND a.question_id = q.id)`)
 		args = append(args, f.AccountID)
 	case "due":
 		// FSRS 复习队列：已到期的卡片。
@@ -124,7 +124,7 @@ func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f Lis
 	}
 	// 排序：复习队列按到期时间，其余按原题号（让「第 N 题」在界面上可预期）。
 	// ⚠️ 排序参数必须插在 LIMIT/OFFSET 【之前】—— 占位符是按出现顺序绑定的，
-	// 顺序错了不会报错，只会把 account_id 当成 LIMIT。
+	// 顺序错了不会报错，只会把 user_id 当成 LIMIT。
 	listArgs := args
 	if f.Mode == "due" {
 		listQuery += " ORDER BY " + dueOrderExpr + " ASC"

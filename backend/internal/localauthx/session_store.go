@@ -9,6 +9,8 @@ import (
 
 	"github.com/bukahou/gokit/localauth"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/bukahou/melete/backend/internal/userid"
 )
 
 // sessionStore 是 localauth.SessionStore 的 MySQL 实现。
@@ -30,11 +32,11 @@ type sessionRow struct {
 }
 
 func (r sessionRow) toRecord() (localauth.SessionRecord, error) {
-	id, err := decodeID(r.ID)
+	id, err := userid.Decode(r.ID)
 	if err != nil {
 		return localauth.SessionRecord{}, fmt.Errorf("会话 id: %w", err)
 	}
-	uid, err := decodeID(r.UserID)
+	uid, err := userid.Decode(r.UserID)
 	if err != nil {
 		return localauth.SessionRecord{}, fmt.Errorf("会话的 user_id: %w", err)
 	}
@@ -48,17 +50,17 @@ func (r sessionRow) toRecord() (localauth.SessionRecord, error) {
 const sessionCols = `id, user_id, created_at, last_active_at, expires_at, device_info, client_ip`
 
 func (s *sessionStore) Create(ctx context.Context, rec localauth.SessionRecord, refreshHash []byte) (localauth.SessionRecord, error) {
-	uid, err := encodeID(rec.UserID)
+	uid, err := userid.Encode(rec.UserID)
 	if err != nil {
 		return localauth.SessionRecord{}, err
 	}
 	// ⭐ 会话 id 也用 UUIDv7：与账号 id 同一形态，且时间有序 ——
 	// 会话表按时间增长，随机 id 会把插入打散到整棵索引树上。
-	sid, err := NewUserID()
+	sid, err := userid.New()
 	if err != nil {
 		return localauth.SessionRecord{}, fmt.Errorf("生成会话 id: %w", err)
 	}
-	sidBin, err := encodeID(sid)
+	sidBin, err := userid.Encode(sid)
 	if err != nil {
 		return localauth.SessionRecord{}, err
 	}
@@ -85,10 +87,11 @@ func (s *sessionStore) Create(ctx context.Context, rec localauth.SessionRecord, 
 // 按旧哈希匹配之后，第二个 UPDATE 匹配 0 行，竞态消失。
 //
 // 三种结果的处置【完全不同】，所以判定顺序不能乱：
-//   Rotated   换成功
-//   Revoked   命中当前哈希但会话已死 —— 正常事件，只拒这一次
-//   Replayed  命中【上一个】哈希 —— 模块会吊销该用户全部会话（无开关）
-//   Unknown   查不出来历 —— 只拒这一次
+//
+//	Rotated   换成功
+//	Revoked   命中当前哈希但会话已死 —— 正常事件，只拒这一次
+//	Replayed  命中【上一个】哈希 —— 模块会吊销该用户全部会话（无开关）
+//	Unknown   查不出来历 —— 只拒这一次
 func (s *sessionStore) Rotate(ctx context.Context, oldHash, newHash []byte, newExpiry time.Time) (localauth.SessionRecord, localauth.RotateOutcome, error) {
 	var (
 		rec localauth.SessionRecord
@@ -188,11 +191,11 @@ func (s *sessionStore) RevokeByHash(ctx context.Context, hash []byte) error {
 // RevokeByID ⛔ 必须同时匹配 userID —— 只按 sessionID 吊销是 IDOR：
 // 拿到（或猜到）别人的会话 id 就能把别人登出。
 func (s *sessionStore) RevokeByID(ctx context.Context, userID, sessionID string) error {
-	uid, err := encodeID(userID)
+	uid, err := userid.Encode(userID)
 	if err != nil {
 		return err
 	}
-	sid, err := encodeID(sessionID)
+	sid, err := userid.Encode(sessionID)
 	if err != nil {
 		return err
 	}
@@ -205,7 +208,7 @@ func (s *sessionStore) RevokeByID(ctx context.Context, userID, sessionID string)
 }
 
 func (s *sessionStore) RevokeAllByUser(ctx context.Context, userID string) (int, error) {
-	uid, err := encodeID(userID)
+	uid, err := userid.Encode(userID)
 	if err != nil {
 		return 0, err
 	}
@@ -220,11 +223,11 @@ func (s *sessionStore) RevokeAllByUser(ctx context.Context, userID string) (int,
 }
 
 func (s *sessionStore) RevokeOthersByUser(ctx context.Context, userID, keepSessionID string) (int, error) {
-	uid, err := encodeID(userID)
+	uid, err := userid.Encode(userID)
 	if err != nil {
 		return 0, err
 	}
-	keep, err := encodeID(keepSessionID)
+	keep, err := userid.Encode(keepSessionID)
 	if err != nil {
 		return 0, err
 	}
@@ -243,7 +246,7 @@ func (s *sessionStore) RevokeOthersByUser(ctx context.Context, userID, keepSessi
 // ⛔ 返回值里没有任何 token / 哈希字段 —— 会话列表是给人看的，
 // 泄漏哈希等于把撤销凭据摆到界面上。
 func (s *sessionStore) ListByUser(ctx context.Context, userID string) ([]localauth.SessionRecord, error) {
-	uid, err := encodeID(userID)
+	uid, err := userid.Encode(userID)
 	if err != nil {
 		return nil, err
 	}

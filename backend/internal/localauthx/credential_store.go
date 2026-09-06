@@ -11,6 +11,8 @@ import (
 	"github.com/bukahou/gokit/localauth"
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+
+	"github.com/bukahou/melete/backend/internal/userid"
 )
 
 // 账号状态。
@@ -54,7 +56,7 @@ var (
 func NewCredentialStore(db *sqlx.DB) *credentialStore { return &credentialStore{db: db} }
 
 func (s *credentialStore) LoadCredential(ctx context.Context, userID string) (localauth.Credential, bool, error) {
-	uid, err := encodeID(userID)
+	uid, err := userid.Encode(userID)
 	if err != nil {
 		return localauth.Credential{}, false, err
 	}
@@ -81,7 +83,7 @@ func (s *credentialStore) LoadCredential(ctx context.Context, userID string) (lo
 // 还是旧值」的窗口 —— 而吊销判定用的正是 password_changed_at。
 // ⇒ 那个窗口里，用旧口令签发的 access token 仍然有效。
 func (s *credentialStore) SaveCredential(ctx context.Context, userID, hash string, changedAt time.Time) error {
-	uid, err := encodeID(userID)
+	uid, err := userid.Encode(userID)
 	if err != nil {
 		return err
 	}
@@ -122,7 +124,7 @@ func (s *credentialStore) LookupHashByUsername(ctx context.Context, username str
 
 // AccountStatus 是 localauth.AccountStatusFunc 的实现。
 func (s *credentialStore) AccountStatus(ctx context.Context, userID string) (localauth.AccountStatus, error) {
-	uid, err := encodeID(userID)
+	uid, err := userid.Encode(userID)
 	if err != nil {
 		return localauth.AccountStatus{}, err
 	}
@@ -174,11 +176,11 @@ func (s *credentialStore) exists(ctx context.Context, q string, arg any) (bool, 
 // 而这里必须把撞索引翻译成 CodeUsernameTaken / CodeEmailTaken ——
 // 一次正常的并发撞车不该被报成 500。
 func (s *credentialStore) CreateAccount(ctx context.Context, acct localauth.NewAccount) (string, error) {
-	id, err := NewUserID()
+	id, err := userid.New()
 	if err != nil {
 		return "", fmt.Errorf("生成账号 id: %w", err)
 	}
-	idBin, err := encodeID(id)
+	idBin, err := userid.Encode(id)
 	if err != nil {
 		return "", err
 	}

@@ -16,7 +16,7 @@ var ErrBadCredentials = errors.New("用户名或密码错误")
 type Service interface {
 	VerifyPassword(ctx context.Context, username, password string) (*Account, error)
 	EstablishSSO(ctx context.Context, sub, display string) (*Account, error)
-	FindByID(ctx context.Context, id int64) (*Account, error)
+	FindByID(ctx context.Context, id string) (*Account, error)
 }
 
 type service struct{ repo Repository }
@@ -103,10 +103,16 @@ func (s *service) VerifyPassword(ctx context.Context, username, password string)
 	return a, nil
 }
 
+// EstablishSSO 确立 Akasha 联邦账号。
+//
+// ⛔ provider 写死 "akasha"：melete 只接这一个上游（案卷 §35 把
+// 「OIDC 回调后建号」划归 akasha 范围，本次只换存储表不改编排）。
+// ⚠️ 将来接第二个上游时，provider 要从调用方传进来 ——
+// 而 identities 的主键是 (provider, subject)，schema 已经支持。
 func (s *service) EstablishSSO(ctx context.Context, sub, display string) (*Account, error) {
-	return s.repo.UpsertByAkashaSub(ctx, sub, display)
+	return s.repo.EstablishFederated(ctx, "akasha", sub, display)
 }
 
-func (s *service) FindByID(ctx context.Context, id int64) (*Account, error) {
+func (s *service) FindByID(ctx context.Context, id string) (*Account, error) {
 	return s.repo.FindByID(ctx, id)
 }
