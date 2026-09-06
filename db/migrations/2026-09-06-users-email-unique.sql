@@ -1,0 +1,22 @@
+-- users.email 加唯一索引。
+--
+-- 🔴 为什么这是安全问题而不是数据整洁问题：
+--
+-- 模块的 RecoveryAddressResolver.UserByVerifiedAddress(address) 返回【单个】
+-- userID。若两个账号验证了同一个邮箱，这个函数就没有确定答案 ——
+-- ⚠️ 找回密码会改到"其中一个"账号，而选中谁取决于 SQL 的行序。
+-- ⇒ 拿到自己邮箱的验证码，可能重置的是别人的密码。
+--
+-- 而且模块的 AccountCreator 文档【预设了这个索引存在】：
+--   「CreateAccount 撞唯一索引时必须返回 Code 为 CodeUsernameTaken /
+--     CodeEmailTaken 的错误」
+-- 没有索引的话 EmailTaken() 只是一次建议性检查，两个并发注册都能通过。
+--
+-- ⚠️ 这一列是案卷 §22.2 的 users 模板漏掉的 —— 那份 DDL 只给了
+--    uk_username。⇒ geass-v3 / atlhyper 同样受影响，已报 work。
+--
+-- ⭐ NULL 不受影响：MySQL 的 UNIQUE 允许多行 NULL，
+--    所以纯 OIDC 账号（email IS NULL）与未验证账号照常并存。
+--    这也正是为什么唯一性可以直接加在 email 上而不必带 email_verified ——
+--    §22 已经规定 email 列【只存本应用验证过的地址】，未验证的根本不写进来。
+ALTER TABLE users ADD UNIQUE KEY uk_email (email);

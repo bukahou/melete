@@ -60,3 +60,19 @@ func TestContractUserIDIsInjective(t *testing.T) {
 		}
 	}
 }
+
+func TestVerificationStoreContractIntegration(t *testing.T) {
+	db := testDB(t)
+	t.Cleanup(func() { _, _ = db.Exec(`DELETE FROM verification_tokens`) })
+	storetest.RunVerificationStoreTests(t, func(t *testing.T) localauth.VerificationStore {
+		if _, err := db.Exec(`DELETE FROM verification_tokens`); err != nil {
+			t.Fatal(err)
+		}
+		return NewVerificationStore(db)
+	}, storetest.VerificationOptions{
+		// 我的 FindPending 在 SQL 里就滤掉了过期行 —— 守卫自己也会查
+		// ExpiresAt，所以不滤也合法；滤了则少走一段路，并让「过期」与
+		// 「不存在」在存储层归一。⛔ 声明为 true 才会跑那条额外断言。
+		FiltersExpired: true,
+	})
+}

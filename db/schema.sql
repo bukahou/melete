@@ -236,7 +236,11 @@ CREATE TABLE IF NOT EXISTS users (
   last_login_ip        VARBINARY(16) NULL,       -- ⚠️ 必须是解析后的可信 IP
   deleted_at           DATETIME      NULL,
   PRIMARY KEY (id),
-  UNIQUE KEY uk_username (username)
+  UNIQUE KEY uk_username (username),
+  -- 🔴 安全相关，⛔ 不是整洁问题：模块的 UserByVerifiedAddress 返回单个
+  --    userID，两个账号验证同一邮箱会让找回密码改到错误的账号。
+  --    ⭐ MySQL 的 UNIQUE 允许多行 NULL，纯 OIDC 账号照常并存。
+  UNIQUE KEY uk_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- ── user_sessions ─────────────────────────────────────────────────
@@ -309,7 +313,10 @@ CREATE TABLE IF NOT EXISTS login_failures (
 CREATE TABLE IF NOT EXISTS verification_tokens (
   id            BINARY(16)   NOT NULL,
   purpose       VARCHAR(32)  NOT NULL,   -- register | recovery | email_change
-  subject       VARCHAR(255) NOT NULL,   -- 邮箱地址 或 userID 文本
+  subject       VARCHAR(255) NOT NULL,   -- 归属：已有用户用 userID，注册时用 email
+  -- ⭐ 附带数据：change_email 时是新地址，recover 时是码发往的地址。
+  --    ⚠️ 与 subject 不同 —— subject 是归属，payload 是本次操作的目标。
+  payload       VARCHAR(255) NULL,
   verifier_hash BINARY(32)   NOT NULL,
   attempts      INT          NOT NULL DEFAULT 0,
   created_at    DATETIME     NOT NULL,
