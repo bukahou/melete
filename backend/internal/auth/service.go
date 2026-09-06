@@ -59,12 +59,13 @@ type Pair struct {
 
 // Service 组装模块的两个守卫。
 type Service struct {
-	guard    *localauth.Guard
-	sessions *localauth.SessionGuard
-	accounts account.Repository
-	lookup   localauth.LookupFunc
-	secret   []byte
-	log      *slog.Logger
+	guard     *localauth.Guard
+	sessions  *localauth.SessionGuard
+	passwords *localauth.PasswordGuard
+	accounts  account.Repository
+	lookup    localauth.LookupFunc
+	secret    []byte
+	log       *slog.Logger
 }
 
 func NewService(
@@ -80,6 +81,16 @@ func NewService(
 	}
 	return &Service{guard: guard, sessions: sessions, accounts: accounts,
 		lookup: lookup, secret: []byte(jwtSecret), log: log}
+}
+
+// WithPasswordGuard 接上改密守卫。
+//
+// ⚠️ 做成事后注入而不是构造参数，是因为 PasswordGuard 需要
+// AccessTokenIssuer，而那正是 Service 自己的方法 —— 构造期还拿不到。
+// ⛔ 不接的话 ChangePassword 会明确报错，⛔ 不静默失败。
+func (s *Service) WithPasswordGuard(g *localauth.PasswordGuard) *Service {
+	s.passwords = g
+	return s
 }
 
 // Login 密码登录。
@@ -305,4 +316,98 @@ func (s *Service) ParseAccessToken(raw string) (Claims, error) {
 	// ⚠️ sid 允许为空：阶段 3 之前签发的票没有它。
 	// ⛔ 但「登出其它设备」在 sid 为空时必须拒绝，⛔ 不能退化成「登出全部」。
 	return Claims{UserID: sub, SessionID: sid}, nil
+}
+
+// ── 改密 / 首次设密（阶段 4）──────────────────────────────────────
+
+// ChangeResult 是改密对外的结果。
+type ChangeResult struct {
+	// Breached / BreachCount / Checked ⚠️ 必须一路带到前端。
+	//
+	// ⛔ 前端不得把 Checked=false && Breached=false 显示成「口令安全」——
+	// Checked=false 有两种成因（未启用 / 查询失败），对用户没有区别：
+	// 两种情况下「没有警告」都不等于「这个口令是安全的」。
+	Breached    bool
+	BreachCount int
+	Checked     bool
+
+	// RevokedCount 被吊销的会话数（含当前那条）。
+	RevokedCount int
+	// Pair ⚠️ 为 nil 表示【没有重签】—— 用户需要重新登录。
+	// ⛔ 不等于改密失败：口令已经改好了。
+	Pair *Pair
+}
+
+// ChangePassword 改密 / 首次设密。
+//
+// ⭐ 两件事共用一个入口是【模块的设计】，⛔ 不是我图省事：
+// 「要不要验旧口令」由 Credential.Hash 是否为空【单独判定】，
+// ⛔ 不由调用方传不传 oldPassword 决定 ——
+// 否则调用方漏传就等于跳过了旧口令校验。
+//
+// ⚠️ 编排顺序在模块里（验旧 → 评估新 → 写 hash+changedAt → 吊销全部 → 重签当前设备）。
+// 顺序错了会产生没有症状的缺口：先写 hash 后验旧口令 = 任何人能改任何人的口令；
+// 先重签后吊销 = 刚签出来的那对立刻被自己吊销、用户当场掉线。
+// ⛔ melete 不重新实现这个顺序。
+func (s *Service) ChangePassword(ctx context.Context, userID, oldPassword, newPassword,
+	currentSessionID, deviceInfo, clientIP string) (*ChangeResult, error) {
+	if s.passwords == nil {
+		return nil, errors.New("改密未启用：PasswordGuard 未接线")
+	}
+	out, err := s.passwords.Change(ctx, localauth.ChangeRequest{
+		UserID:           userID,
+		OldPassword:      oldPassword,
+		NewPassword:      newPassword,
+		CurrentSessionID: currentSessionID,
+		DeviceInfo:       deviceInfo,
+		ClientIP:         clientIP,
+	})
+	if err != nil {
+		return nil, translateChange(err)
+	}
+	res := &ChangeResult{
+		Breached: out.Advice.Breached, BreachCount: out.Advice.BreachCount,
+		Checked: out.Advice.Checked, RevokedCount: out.RevokedCount,
+	}
+	if out.NewRefreshToken != "" {
+		a, ferr := s.accounts.FindByID(ctx, userID)
+		if ferr != nil {
+			return nil, fmt.Errorf("改密后取账号: %w", ferr)
+		}
+		res.Pair = &Pair{
+			AccessToken:  out.NewAccessToken,
+			RefreshToken: out.NewRefreshToken,
+			ExpiresIn:    int(AccessTTL.Seconds()),
+			AccountID:    a.ID,
+			Display:      a.DisplayName(),
+		}
+	}
+	return res, nil
+}
+
+// ErrWeakPassword / ErrOldPasswordWrong 是改密路径【必须区分】的两个错误。
+//
+// ⚠️ 与登录路径相反：登录时「密码错」与「用户不存在」必须不可区分（防枚举），
+// 而改密时调用方【已经通过认证】，「旧口令错」与「新口令太短」对他是
+// 两种完全不同的操作提示。⛔ 混成一个会让用户不知道该改什么。
+var (
+	ErrOldPasswordWrong = errors.New("当前密码不正确")
+	ErrWeakPassword     = errors.New("新密码不符合要求")
+)
+
+func translateChange(err error) error {
+	c, ok := codeOf(err)
+	if !ok {
+		return err
+	}
+	switch c {
+	case localauth.CodeMisconfigured:
+		return err // ⛔ 接线错误原样上抛 → 500，⛔ 不伪装成用户输错
+	case localauth.CodePasswordTooShort, localauth.CodePasswordTooLong:
+		return ErrWeakPassword
+	case localauth.CodeInvalidCredentials:
+		return ErrOldPasswordWrong
+	default:
+		return err
+	}
 }

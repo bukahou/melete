@@ -162,6 +162,48 @@ paths:
         "204":
           description: 已吊销（幂等：token 不存在也返回 204）
 
+  /auth/password/change:
+    post:
+      tags: [auth]
+      summary: 修改密码 / 首次设置密码
+      description: |
+        ⭐ 两件事同一个入口：**要不要验旧密码由账号当前有没有密码决定**，
+        ⛔ 不由请求里传不传 oldPassword 决定 —— 否则漏传就等于跳过了旧密码校验。
+        纯 OIDC 账号（从未设过密码）调用时 oldPassword 留空即可。
+
+        ⚠️ 改密会吊销该账号【全部】会话，并为当前设备重签一对新 token。
+        若响应里没有 tokens，说明没有重签（口令已改好），⛔ 不代表失败 —— 需重新登录。
+      operationId: changePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newPassword]
+              properties:
+                oldPassword:
+                  type: string
+                  description: 当前密码；首次设置密码时留空
+                newPassword: { type: string }
+                deviceInfo:  { type: string }
+      responses:
+        "200":
+          description: 已修改
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PasswordChanged" }
+        "400":
+          description: 新密码不符合要求
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: 当前密码不正确
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /auth/sessions:
     get:
       tags: [auth]
@@ -647,6 +689,34 @@ components:
       required: [refreshToken]
       properties:
         refreshToken: { type: string }
+
+    PasswordChanged:
+      type: object
+      required: [breached, breachCount, checked, revokedCount]
+      properties:
+        breached:
+          type: boolean
+          description: 新密码出现在已知泄露集合中（⭐ 仍然放行，见 checked）
+        breachCount:
+          type: integer
+          description: |
+            出现次数。⭐ 警告的说服力几乎全在这个数字上 ——
+            「出现过 3 次」与「出现过 200 万次」对用户是完全不同的风险。
+        checked:
+          type: boolean
+          description: |
+            是否真的完成了一次泄露检查。
+            ⛔⛔ 前端不得把 checked=false && breached=false 显示成「密码安全」——
+            checked=false 有两种成因（未启用 / 查询失败），对用户没有区别：
+            两种情况下「没有警告」都不等于「这个密码是安全的」。
+        revokedCount:
+          type: integer
+          description: 被吊销的会话数（含当前那条）
+        tokens:
+          allOf: [{ $ref: "#/components/schemas/TokenPair" }]
+          description: |
+            为当前设备重签的新 token。
+            ⚠️ 缺失表示没有重签（密码已改好），⛔ 不代表失败 —— 用户需重新登录。
 
     SessionInfo:
       type: object

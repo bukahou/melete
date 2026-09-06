@@ -114,6 +114,35 @@ func run() error {
 	authSvc := auth.NewService(guard, sessionGuard, accountRepo,
 		creds.LookupHashByUsername, cfg.JWTSecret, log)
 
+	// ── 改密 / 首次设密 / HIBP（阶段 4）────────────────────────────
+	//
+	// ⭐ HIBP 口径沿用 §29「检测 + 警告放行」：查到泄露【不拒绝】，
+	// 把次数带到前端由用户决定。⚠️ 理由是拒绝会把一次泄露查询变成
+	// 一个可被枚举的口令预言机，而警告已经达到了目的。
+	//
+	// ⚠️ fail-open 在模块的 PasswordPolicy 里：HIBP 查不通时
+	// Advice.Checked=false 而【不阻断改密】——
+	// ⛔ 第三方服务抖动不该让用户改不了密码。
+	policy := localauth.NewPasswordPolicy(
+		localauth.WithBreachChecker(localauth.NewPwnedRangeChecker()),
+		localauth.WithPolicyAudit(auditTo(log)),
+	)
+	passwordGuard, err := localauth.NewPasswordGuard(
+		creds, sessionGuard, policy,
+		// ⭐ 把 access 签发能力交给模块：改密后它会为当前设备重签，
+		// 用户不必重新登录。⚠️ issuedAt 由模块算（见 auth.signAccess 的注释）。
+		localauth.WithAccessTokenIssuer(authSvc.IssueAccessToken),
+		localauth.WithPasswordAudit(auditTo(log)),
+		// ⛔ 刻意【不传】 WithPasswordRevoker：melete 没有吊销存储（无 Redis）。
+		// ⚠️ 后果如实记录：改密会吊销全部【refresh】会话，但已签发的
+		// access token 在 TTL（15min）内仍然有效。那是裁决 ② 已接受的风险
+		// （无 Redis ⇒ TTL 就是残留窗口），⛔ 不是这里漏配。
+	)
+	if err != nil {
+		return err
+	}
+	authSvc = authSvc.WithPasswordGuard(passwordGuard)
+
 	oidcVerifier := token.NewOIDCVerifier(cfg.OIDCIssuer, cfg.OIDCClientID)
 	server := httpapi.NewServer(bankSvc, questionSvc, studySvc, authSvc, oidcVerifier, log)
 

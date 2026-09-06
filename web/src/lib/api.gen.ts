@@ -125,6 +125,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/password/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 修改密码 / 首次设置密码
+         * @description ⭐ 两件事同一个入口：**要不要验旧密码由账号当前有没有密码决定**，
+         *     ⛔ 不由请求里传不传 oldPassword 决定 —— 否则漏传就等于跳过了旧密码校验。
+         *     纯 OIDC 账号（从未设过密码）调用时 oldPassword 留空即可。
+         *
+         *     ⚠️ 改密会吊销该账号【全部】会话，并为当前设备重签一对新 token。
+         *     若响应里没有 tokens，说明没有重签（口令已改好），⛔ 不代表失败 —— 需重新登录。
+         */
+        post: operations["changePassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/sessions": {
         parameters: {
             query?: never;
@@ -564,6 +589,29 @@ export interface components {
         RefreshRequest: {
             refreshToken: string;
         };
+        PasswordChanged: {
+            /** @description 新密码出现在已知泄露集合中（⭐ 仍然放行，见 checked） */
+            breached: boolean;
+            /**
+             * @description 出现次数。⭐ 警告的说服力几乎全在这个数字上 ——
+             *     「出现过 3 次」与「出现过 200 万次」对用户是完全不同的风险。
+             */
+            breachCount: number;
+            /**
+             * @description 是否真的完成了一次泄露检查。
+             *     ⛔⛔ 前端不得把 checked=false && breached=false 显示成「密码安全」——
+             *     checked=false 有两种成因（未启用 / 查询失败），对用户没有区别：
+             *     两种情况下「没有警告」都不等于「这个密码是安全的」。
+             */
+            checked: boolean;
+            /** @description 被吊销的会话数（含当前那条） */
+            revokedCount: number;
+            /**
+             * @description 为当前设备重签的新 token。
+             *     ⚠️ 缺失表示没有重签（密码已改好），⛔ 不代表失败 —— 用户需重新登录。
+             */
+            tokens?: components["schemas"]["TokenPair"];
+        };
         SessionInfo: {
             /** @description 会话 id（canonical UUID） */
             id: string;
@@ -928,6 +976,53 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description 当前密码；首次设置密码时留空 */
+                    oldPassword?: string;
+                    newPassword: string;
+                    deviceInfo?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已修改 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordChanged"];
+                };
+            };
+            /** @description 新密码不符合要求 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 当前密码不正确 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

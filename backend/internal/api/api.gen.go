@@ -523,6 +523,29 @@ type Overview struct {
 	TodayCount int `json:"todayCount"`
 }
 
+// PasswordChanged defines model for PasswordChanged.
+type PasswordChanged struct {
+	// BreachCount 出现次数。⭐ 警告的说服力几乎全在这个数字上 ——
+	// 「出现过 3 次」与「出现过 200 万次」对用户是完全不同的风险。
+	BreachCount int `json:"breachCount"`
+
+	// Breached 新密码出现在已知泄露集合中（⭐ 仍然放行，见 checked）
+	Breached bool `json:"breached"`
+
+	// Checked 是否真的完成了一次泄露检查。
+	// ⛔⛔ 前端不得把 checked=false && breached=false 显示成「密码安全」——
+	// checked=false 有两种成因（未启用 / 查询失败），对用户没有区别：
+	// 两种情况下「没有警告」都不等于「这个密码是安全的」。
+	Checked bool `json:"checked"`
+
+	// RevokedCount 被吊销的会话数（含当前那条）
+	RevokedCount int `json:"revokedCount"`
+
+	// Tokens 为当前设备重签的新 token。
+	// ⚠️ 缺失表示没有重签（密码已改好），⛔ 不代表失败 —— 用户需重新登录。
+	Tokens *TokenPair `json:"tokens,omitempty"`
+}
+
 // Progress defines model for Progress.
 type Progress struct {
 	// AttemptCount 总作答次数（含重做）
@@ -814,6 +837,15 @@ type TooManyRequests = Error
 // accessTokenContextKey is the context key for accessToken security scheme
 type accessTokenContextKey string
 
+// ChangePasswordJSONBody defines parameters for ChangePassword.
+type ChangePasswordJSONBody struct {
+	DeviceInfo  *string `json:"deviceInfo,omitempty"`
+	NewPassword string  `json:"newPassword"`
+
+	// OldPassword 当前密码；首次设置密码时留空
+	OldPassword *string `json:"oldPassword,omitempty"`
+}
+
 // ListQuestionsParams defines parameters for ListQuestions.
 type ListQuestionsParams struct {
 	// Tag 标签 id，可重复；多个标签取交集
@@ -889,6 +921,9 @@ type LogoutJSONRequestBody = RefreshRequest
 // PasswordLoginJSONRequestBody defines body for PasswordLogin for application/json ContentType.
 type PasswordLoginJSONRequestBody = Credentials
 
+// ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
+type ChangePasswordJSONRequestBody ChangePasswordJSONBody
+
 // RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
 type RefreshTokenJSONRequestBody = RefreshRequest
 
@@ -906,6 +941,9 @@ type ServerInterface interface {
 	// 用户名密码登录
 	// (POST /auth/password)
 	PasswordLogin(w http.ResponseWriter, r *http.Request)
+	// 修改密码 / 首次设置密码
+	// (POST /auth/password/change)
+	ChangePassword(w http.ResponseWriter, r *http.Request)
 	// 用 refresh token 换新的 access token
 	// (POST /auth/refresh)
 	RefreshToken(w http.ResponseWriter, r *http.Request)
@@ -969,6 +1007,12 @@ func (_ Unimplemented) Logout(w http.ResponseWriter, r *http.Request) {
 // 用户名密码登录
 // (POST /auth/password)
 func (_ Unimplemented) PasswordLogin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 修改密码 / 首次设置密码
+// (POST /auth/password/change)
+func (_ Unimplemented) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1104,6 +1148,26 @@ func (siw *ServerInterfaceWrapper) PasswordLogin(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PasswordLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangePassword operation middleware
+func (siw *ServerInterfaceWrapper) ChangePassword(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangePassword(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1751,6 +1815,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/auth/password", wrapper.PasswordLogin)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/password/change", wrapper.ChangePassword)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/auth/refresh", wrapper.RefreshToken)
 	})
 	r.Group(func(r chi.Router) {
@@ -1898,6 +1965,56 @@ func (response PasswordLogin429JSONResponse) VisitPasswordLoginResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePasswordRequestObject struct {
+	Body *ChangePasswordJSONRequestBody
+}
+
+type ChangePasswordResponseObject interface {
+	VisitChangePasswordResponse(w http.ResponseWriter) error
+}
+
+type ChangePassword200JSONResponse PasswordChanged
+
+func (response ChangePassword200JSONResponse) VisitChangePasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePassword400JSONResponse Error
+
+func (response ChangePassword400JSONResponse) VisitChangePasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangePassword401JSONResponse Error
+
+func (response ChangePassword401JSONResponse) VisitChangePasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2334,6 +2451,9 @@ type StrictServerInterface interface {
 	// 用户名密码登录
 	// (POST /auth/password)
 	PasswordLogin(ctx context.Context, request PasswordLoginRequestObject) (PasswordLoginResponseObject, error)
+	// 修改密码 / 首次设置密码
+	// (POST /auth/password/change)
+	ChangePassword(ctx context.Context, request ChangePasswordRequestObject) (ChangePasswordResponseObject, error)
 	// 用 refresh token 换新的 access token
 	// (POST /auth/refresh)
 	RefreshToken(ctx context.Context, request RefreshTokenRequestObject) (RefreshTokenResponseObject, error)
@@ -2493,6 +2613,37 @@ func (sh *strictHandler) PasswordLogin(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(PasswordLoginResponseObject); ok {
 		if err := validResponse.VisitPasswordLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ChangePassword operation middleware
+func (sh *strictHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	var request ChangePasswordRequestObject
+
+	var body ChangePasswordJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ChangePassword(ctx, request.(ChangePasswordRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ChangePassword")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ChangePasswordResponseObject); ok {
+		if err := validResponse.VisitChangePasswordResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

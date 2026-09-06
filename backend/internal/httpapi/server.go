@@ -476,3 +476,42 @@ func (s *Server) RevokeOtherSessions(ctx context.Context, req api.RevokeOtherSes
 	}
 	return api.RevokeOtherSessions200JSONResponse{Revoked: n}, nil
 }
+
+// ChangePassword 修改密码 / 首次设置密码。
+//
+// ⚠️ 与登录路径相反，这里的错误【必须区分】：调用方已经通过认证，
+// 「旧密码错」与「新密码太短」对他是两种完全不同的操作提示。
+// ⛔ 混成一个会让用户不知道该改什么。
+// （登录路径必须不可区分是为了防枚举 —— 两条纪律不冲突，因为
+//
+//	那里的调用方是【未认证】的。）
+func (s *Server) ChangePassword(ctx context.Context, req api.ChangePasswordRequestObject) (api.ChangePasswordResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "ChangePassword")
+	if err != nil {
+		return nil, err
+	}
+	// ⭐ 当前会话取自 token 的 sid：模块用它决定「改密后为哪台设备重签」。
+	// ⛔ 不接受客户端指定 —— 否则可以让别人的设备被重签。
+	current, _ := httpauth.SessionID(ctx)
+
+	res, err := s.auth.ChangePassword(ctx, string(accountID),
+		deref(req.Body.OldPassword), req.Body.NewPassword,
+		current, deref(req.Body.DeviceInfo), clientIP(ctx))
+	switch {
+	case errors.Is(err, auth.ErrOldPasswordWrong):
+		return api.ChangePassword401JSONResponse{Message: err.Error()}, nil
+	case errors.Is(err, auth.ErrWeakPassword):
+		return api.ChangePassword400JSONResponse{Message: err.Error()}, nil
+	case err != nil:
+		return nil, s.fail("ChangePassword", err)
+	}
+	out := api.ChangePassword200JSONResponse{
+		Breached: res.Breached, BreachCount: res.BreachCount,
+		Checked: res.Checked, RevokedCount: res.RevokedCount,
+	}
+	if res.Pair != nil {
+		p := toTokenPair(res.Pair)
+		out.Tokens = &p
+	}
+	return out, nil
+}
