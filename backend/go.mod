@@ -19,6 +19,7 @@ require (
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
+	github.com/bukahou/gokit/localauth v0.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 )
