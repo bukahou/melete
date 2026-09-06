@@ -162,6 +162,192 @@ paths:
         "204":
           description: 已吊销（幂等：token 不存在也返回 204）
 
+  /auth/register/code:
+    post:
+      tags: [auth]
+      summary: 发注册验证码
+      description: |
+        ⛔ 邮箱已被占用时【仍然返回 204】—— 否则这个端点就是一个
+        「这个邮箱注册过没有」的查询接口。真正的处置是给那个地址的主人
+        发一封「有人用你的邮箱注册」的通知：⭐ 知情权落在地址主人身上，
+        ⛔ 不落在请求方身上。
+      operationId: sendRegisterCode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email]
+              properties:
+                username: { type: string }
+                email:    { type: string, format: email }
+      responses:
+        "204": { description: 已受理（⛔ 无论邮箱是否已被占用） }
+        "429":
+          description: 发送过于频繁
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: 完成注册
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, email, code]
+              properties:
+                username:    { type: string }
+                password:    { type: string }
+                email:       { type: string, format: email }
+                code:        { type: string }
+                displayName: { type: string }
+                deviceInfo:  { type: string }
+      responses:
+        "200":
+          description: 注册成功，直接登录
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tokens, breached, breachCount, checked]
+                properties:
+                  tokens:      { $ref: "#/components/schemas/TokenPair" }
+                  breached:    { type: boolean }
+                  breachCount: { type: integer }
+                  checked:     { type: boolean, description: ⛔ false 时不得显示为「密码安全」 }
+        "400":
+          description: 验证码无效 / 密码不合规 / 用户名或邮箱已被占用
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/recovery/code:
+    post:
+      tags: [auth]
+      summary: 发找回验证码
+      description: |
+        ⛔⛔ 无论该地址有没有账号、有没有已验证邮箱，一律返回 204。
+        ⚠️ 任何差别（返回码、耗时、文案）都会让它变成
+        「这个邮箱有账号吗」的查询接口。
+        ⭐ 联邦账号在这里自然落空（没有本应用验证过的邮箱）——
+        案卷 §18.3.2：「不实现 = 安全」，⛔ 不是「忘记实现 = 洞」。
+      operationId: sendRecoveryCode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "204": { description: 已受理（⛔ 无论该地址是否可找回） }
+        "429":
+          description: 发送过于频繁
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/recovery/complete:
+    post:
+      tags: [auth]
+      summary: 用验证码重置密码
+      operationId: completeRecovery
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code, newPassword]
+              properties:
+                email:       { type: string, format: email }
+                code:        { type: string }
+                newPassword: { type: string }
+      responses:
+        "200":
+          description: 已重置（旧会话全部吊销，需重新登录）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PasswordChanged" }
+        "400":
+          description: 验证码无效 / 新密码不合规
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/email/code:
+    post:
+      tags: [auth]
+      summary: 给新邮箱发验证码（改邮箱第一步）
+      description: |
+        ⛔ 不改库。新地址已被占用时对请求方【仍然成功】（防枚举），
+        但给那个地址的主人发一封通知。
+      operationId: sendEmailChangeCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newEmail]
+              properties:
+                newEmail: { type: string, format: email }
+      responses:
+        "204": { description: 已受理 }
+        "429":
+          description: 发送过于频繁
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/email/confirm:
+    post:
+      tags: [auth]
+      summary: 确认改邮箱
+      description: |
+        ⭐ 会给【旧邮箱】发一封「你的邮箱被改成了 X」的通知 ——
+        那不是礼貌，是安全要件：它是账号接管链上唯一会让受害者察觉的信号。
+        ⚠️ 改完会吊销全部会话并为当前设备重签；tokens 缺失表示没重签
+        （邮箱已改好），⛔ 不代表失败。
+      operationId: confirmEmailChange
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:       { type: string }
+                deviceInfo: { type: string }
+      responses:
+        "200":
+          description: 已修改
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens: { $ref: "#/components/schemas/TokenPair" }
+        "400":
+          description: 验证码无效 / 邮箱已被占用
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /auth/password/change:
     post:
       tags: [auth]

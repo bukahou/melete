@@ -30,6 +30,19 @@ type Config struct {
 	// web 前端的源：OIDC 登录完成后把浏览器送回这里
 	WebOrigin string `env:"MELETE_WEB_ORIGIN,required,notEmpty"`
 
+	// Mailer 发信通道。⛔ 无默认值：未配置即启动失败（用户裁决 ③）。
+	//
+	// ⚠️ 「忘了配」与「故意用 log」必须区分得开 —— 静默降级会让生产
+	// 在无人察觉下把验证码明文打进日志。
+	Mailer string `env:"MELETE_MAILER"`
+
+	// VerificationPepper 验证码摘要的 pepper。⛔ 凭证类，无默认值 + required。
+	//
+	// ⚠️ 它不在数据库里 —— 库被读走也无法离线爆破 6 位码。
+	// ⛔ 换掉它会让所有在途验证码立刻失效（可接受：TTL 以分钟计）。
+	// ⚠️ 模块要求【至少 16 字节】，不足会在启动时报 misconfigured 并退出。
+	VerificationPepper string `env:"MELETE_VERIFICATION_PEPPER,required,notEmpty"`
+
 	Addr string `env:"MELETE_ADDR" envDefault:":8080"`
 	// 登录端点限流：每 IP 每窗口的最大尝试次数
 	LoginRateMax    int           `env:"MELETE_LOGIN_RATE_MAX" envDefault:"10"`

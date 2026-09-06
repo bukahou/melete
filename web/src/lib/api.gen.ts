@@ -125,6 +125,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/register/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 发注册验证码
+         * @description ⛔ 邮箱已被占用时【仍然返回 204】—— 否则这个端点就是一个
+         *     「这个邮箱注册过没有」的查询接口。真正的处置是给那个地址的主人
+         *     发一封「有人用你的邮箱注册」的通知：⭐ 知情权落在地址主人身上，
+         *     ⛔ 不落在请求方身上。
+         */
+        post: operations["sendRegisterCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 完成注册 */
+        post: operations["register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/recovery/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 发找回验证码
+         * @description ⛔⛔ 无论该地址有没有账号、有没有已验证邮箱，一律返回 204。
+         *     ⚠️ 任何差别（返回码、耗时、文案）都会让它变成
+         *     「这个邮箱有账号吗」的查询接口。
+         *     ⭐ 联邦账号在这里自然落空（没有本应用验证过的邮箱）——
+         *     案卷 §18.3.2：「不实现 = 安全」，⛔ 不是「忘记实现 = 洞」。
+         */
+        post: operations["sendRecoveryCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/recovery/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 用验证码重置密码 */
+        post: operations["completeRecovery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/email/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 给新邮箱发验证码（改邮箱第一步）
+         * @description ⛔ 不改库。新地址已被占用时对请求方【仍然成功】（防枚举），
+         *     但给那个地址的主人发一封通知。
+         */
+        post: operations["sendEmailChangeCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/email/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 确认改邮箱
+         * @description ⭐ 会给【旧邮箱】发一封「你的邮箱被改成了 X」的通知 ——
+         *     那不是礼貌，是安全要件：它是账号接管链上唯一会让受害者察觉的信号。
+         *     ⚠️ 改完会吊销全部会话并为当前设备重签；tokens 缺失表示没重签
+         *     （邮箱已改好），⛔ 不代表失败。
+         */
+        post: operations["confirmEmailChange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/password/change": {
         parameters: {
             query?: never;
@@ -976,6 +1101,232 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    sendRegisterCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    username: string;
+                    /** Format: email */
+                    email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已受理（⛔ 无论邮箱是否已被占用） */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 发送过于频繁 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    username: string;
+                    password: string;
+                    /** Format: email */
+                    email: string;
+                    code: string;
+                    displayName?: string;
+                    deviceInfo?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 注册成功，直接登录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tokens: components["schemas"]["TokenPair"];
+                        breached: boolean;
+                        breachCount: number;
+                        /** @description ⛔ false 时不得显示为「密码安全」 */
+                        checked: boolean;
+                    };
+                };
+            };
+            /** @description 验证码无效 / 密码不合规 / 用户名或邮箱已被占用 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    sendRecoveryCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已受理（⛔ 无论该地址是否可找回） */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 发送过于频繁 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    completeRecovery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                    code: string;
+                    newPassword: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已重置（旧会话全部吊销，需重新登录） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PasswordChanged"];
+                };
+            };
+            /** @description 验证码无效 / 新密码不合规 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    sendEmailChangeCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    newEmail: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已受理 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 发送过于频繁 */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    confirmEmailChange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                    deviceInfo?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已修改 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        tokens?: components["schemas"]["TokenPair"];
+                    };
+                };
+            };
+            /** @description 验证码无效 / 邮箱已被占用 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 const (
@@ -837,6 +838,17 @@ type TooManyRequests = Error
 // accessTokenContextKey is the context key for accessToken security scheme
 type accessTokenContextKey string
 
+// SendEmailChangeCodeJSONBody defines parameters for SendEmailChangeCode.
+type SendEmailChangeCodeJSONBody struct {
+	NewEmail openapi_types.Email `json:"newEmail"`
+}
+
+// ConfirmEmailChangeJSONBody defines parameters for ConfirmEmailChange.
+type ConfirmEmailChangeJSONBody struct {
+	Code       string  `json:"code"`
+	DeviceInfo *string `json:"deviceInfo,omitempty"`
+}
+
 // ChangePasswordJSONBody defines parameters for ChangePassword.
 type ChangePasswordJSONBody struct {
 	DeviceInfo  *string `json:"deviceInfo,omitempty"`
@@ -844,6 +856,34 @@ type ChangePasswordJSONBody struct {
 
 	// OldPassword 当前密码；首次设置密码时留空
 	OldPassword *string `json:"oldPassword,omitempty"`
+}
+
+// SendRecoveryCodeJSONBody defines parameters for SendRecoveryCode.
+type SendRecoveryCodeJSONBody struct {
+	Email openapi_types.Email `json:"email"`
+}
+
+// CompleteRecoveryJSONBody defines parameters for CompleteRecovery.
+type CompleteRecoveryJSONBody struct {
+	Code        string              `json:"code"`
+	Email       openapi_types.Email `json:"email"`
+	NewPassword string              `json:"newPassword"`
+}
+
+// RegisterJSONBody defines parameters for Register.
+type RegisterJSONBody struct {
+	Code        string              `json:"code"`
+	DeviceInfo  *string             `json:"deviceInfo,omitempty"`
+	DisplayName *string             `json:"displayName,omitempty"`
+	Email       openapi_types.Email `json:"email"`
+	Password    string              `json:"password"`
+	Username    string              `json:"username"`
+}
+
+// SendRegisterCodeJSONBody defines parameters for SendRegisterCode.
+type SendRegisterCodeJSONBody struct {
+	Email    openapi_types.Email `json:"email"`
+	Username string              `json:"username"`
 }
 
 // ListQuestionsParams defines parameters for ListQuestions.
@@ -915,6 +955,12 @@ type GetMyTagStatsParamsType string
 // RecordAttemptJSONRequestBody defines body for RecordAttempt for application/json ContentType.
 type RecordAttemptJSONRequestBody = AttemptInput
 
+// SendEmailChangeCodeJSONRequestBody defines body for SendEmailChangeCode for application/json ContentType.
+type SendEmailChangeCodeJSONRequestBody SendEmailChangeCodeJSONBody
+
+// ConfirmEmailChangeJSONRequestBody defines body for ConfirmEmailChange for application/json ContentType.
+type ConfirmEmailChangeJSONRequestBody ConfirmEmailChangeJSONBody
+
 // LogoutJSONRequestBody defines body for Logout for application/json ContentType.
 type LogoutJSONRequestBody = RefreshRequest
 
@@ -924,8 +970,20 @@ type PasswordLoginJSONRequestBody = Credentials
 // ChangePasswordJSONRequestBody defines body for ChangePassword for application/json ContentType.
 type ChangePasswordJSONRequestBody ChangePasswordJSONBody
 
+// SendRecoveryCodeJSONRequestBody defines body for SendRecoveryCode for application/json ContentType.
+type SendRecoveryCodeJSONRequestBody SendRecoveryCodeJSONBody
+
+// CompleteRecoveryJSONRequestBody defines body for CompleteRecovery for application/json ContentType.
+type CompleteRecoveryJSONRequestBody CompleteRecoveryJSONBody
+
 // RefreshTokenJSONRequestBody defines body for RefreshToken for application/json ContentType.
 type RefreshTokenJSONRequestBody = RefreshRequest
+
+// RegisterJSONRequestBody defines body for Register for application/json ContentType.
+type RegisterJSONRequestBody RegisterJSONBody
+
+// SendRegisterCodeJSONRequestBody defines body for SendRegisterCode for application/json ContentType.
+type SendRegisterCodeJSONRequestBody SendRegisterCodeJSONBody
 
 // SsoExchangeJSONRequestBody defines body for SsoExchange for application/json ContentType.
 type SsoExchangeJSONRequestBody = SsoExchange
@@ -935,6 +993,12 @@ type ServerInterface interface {
 	// 记录一次作答（对错由服务端按参考答案判定）
 	// (POST /attempts)
 	RecordAttempt(w http.ResponseWriter, r *http.Request)
+	// 给新邮箱发验证码（改邮箱第一步）
+	// (POST /auth/email/code)
+	SendEmailChangeCode(w http.ResponseWriter, r *http.Request)
+	// 确认改邮箱
+	// (POST /auth/email/confirm)
+	ConfirmEmailChange(w http.ResponseWriter, r *http.Request)
 	// 登出（吊销该会话）
 	// (POST /auth/logout)
 	Logout(w http.ResponseWriter, r *http.Request)
@@ -944,9 +1008,21 @@ type ServerInterface interface {
 	// 修改密码 / 首次设置密码
 	// (POST /auth/password/change)
 	ChangePassword(w http.ResponseWriter, r *http.Request)
+	// 发找回验证码
+	// (POST /auth/recovery/code)
+	SendRecoveryCode(w http.ResponseWriter, r *http.Request)
+	// 用验证码重置密码
+	// (POST /auth/recovery/complete)
+	CompleteRecovery(w http.ResponseWriter, r *http.Request)
 	// 用 refresh token 换新的 access token
 	// (POST /auth/refresh)
 	RefreshToken(w http.ResponseWriter, r *http.Request)
+	// 完成注册
+	// (POST /auth/register)
+	Register(w http.ResponseWriter, r *http.Request)
+	// 发注册验证码
+	// (POST /auth/register/code)
+	SendRegisterCode(w http.ResponseWriter, r *http.Request)
 	// 我的登录设备
 	// (GET /auth/sessions)
 	ListSessions(w http.ResponseWriter, r *http.Request)
@@ -998,6 +1074,18 @@ func (_ Unimplemented) RecordAttempt(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// 给新邮箱发验证码（改邮箱第一步）
+// (POST /auth/email/code)
+func (_ Unimplemented) SendEmailChangeCode(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 确认改邮箱
+// (POST /auth/email/confirm)
+func (_ Unimplemented) ConfirmEmailChange(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // 登出（吊销该会话）
 // (POST /auth/logout)
 func (_ Unimplemented) Logout(w http.ResponseWriter, r *http.Request) {
@@ -1016,9 +1104,33 @@ func (_ Unimplemented) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// 发找回验证码
+// (POST /auth/recovery/code)
+func (_ Unimplemented) SendRecoveryCode(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 用验证码重置密码
+// (POST /auth/recovery/complete)
+func (_ Unimplemented) CompleteRecovery(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // 用 refresh token 换新的 access token
 // (POST /auth/refresh)
 func (_ Unimplemented) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 完成注册
+// (POST /auth/register)
+func (_ Unimplemented) Register(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 发注册验证码
+// (POST /auth/register/code)
+func (_ Unimplemented) SendRegisterCode(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1129,6 +1241,46 @@ func (siw *ServerInterfaceWrapper) RecordAttempt(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// SendEmailChangeCode operation middleware
+func (siw *ServerInterfaceWrapper) SendEmailChangeCode(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendEmailChangeCode(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmEmailChange operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmEmailChange(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmEmailChange(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Logout operation middleware
 func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request) {
 
@@ -1177,11 +1329,67 @@ func (siw *ServerInterfaceWrapper) ChangePassword(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// SendRecoveryCode operation middleware
+func (siw *ServerInterfaceWrapper) SendRecoveryCode(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendRecoveryCode(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteRecovery operation middleware
+func (siw *ServerInterfaceWrapper) CompleteRecovery(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteRecovery(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RefreshToken operation middleware
 func (siw *ServerInterfaceWrapper) RefreshToken(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RefreshToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Register operation middleware
+func (siw *ServerInterfaceWrapper) Register(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Register(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendRegisterCode operation middleware
+func (siw *ServerInterfaceWrapper) SendRegisterCode(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendRegisterCode(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1809,6 +2017,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/attempts", wrapper.RecordAttempt)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/email/code", wrapper.SendEmailChangeCode)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/email/confirm", wrapper.ConfirmEmailChange)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/auth/logout", wrapper.Logout)
 	})
 	r.Group(func(r chi.Router) {
@@ -1818,7 +2032,19 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/auth/password/change", wrapper.ChangePassword)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/recovery/code", wrapper.SendRecoveryCode)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/recovery/complete", wrapper.CompleteRecovery)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/auth/refresh", wrapper.RefreshToken)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/register", wrapper.Register)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/auth/register/code", wrapper.SendRegisterCode)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/auth/sessions", wrapper.ListSessions)
@@ -1899,6 +2125,76 @@ func (response RecordAttempt404JSONResponse) VisitRecordAttemptResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendEmailChangeCodeRequestObject struct {
+	Body *SendEmailChangeCodeJSONRequestBody
+}
+
+type SendEmailChangeCodeResponseObject interface {
+	VisitSendEmailChangeCodeResponse(w http.ResponseWriter) error
+}
+
+type SendEmailChangeCode204Response struct {
+}
+
+func (response SendEmailChangeCode204Response) VisitSendEmailChangeCodeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SendEmailChangeCode429JSONResponse Error
+
+func (response SendEmailChangeCode429JSONResponse) VisitSendEmailChangeCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmEmailChangeRequestObject struct {
+	Body *ConfirmEmailChangeJSONRequestBody
+}
+
+type ConfirmEmailChangeResponseObject interface {
+	VisitConfirmEmailChangeResponse(w http.ResponseWriter) error
+}
+
+type ConfirmEmailChange200JSONResponse struct {
+	// Tokens access 是 JWT（不落库，TTL 1h）；refresh 是不透明随机串（落库，可吊销）。
+	// 对齐 geass-v3：refresh 不做成 JWT —— 生命周期以月计的凭证必须能撤回。
+	Tokens *TokenPair `json:"tokens,omitempty"`
+}
+
+func (response ConfirmEmailChange200JSONResponse) VisitConfirmEmailChangeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmEmailChange400JSONResponse Error
+
+func (response ConfirmEmailChange400JSONResponse) VisitConfirmEmailChangeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2019,6 +2315,72 @@ func (response ChangePassword401JSONResponse) VisitChangePasswordResponse(w http
 	return err
 }
 
+type SendRecoveryCodeRequestObject struct {
+	Body *SendRecoveryCodeJSONRequestBody
+}
+
+type SendRecoveryCodeResponseObject interface {
+	VisitSendRecoveryCodeResponse(w http.ResponseWriter) error
+}
+
+type SendRecoveryCode204Response struct {
+}
+
+func (response SendRecoveryCode204Response) VisitSendRecoveryCodeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SendRecoveryCode429JSONResponse Error
+
+func (response SendRecoveryCode429JSONResponse) VisitSendRecoveryCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompleteRecoveryRequestObject struct {
+	Body *CompleteRecoveryJSONRequestBody
+}
+
+type CompleteRecoveryResponseObject interface {
+	VisitCompleteRecoveryResponse(w http.ResponseWriter) error
+}
+
+type CompleteRecovery200JSONResponse PasswordChanged
+
+func (response CompleteRecovery200JSONResponse) VisitCompleteRecoveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CompleteRecovery400JSONResponse Error
+
+func (response CompleteRecovery400JSONResponse) VisitCompleteRecoveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RefreshTokenRequestObject struct {
 	Body *RefreshTokenJSONRequestBody
 }
@@ -2051,6 +2413,82 @@ func (response RefreshToken401JSONResponse) VisitRefreshTokenResponse(w http.Res
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RegisterRequestObject struct {
+	Body *RegisterJSONRequestBody
+}
+
+type RegisterResponseObject interface {
+	VisitRegisterResponse(w http.ResponseWriter) error
+}
+
+type Register200JSONResponse struct {
+	BreachCount int  `json:"breachCount"`
+	Breached    bool `json:"breached"`
+
+	// Checked ⛔ false 时不得显示为「密码安全」
+	Checked bool `json:"checked"`
+
+	// Tokens access 是 JWT（不落库，TTL 1h）；refresh 是不透明随机串（落库，可吊销）。
+	// 对齐 geass-v3：refresh 不做成 JWT —— 生命周期以月计的凭证必须能撤回。
+	Tokens TokenPair `json:"tokens"`
+}
+
+func (response Register200JSONResponse) VisitRegisterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type Register400JSONResponse Error
+
+func (response Register400JSONResponse) VisitRegisterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendRegisterCodeRequestObject struct {
+	Body *SendRegisterCodeJSONRequestBody
+}
+
+type SendRegisterCodeResponseObject interface {
+	VisitSendRegisterCodeResponse(w http.ResponseWriter) error
+}
+
+type SendRegisterCode204Response struct {
+}
+
+func (response SendRegisterCode204Response) VisitSendRegisterCodeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SendRegisterCode429JSONResponse Error
+
+func (response SendRegisterCode429JSONResponse) VisitSendRegisterCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(429)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2445,6 +2883,12 @@ type StrictServerInterface interface {
 	// 记录一次作答（对错由服务端按参考答案判定）
 	// (POST /attempts)
 	RecordAttempt(ctx context.Context, request RecordAttemptRequestObject) (RecordAttemptResponseObject, error)
+	// 给新邮箱发验证码（改邮箱第一步）
+	// (POST /auth/email/code)
+	SendEmailChangeCode(ctx context.Context, request SendEmailChangeCodeRequestObject) (SendEmailChangeCodeResponseObject, error)
+	// 确认改邮箱
+	// (POST /auth/email/confirm)
+	ConfirmEmailChange(ctx context.Context, request ConfirmEmailChangeRequestObject) (ConfirmEmailChangeResponseObject, error)
 	// 登出（吊销该会话）
 	// (POST /auth/logout)
 	Logout(ctx context.Context, request LogoutRequestObject) (LogoutResponseObject, error)
@@ -2454,9 +2898,21 @@ type StrictServerInterface interface {
 	// 修改密码 / 首次设置密码
 	// (POST /auth/password/change)
 	ChangePassword(ctx context.Context, request ChangePasswordRequestObject) (ChangePasswordResponseObject, error)
+	// 发找回验证码
+	// (POST /auth/recovery/code)
+	SendRecoveryCode(ctx context.Context, request SendRecoveryCodeRequestObject) (SendRecoveryCodeResponseObject, error)
+	// 用验证码重置密码
+	// (POST /auth/recovery/complete)
+	CompleteRecovery(ctx context.Context, request CompleteRecoveryRequestObject) (CompleteRecoveryResponseObject, error)
 	// 用 refresh token 换新的 access token
 	// (POST /auth/refresh)
 	RefreshToken(ctx context.Context, request RefreshTokenRequestObject) (RefreshTokenResponseObject, error)
+	// 完成注册
+	// (POST /auth/register)
+	Register(ctx context.Context, request RegisterRequestObject) (RegisterResponseObject, error)
+	// 发注册验证码
+	// (POST /auth/register/code)
+	SendRegisterCode(ctx context.Context, request SendRegisterCodeRequestObject) (SendRegisterCodeResponseObject, error)
 	// 我的登录设备
 	// (GET /auth/sessions)
 	ListSessions(ctx context.Context, request ListSessionsRequestObject) (ListSessionsResponseObject, error)
@@ -2558,6 +3014,68 @@ func (sh *strictHandler) RecordAttempt(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// SendEmailChangeCode operation middleware
+func (sh *strictHandler) SendEmailChangeCode(w http.ResponseWriter, r *http.Request) {
+	var request SendEmailChangeCodeRequestObject
+
+	var body SendEmailChangeCodeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendEmailChangeCode(ctx, request.(SendEmailChangeCodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendEmailChangeCode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendEmailChangeCodeResponseObject); ok {
+		if err := validResponse.VisitSendEmailChangeCodeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfirmEmailChange operation middleware
+func (sh *strictHandler) ConfirmEmailChange(w http.ResponseWriter, r *http.Request) {
+	var request ConfirmEmailChangeRequestObject
+
+	var body ConfirmEmailChangeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfirmEmailChange(ctx, request.(ConfirmEmailChangeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfirmEmailChange")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfirmEmailChangeResponseObject); ok {
+		if err := validResponse.VisitConfirmEmailChangeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Logout operation middleware
 func (sh *strictHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	var request LogoutRequestObject
@@ -2651,6 +3169,68 @@ func (sh *strictHandler) ChangePassword(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// SendRecoveryCode operation middleware
+func (sh *strictHandler) SendRecoveryCode(w http.ResponseWriter, r *http.Request) {
+	var request SendRecoveryCodeRequestObject
+
+	var body SendRecoveryCodeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendRecoveryCode(ctx, request.(SendRecoveryCodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendRecoveryCode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendRecoveryCodeResponseObject); ok {
+		if err := validResponse.VisitSendRecoveryCodeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CompleteRecovery operation middleware
+func (sh *strictHandler) CompleteRecovery(w http.ResponseWriter, r *http.Request) {
+	var request CompleteRecoveryRequestObject
+
+	var body CompleteRecoveryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompleteRecovery(ctx, request.(CompleteRecoveryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompleteRecovery")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompleteRecoveryResponseObject); ok {
+		if err := validResponse.VisitCompleteRecoveryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RefreshToken operation middleware
 func (sh *strictHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 	var request RefreshTokenRequestObject
@@ -2675,6 +3255,68 @@ func (sh *strictHandler) RefreshToken(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RefreshTokenResponseObject); ok {
 		if err := validResponse.VisitRefreshTokenResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// Register operation middleware
+func (sh *strictHandler) Register(w http.ResponseWriter, r *http.Request) {
+	var request RegisterRequestObject
+
+	var body RegisterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.Register(ctx, request.(RegisterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "Register")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RegisterResponseObject); ok {
+		if err := validResponse.VisitRegisterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendRegisterCode operation middleware
+func (sh *strictHandler) SendRegisterCode(w http.ResponseWriter, r *http.Request) {
+	var request SendRegisterCodeRequestObject
+
+	var body SendRegisterCodeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendRegisterCode(ctx, request.(SendRegisterCodeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendRegisterCode")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendRegisterCodeResponseObject); ok {
+		if err := validResponse.VisitSendRegisterCodeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -515,3 +515,105 @@ func (s *Server) ChangePassword(ctx context.Context, req api.ChangePasswordReque
 	}
 	return out, nil
 }
+
+// ── 注册 / 找回 / 改邮箱（阶段 5）──────────────────────────────────
+
+// SendRegisterCode 发注册验证码。
+//
+// ⛔ 邮箱已被占用时【仍然 204】—— 见契约里的理由。
+func (s *Server) SendRegisterCode(ctx context.Context, req api.SendRegisterCodeRequestObject) (api.SendRegisterCodeResponseObject, error) {
+	err := s.auth.SendRegisterCode(ctx, req.Body.Username, string(req.Body.Email), clientIP(ctx))
+	if errors.Is(err, auth.ErrTooManyCodes) {
+		return api.SendRegisterCode429JSONResponse{Message: err.Error()}, nil
+	}
+	if err != nil {
+		return nil, s.fail("SendRegisterCode", err)
+	}
+	return api.SendRegisterCode204Response{}, nil
+}
+
+func (s *Server) Register(ctx context.Context, req api.RegisterRequestObject) (api.RegisterResponseObject, error) {
+	pair, advice, err := s.auth.Register(ctx,
+		req.Body.Username, req.Body.Password, deref(req.Body.DisplayName),
+		string(req.Body.Email), req.Body.Code, deref(req.Body.DeviceInfo), clientIP(ctx))
+	switch {
+	case errors.Is(err, auth.ErrInvalidCode), errors.Is(err, auth.ErrWeakPassword),
+		errors.Is(err, auth.ErrUsernameTaken), errors.Is(err, auth.ErrEmailTaken),
+		errors.Is(err, auth.ErrTooManyCodes):
+		return api.Register400JSONResponse{Message: err.Error()}, nil
+	case err != nil:
+		return nil, s.fail("Register", err)
+	}
+	return api.Register200JSONResponse{
+		Tokens:   toTokenPair(pair),
+		Breached: advice.Breached, BreachCount: advice.BreachCount, Checked: advice.Checked,
+	}, nil
+}
+
+// SendRecoveryCode 发找回码。
+//
+// ⛔⛔ 无论地址存不存在、有没有已验证邮箱，一律 204。
+// ⚠️ 任何差别都会让它变成「这个邮箱有账号吗」的查询接口。
+func (s *Server) SendRecoveryCode(ctx context.Context, req api.SendRecoveryCodeRequestObject) (api.SendRecoveryCodeResponseObject, error) {
+	err := s.auth.RequestRecovery(ctx, string(req.Body.Email), clientIP(ctx))
+	if errors.Is(err, auth.ErrTooManyCodes) {
+		return api.SendRecoveryCode429JSONResponse{Message: err.Error()}, nil
+	}
+	if err != nil {
+		return nil, s.fail("SendRecoveryCode", err)
+	}
+	return api.SendRecoveryCode204Response{}, nil
+}
+
+func (s *Server) CompleteRecovery(ctx context.Context, req api.CompleteRecoveryRequestObject) (api.CompleteRecoveryResponseObject, error) {
+	res, err := s.auth.CompleteRecovery(ctx, string(req.Body.Email), req.Body.Code, req.Body.NewPassword)
+	switch {
+	case errors.Is(err, auth.ErrInvalidCode), errors.Is(err, auth.ErrWeakPassword):
+		return api.CompleteRecovery400JSONResponse{Message: err.Error()}, nil
+	case err != nil:
+		return nil, s.fail("CompleteRecovery", err)
+	}
+	return api.CompleteRecovery200JSONResponse{
+		Breached: res.Breached, BreachCount: res.BreachCount,
+		Checked: res.Checked, RevokedCount: res.RevokedCount,
+	}, nil
+}
+
+func (s *Server) SendEmailChangeCode(ctx context.Context, req api.SendEmailChangeCodeRequestObject) (api.SendEmailChangeCodeResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "SendEmailChangeCode")
+	if err != nil {
+		return nil, err
+	}
+	err = s.auth.RequestEmailChange(ctx, string(accountID), string(req.Body.NewEmail), clientIP(ctx))
+	if errors.Is(err, auth.ErrTooManyCodes) {
+		return api.SendEmailChangeCode429JSONResponse{Message: err.Error()}, nil
+	}
+	if err != nil {
+		return nil, s.fail("SendEmailChangeCode", err)
+	}
+	return api.SendEmailChangeCode204Response{}, nil
+}
+
+func (s *Server) ConfirmEmailChange(ctx context.Context, req api.ConfirmEmailChangeRequestObject) (api.ConfirmEmailChangeResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "ConfirmEmailChange")
+	if err != nil {
+		return nil, err
+	}
+	current, _ := httpauth.SessionID(ctx)
+	pair, err := s.auth.ConfirmEmailChange(ctx, string(accountID), req.Body.Code,
+		current, deref(req.Body.DeviceInfo), clientIP(ctx))
+	switch {
+	case errors.Is(err, auth.ErrInvalidCode), errors.Is(err, auth.ErrEmailTaken):
+		return api.ConfirmEmailChange400JSONResponse{Message: err.Error()}, nil
+	case err != nil:
+		return nil, s.fail("ConfirmEmailChange", err)
+	}
+	out := api.ConfirmEmailChange200JSONResponse{}
+	// ⚠️ pair 为 nil = 没重签：邮箱【已经改好了】，只是用户需重新登录。
+	// ⛔ 不是失败，⛔ 不能因此返回错误。
+	if pair != nil {
+		p := toTokenPair(pair)
+		out.Tokens = &p
+	}
+	return out, nil
+}

@@ -59,13 +59,16 @@ type Pair struct {
 
 // Service 组装模块的两个守卫。
 type Service struct {
-	guard     *localauth.Guard
-	sessions  *localauth.SessionGuard
-	passwords *localauth.PasswordGuard
-	accounts  account.Repository
-	lookup    localauth.LookupFunc
-	secret    []byte
-	log       *slog.Logger
+	guard        *localauth.Guard
+	sessions     *localauth.SessionGuard
+	passwords    *localauth.PasswordGuard
+	registration *localauth.RegistrationGuard
+	recovery     *localauth.RecoveryGuard
+	emailChange  *localauth.EmailChangeGuard
+	accounts     account.Repository
+	lookup       localauth.LookupFunc
+	secret       []byte
+	log          *slog.Logger
 }
 
 func NewService(
@@ -407,6 +410,190 @@ func translateChange(err error) error {
 		return ErrWeakPassword
 	case localauth.CodeInvalidCredentials:
 		return ErrOldPasswordWrong
+	case localauth.CodeInvalidCode:
+		// ⚠️ 「根本没有码 / 码错 / 已过期 / 试太多次」对外都是它 ——
+		// ⛔ 区分它们等于告诉攻击者「你猜的方向对不对」。
+		return ErrInvalidCode
+	case localauth.CodeEmailTaken:
+		return ErrEmailTaken
+	default:
+		return err
+	}
+}
+
+// ── 注册 / 找回 / 改邮箱（阶段 5）──────────────────────────────────
+
+// WithEmailFlows 接上邮件家族的三个守卫。
+func (s *Service) WithEmailFlows(reg *localauth.RegistrationGuard,
+	rec *localauth.RecoveryGuard, ec *localauth.EmailChangeGuard) *Service {
+	s.registration, s.recovery, s.emailChange = reg, rec, ec
+	return s
+}
+
+// SendRegisterCode 发注册验证码。
+//
+// ⭐ 模块的编排：限流（地址+IP）→ 查重 → 发码。
+// ⚠️ 邮箱已被占用时，对请求方【仍然返回成功】—— 否则这个端点就是一个
+// 「这个邮箱注册过没有」的查询接口。真正的处置是给那个地址的主人发一封
+// 「有人用你的邮箱注册」的通知，⭐ 让知情权落在地址主人身上而不是请求方。
+func (s *Service) SendRegisterCode(ctx context.Context, username, email, clientIP string) error {
+	if s.registration == nil {
+		return errors.New("注册未启用")
+	}
+	if err := s.registration.SendCode(ctx, localauth.SendCodeRequest{
+		Username: username, Email: email, ClientIP: clientIP,
+	}); err != nil {
+		return translateSend(err)
+	}
+	return nil
+}
+
+// Register 完成注册。
+func (s *Service) Register(ctx context.Context, username, password, displayName, email, code,
+	deviceInfo, clientIP string) (*Pair, *ChangeResult, error) {
+	if s.registration == nil {
+		return nil, nil, errors.New("注册未启用")
+	}
+	out, err := s.registration.Register(ctx, localauth.RegistrationRequest{
+		Username: username, Password: password, DisplayName: displayName,
+		Email: email, Code: code,
+	})
+	if err != nil {
+		return nil, nil, translateRegister(err)
+	}
+	a, err := s.accounts.FindByID(ctx, out.UserID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("注册后取账号: %w", err)
+	}
+	pair, err := s.issue(ctx, a, deviceInfo, clientIP)
+	if err != nil {
+		return nil, nil, err
+	}
+	// ⭐ 泄露评估带给前端（裁决 D5：命中也放行）。
+	return pair, &ChangeResult{
+		Breached: out.Advice.Breached, BreachCount: out.Advice.BreachCount, Checked: out.Advice.Checked,
+	}, nil
+}
+
+// RequestRecovery 发找回码。
+//
+// ⛔⛔ 无论地址存不存在、有没有已验证邮箱，对外【一律成功】。
+// ⚠️ 任何差别（返回码、耗时、文案）都会让这个端点变成一个
+// 「这个邮箱有账号吗」的查询接口。
+// ⭐ 模块内部：查不到 / 未验证 / 联邦账号走同一条路（案卷 §18.3.2
+// 「不实现 = 安全」）。
+func (s *Service) RequestRecovery(ctx context.Context, address, clientIP string) error {
+	if s.recovery == nil {
+		return errors.New("找回未启用")
+	}
+	if err := s.recovery.Request(ctx, address, clientIP); err != nil {
+		return translateSend(err)
+	}
+	return nil
+}
+
+// CompleteRecovery 验码并重置口令。
+func (s *Service) CompleteRecovery(ctx context.Context, address, code, newPassword string) (*ChangeResult, error) {
+	if s.recovery == nil {
+		return nil, errors.New("找回未启用")
+	}
+	adv, err := s.recovery.Complete(ctx, localauth.CompleteRequest{
+		Address: address, Code: code, NewPassword: newPassword,
+	})
+	if err != nil {
+		return nil, translateChange(err)
+	}
+	return &ChangeResult{Breached: adv.Breached, BreachCount: adv.BreachCount, Checked: adv.Checked}, nil
+}
+
+// RequestEmailChange 给【新地址】发码。⛔ 不改库。
+func (s *Service) RequestEmailChange(ctx context.Context, userID, newEmail, clientIP string) error {
+	if s.emailChange == nil {
+		return errors.New("改邮箱未启用")
+	}
+	if err := s.emailChange.Request(ctx, localauth.EmailChangeRequest{
+		UserID: userID, NewEmail: newEmail, ClientIP: clientIP,
+	}); err != nil {
+		return translateSend(err)
+	}
+	return nil
+}
+
+// ConfirmEmailChange 验码 → 写入新地址 → 通知旧地址 → 吊销 → 重签。
+//
+// ⭐ 「通知旧地址」不是礼貌，是安全要件：它是账号接管链上
+// 【唯一会让受害者察觉】的信号（案卷 §18.5）。
+func (s *Service) ConfirmEmailChange(ctx context.Context, userID, code,
+	currentSessionID, deviceInfo, clientIP string) (*Pair, error) {
+	if s.emailChange == nil {
+		return nil, errors.New("改邮箱未启用")
+	}
+	out, err := s.emailChange.Confirm(ctx, localauth.EmailChangeConfirm{
+		UserID: userID, Code: code, CurrentSessionID: currentSessionID,
+		DeviceInfo: deviceInfo, ClientIP: clientIP,
+	})
+	if err != nil {
+		return nil, translateChange(err)
+	}
+	if out.Reissued.RefreshToken == "" {
+		return nil, nil // ⚠️ 没重签：邮箱【已经改好了】，只是用户需重新登录。⛔ 不是失败。
+	}
+	a, ferr := s.accounts.FindByID(ctx, userID)
+	if ferr != nil {
+		return nil, fmt.Errorf("改邮箱后取账号: %w", ferr)
+	}
+	return &Pair{
+		AccessToken: out.Reissued.AccessToken, RefreshToken: out.Reissued.RefreshToken,
+		ExpiresIn: int(AccessTTL.Seconds()), AccountID: a.ID, Display: a.DisplayName(),
+	}, nil
+}
+
+// ErrTooManyCodes 发码限流。
+//
+// ⭐ 与登录的退避【不同】：这个可以对外明说。
+// ⚠️ 因为它按【地址/IP】计数，与账号是否存在无关 ⇒ ⛔ 不泄漏任何信息。
+// 而登录退避一旦可见就是预言机（一次探测即读出该账号近期有无失败）。
+var (
+	ErrTooManyCodes  = errors.New("验证码发送过于频繁，请稍后再试")
+	ErrInvalidCode   = errors.New("验证码无效或已过期")
+	ErrUsernameTaken = errors.New("用户名已被占用")
+	ErrEmailTaken    = errors.New("邮箱已被占用")
+)
+
+func translateSend(err error) error {
+	c, ok := codeOf(err)
+	if !ok {
+		return err
+	}
+	switch c {
+	case localauth.CodeMisconfigured:
+		return err
+	case localauth.CodeTooManyRequests:
+		return ErrTooManyCodes
+	default:
+		return err
+	}
+}
+
+func translateRegister(err error) error {
+	c, ok := codeOf(err)
+	if !ok {
+		return err
+	}
+	switch c {
+	case localauth.CodeMisconfigured:
+		return err
+	case localauth.CodeUsernameTaken:
+		// ⭐ 用户名本来就公开（登录要用它），明说无妨 —— 案卷 §22 同源。
+		return ErrUsernameTaken
+	case localauth.CodeEmailTaken:
+		return ErrEmailTaken
+	case localauth.CodeInvalidCode:
+		return ErrInvalidCode
+	case localauth.CodePasswordTooShort, localauth.CodePasswordTooLong:
+		return ErrWeakPassword
+	case localauth.CodeTooManyRequests:
+		return ErrTooManyCodes
 	default:
 		return err
 	}

@@ -143,6 +143,65 @@ func run() error {
 	}
 	authSvc = authSvc.WithPasswordGuard(passwordGuard)
 
+	// ── 注册 / 找回 / 改邮箱（阶段 5）────────────────────────────
+	//
+	// ⛔ 发信通道未配置即【启动失败】（用户裁决 ③）：
+	// 「忘了配」与「故意用 log」必须区分得开 —— 静默降级会让生产
+	// 在无人察觉下把验证码明文打进日志。
+	mailer, err := localauthx.NewMailer(cfg.Mailer, log)
+	if err != nil {
+		return err
+	}
+	// ⭐ 发码限流复用 login_failures 表，两个新 scope。
+	// ⚠️ 发码是【外部成本】：被刷 = 邮件配额烧光 + 对任意邮箱的骚扰。
+	// 参数用模块的默认值（用户裁决 D4：地址 3/10min + 60s 冷却、IP 20/h）。
+	verifyAddrFailures, err := localauthx.NewFailureStore(db, "vaddr")
+	if err != nil {
+		return err
+	}
+	verifyIPFailures, err := localauthx.NewFailureStore(db, "vip")
+	if err != nil {
+		return err
+	}
+	verifyGuard, err := localauth.NewVerificationGuard(
+		localauthx.NewVerificationStore(db), mailer,
+		verifyAddrFailures, verifyIPFailures,
+		[]byte(cfg.VerificationPepper),
+		localauth.WithSendThrottle(localauth.DefaultSendThrottle()),
+		localauth.WithVerificationAudit(auditTo(log)),
+	)
+	if err != nil {
+		return err
+	}
+	registrationGuard, err := localauth.NewRegistrationGuard(
+		verifyGuard, creds,
+		// ⚠️ melete 目前开放注册，准入返回 nil —— 与登录守卫同一现状记录。
+		localauth.AdmissionFunc(func(context.Context, localauth.AdmitRequest) error { return nil }),
+		policy,
+		localauth.WithRegistrationAudit(auditTo(log)),
+	)
+	if err != nil {
+		return err
+	}
+	recoveryGuard, err := localauth.NewRecoveryGuard(
+		verifyGuard, localauthx.NewRecoveryResolver(db), passwordGuard,
+		localauth.WithRecoveryAudit(auditTo(log)),
+	)
+	if err != nil {
+		return err
+	}
+	emailChangeGuard, err := localauth.NewEmailChangeGuard(
+		verifyGuard, localauthx.NewEmailChanger(db), sessionGuard,
+		// ⭐ 改邮箱后为当前设备重签，用户不必重新登录。
+		localauth.WithEmailChangeReissuer(
+			localauth.NewDeviceReissuer(sessionGuard, authSvc.IssueAccessToken)),
+		localauth.WithEmailChangeAudit(auditTo(log)),
+	)
+	if err != nil {
+		return err
+	}
+	authSvc = authSvc.WithEmailFlows(registrationGuard, recoveryGuard, emailChangeGuard)
+
 	oidcVerifier := token.NewOIDCVerifier(cfg.OIDCIssuer, cfg.OIDCClientID)
 	server := httpapi.NewServer(bankSvc, questionSvc, studySvc, authSvc, oidcVerifier, log)
 
@@ -182,6 +241,15 @@ func run() error {
 		apiBase + "/auth/sso",           // id_token 换本站 token
 		apiBase + "/auth/oidc/start",    // 浏览器导航，手写挂载
 		apiBase + "/auth/oidc/callback", // 同上
+		// ── 阶段 5 的公开端点（注册与找回，此时用户当然还没有 token）──
+		apiBase + "/auth/register/code",
+		apiBase + "/auth/register",
+		apiBase + "/auth/recovery/code",
+		apiBase + "/auth/recovery/complete",
+		// ⚠️ ⛔ 改邮箱的两个端点【不在这里】：/auth/email/code 与
+		// /auth/email/confirm 必须认证 —— 它们改的是【当前登录用户】的邮箱。
+		// ⭐ 而 /auth/register 与它们共享 /auth/ 前缀：若豁免还是前缀匹配，
+		// 改邮箱就会变成公开的，任何人能把任何账号的邮箱改成自己的。
 	}
 
 	ctx := context.Background()
