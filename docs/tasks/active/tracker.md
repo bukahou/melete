@@ -354,6 +354,51 @@ p050-056 是 **「表計算ソフトの機能・用語（IT パスポート試�
 
 ---
 
+## localauth 接入（cross-exam 005 §35 验收）🔄
+
+> **主档在 `config/cross-exam/`**：验收计划 `2026-09-06-melete-localauth-acceptance-plan.md`，
+> 裁决与核实记录在 `2026-09-04-localauth-delivery-checklist.md` §35–§38。
+> 这里只记 melete 侧的状态，⛔ 不复制决策内容（复制 = 两份会漂）。
+
+**验收方式**（用户 2026-09-06）：melete 完全删除自己的登录逻辑，只靠
+`github.com/bukahou/gokit/localauth` 重建 —— 对可复用性最硬的检验。
+
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| 1 | 建表 + `internal/localauthx/` 骨架（⛔ 不接线） | ✅ `69e1e2c` |
+| 2 | 账号 id `int64` → UUID（波及 9 文件 17 处 + 学习表 + OpenAPI + web） | ⬜ |
+| 3 | 接线：登录 / 刷新 / 登出 / 会话列表 | ⬜ |
+| 4 | 改密 / 首次设密 / HIBP | ⬜ |
+| 5 | 注册 / 找回 / 改邮箱 | ⬜ |
+| 6 | 🔴 删旧实现 + DROP 旧表（不可逆，动手前报） | ⬜ |
+
+**阶段 1 已达成**：7 个编译期契约；契约套件 FailureStore 6/6 · SessionStore 9/9
+· Verification 8/8；四条变异验证全部真红过。
+
+### ⭐ 本阶段最值钱的一条教训（比任何单个缺口都值钱）
+
+两处 DDL 缺口 —— `user_sessions.prev_refresh_hash` 与 `users.uk_email` ——
+**成因完全相同**：照着方法签名设计存储，没读**记录类型的字段**与
+**返回类型隐含的约束**。⚠️ 第一次我只在 commit 里记了结论、没改做法，
+于是**原样复发了第二次**。
+
+⇒ 做法已改：**实现任何 Store 之前，先把它读写的 record 类型逐字段
+对照表结构过一遍，并检查返回类型隐含的唯一性/存在性约束。**
+
+（`UserByVerifiedAddress` 返回**单个** userID ⇒ 邮箱必须唯一 ——
+这条约束只写在返回类型里，方法签名和字段列表里都看不见。）
+
+### 📌 一处需要更正的记录
+
+`69e1e2c` 的 commit message 里写了 `uk_email`「三家都受影响」。
+**不准确** —— work 实测 **geass-v3 线上 `users` 已有 `uk_email`**（重复邮箱 0 行），
+它独立于模板补上了。准确说法是：**模板缺 + melete 缺（已补）+
+atlhyper 将来会继承（模板已修，风险消除）**。
+
+⛔ **刻意不改那条 commit message**：该 hash 已报给 work 并入案卷，
+改写会让案卷里的引用失效 —— 而可核验的 hash 是这次协作的验证链本身。
+⭐ 为一句措辞破坏它，代价比措辞本身大。更正记在这里。
+
 ## 技术债（发现即登记，不阻塞主线）
 
 - [ ] **melete 的 ConfigMap / Secret 是普通资源，改了不触发滚动**。2026-09-03 改 DSN 时
