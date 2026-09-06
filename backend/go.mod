@@ -4,7 +4,7 @@ go 1.26.7
 
 require (
 	github.com/bukahou/akasha/pkg/oidcrp v0.1.0
-	github.com/bukahou/gokit/localauth v0.1.2
+	github.com/bukahou/gokit/localauth v0.2.0
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/go-chi/chi/v5 v5.3.2

@@ -43,9 +43,9 @@ func TestExemptionIsExactPathNotPrefix(t *testing.T) {
 	}{
 		"登记过的公开端点 → 放行且【不带】身份": {public, http.StatusOK, "no"},
 		// 🔴 这一条是本测试的全部意义：它与 public 共享前缀 /api/v1/auth/
-		"同前缀但未登记 → 必须要求认证":     {"/api/v1/auth/sessions", http.StatusUnauthorized, ""},
-		"更深一层未登记 → 同样要求认证":     {"/api/v1/auth/sessions/revoke-others", http.StatusUnauthorized, ""},
-		"完全无关的业务端点 → 要求认证":     {"/api/v1/me/progress", http.StatusUnauthorized, ""},
+		"同前缀但未登记 → 必须要求认证": {"/api/v1/auth/sessions", http.StatusUnauthorized, ""},
+		"更深一层未登记 → 同样要求认证": {"/api/v1/auth/sessions/revoke-others", http.StatusUnauthorized, ""},
+		"完全无关的业务端点 → 要求认证": {"/api/v1/me/progress", http.StatusUnauthorized, ""},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

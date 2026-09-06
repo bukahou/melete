@@ -129,7 +129,7 @@ func (s *Service) issue(ctx context.Context, a *account.Account, deviceInfo, cli
 	if err != nil {
 		return nil, fmt.Errorf("建立会话: %w", err)
 	}
-	access, err := s.signAccess(a.ID, rec.ID)
+	access, err := s.signAccess(a.ID, rec.ID, time.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +150,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken, deviceInfo string) 
 	if err != nil {
 		return nil, fmt.Errorf("刷新后取账号: %w", err)
 	}
-	access, err := s.signAccess(a.ID, out.Session.ID)
+	access, err := s.signAccess(a.ID, out.Session.ID, time.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -229,14 +229,28 @@ func codeOf(err error) (localauth.Code, bool) {
 //
 // ⭐ 带 sid（会话 id）：「登出其它设备」要知道保留哪一条，
 // 而那个信息只能来自当前这张票 —— ⛔ 不能让客户端说了算。
-func (s *Service) signAccess(userID, sessionID string) (string, error) {
-	now := time.Now()
+//
+// ⛔⛔ issuedAt 由【调用方】给，⛔ 这里不得用 time.Now() 覆盖它。
+//
+// ⚠️ 这不是风格问题。gokit v0.2.0 改密流程里，模块会算出一个
+// `reissueAt = nextSecond(changedAt)` 并要求重签出来的 token 的 `iat`
+// 【正好是它】：吊销纪元设在 changedAt，判定是 `iat <= changedAt 即失效`，
+// 于是其它设备同一秒签发的 token 会被作废，而重签的这张因为
+// iat > changedAt 得以幸存。
+// ⇒ 若这里把 iat 强制覆盖成 now（很可能与 changedAt 同一秒），
+//
+//	刚重签出来的 token 会【立刻失效】，用户改完密码当场掉线。
+//
+// ⚠️ geass-v3 正是撞在这上面（它的 jwt helper 把 iat 当保留 claim 强制覆盖），
+// 因而接不了 v0.2.0。melete 这里只有这一处 MapClaims，所以透传即可。
+// ⛔ 将来若有人抽一个"统一签 JWT"的 helper，必须保留这个参数。
+func (s *Service) signAccess(userID, sessionID string, issuedAt time.Time) (string, error) {
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"iss": issuer,
 		"sub": userID,
 		"sid": sessionID,
-		"iat": now.Unix(),
-		"exp": now.Add(AccessTTL).Unix(),
+		"iat": issuedAt.Unix(),
+		"exp": issuedAt.Add(AccessTTL).Unix(),
 	})
 	out, err := t.SignedString(s.secret)
 	if err != nil {
@@ -244,6 +258,21 @@ func (s *Service) signAccess(userID, sessionID string) (string, error) {
 	}
 	return out, nil
 }
+
+// IssueAccessToken 是 localauth.AccessTokenIssuer 的实现。
+//
+// ⭐ 模块在改密重签时调它，并把算好的 issuedAt 传进来 —— 见 signAccess 的注释。
+func (s *Service) IssueAccessToken(_ context.Context, userID, sessionID string, issuedAt time.Time) (string, time.Time, error) {
+	tok, err := s.signAccess(userID, sessionID, issuedAt)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	return tok, issuedAt.Add(AccessTTL), nil
+}
+
+// 编译期契约检查 —— ⚠️ v0.2.0 给 AccessTokenIssuer 加了 issuedAt 参数，
+// 少了这一行，签名变化要到运行时才发现。
+var _ localauth.AccessTokenIssuer = (*Service)(nil).IssueAccessToken
 
 // Claims 是一张 access token 解出来的东西。
 type Claims struct {

@@ -11,6 +11,8 @@ github.com/bukahou/gokit/localauth v0.1.0 h1:HZdxUcHdOOleCBqL2gVxXiIHDe/LUrkLEct
 github.com/bukahou/gokit/localauth v0.1.0/go.mod h1:2+UkXz6O8S3E5cb9noYrnTeT7ABvS2zNnO+bb53edpk=
 github.com/bukahou/gokit/localauth v0.1.2 h1:WCvWwowUUkZPldEhF9uw3crOD+r1sJgSmcy4dJScwJc=
 github.com/bukahou/gokit/localauth v0.1.2/go.mod h1:2+UkXz6O8S3E5cb9noYrnTeT7ABvS2zNnO+bb53edpk=
+github.com/bukahou/gokit/localauth v0.2.0 h1:TK1gjkZZ93fHyGbQH+mfaRLfVggPWFG13nGvuNt5FD0=
+github.com/bukahou/gokit/localauth v0.2.0/go.mod h1:2+UkXz6O8S3E5cb9noYrnTeT7ABvS2zNnO+bb53edpk=
 github.com/caarlos0/env/v11 v11.4.1 h1:fYwH0sWEsBSMPG7t4e/PEfTFzrWrpjyygXyUnWiSwEw=
 github.com/caarlos0/env/v11 v11.4.1/go.mod h1:qupehSf/Y0TUTsxKywqRt/vJjN5nz6vauiYEUUr8P4U=
 github.com/coreos/go-oidc/v3 v3.21.0 h1:wZo4Q9Pum8dYEj0eMUPrqR+kvuGkeUplbLpNCkBqoWM=
