@@ -10,8 +10,8 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/bukahou/melete/backend/internal/account"
 	"github.com/bukahou/melete/backend/internal/api"
+	"github.com/bukahou/melete/backend/internal/auth"
 	"github.com/bukahou/melete/backend/internal/bank"
 	"github.com/bukahou/melete/backend/internal/httpauth"
 	"github.com/bukahou/melete/backend/internal/question"
@@ -24,20 +24,21 @@ import (
 type Server struct {
 	banks     bank.Service
 	questions question.Service
-	accounts  account.Service
 	studies   study.Service
-	tokens    *token.Issuer
-	oidc      *token.OIDCVerifier
-	log       *slog.Logger
+	// ⭐ auth 是登录的唯一入口。⛔ 注意这里【没有】account.Service ——
+	// 阶段 3 起 melete 不再有自己的「校验密码」这件事，那全在模块里。
+	auth *auth.Service
+	oidc *token.OIDCVerifier
+	log  *slog.Logger
 }
 
 func NewServer(
-	banks bank.Service, questions question.Service, accounts account.Service,
-	studies study.Service, tokens *token.Issuer, oidc *token.OIDCVerifier, log *slog.Logger,
+	banks bank.Service, questions question.Service,
+	studies study.Service, authSvc *auth.Service, oidc *token.OIDCVerifier, log *slog.Logger,
 ) *Server {
 	return &Server{
-		banks: banks, questions: questions, accounts: accounts,
-		studies: studies, tokens: tokens, oidc: oidc, log: log,
+		banks: banks, questions: questions,
+		studies: studies, auth: authSvc, oidc: oidc, log: log,
 	}
 }
 
@@ -159,18 +160,17 @@ func (s *Server) GetQuestion(ctx context.Context, req api.GetQuestionRequestObje
 }
 
 func (s *Server) PasswordLogin(ctx context.Context, req api.PasswordLoginRequestObject) (api.PasswordLoginResponseObject, error) {
-	a, err := s.accounts.VerifyPassword(ctx, req.Body.Username, req.Body.Password)
-	if errors.Is(err, account.ErrBadCredentials) {
+	pair, err := s.auth.Login(ctx, clientIP(ctx), req.Body.Username, req.Body.Password, deref(req.Body.DeviceInfo))
+	// ⚠️ 退避命中与密码错误【同一个返回】—— 模块刻意不区分（案卷 §18.4：
+	// retryAfter 只进日志）。⛔ 这里不得按错误细分文案，那会把差异加回来，
+	// 而那个差异本身就是预言机。
+	if errors.Is(err, auth.ErrBadCredentials) {
 		return api.PasswordLogin401JSONResponse{Message: err.Error()}, nil
 	}
 	if err != nil {
 		return nil, s.fail("PasswordLogin", err)
 	}
-	pair, err := s.tokens.Issue(ctx, a.ID, deref(req.Body.DeviceInfo))
-	if err != nil {
-		return nil, s.fail("PasswordLogin.issue", err)
-	}
-	return api.PasswordLogin200JSONResponse(toTokenPair(pair, a.ID, a.DisplayName())), nil
+	return api.PasswordLogin200JSONResponse(toTokenPair(pair)), nil
 }
 
 // SsoExchange 用 Akasha id_token 换本 API 的 token。
@@ -183,46 +183,42 @@ func (s *Server) SsoExchange(ctx context.Context, req api.SsoExchangeRequestObje
 		s.log.Warn("id_token 验签失败", "err", err)
 		return api.SsoExchange401JSONResponse{Message: "id_token 无效"}, nil
 	}
-	a, err := s.accounts.EstablishSSO(ctx, sub, display)
+	pair, err := s.auth.EstablishFederated(ctx, sub, display, deref(req.Body.DeviceInfo), clientIP(ctx))
 	if err != nil {
 		return nil, s.fail("SsoExchange.establish", err)
 	}
-	pair, err := s.tokens.Issue(ctx, a.ID, deref(req.Body.DeviceInfo))
-	if err != nil {
-		return nil, s.fail("SsoExchange.issue", err)
-	}
-	return api.SsoExchange200JSONResponse(toTokenPair(pair, a.ID, a.DisplayName())), nil
+	return api.SsoExchange200JSONResponse(toTokenPair(pair)), nil
 }
 
 func (s *Server) RefreshToken(ctx context.Context, req api.RefreshTokenRequestObject) (api.RefreshTokenResponseObject, error) {
-	pair, accountID, err := s.tokens.Refresh(ctx, req.Body.RefreshToken)
-	if errors.Is(err, token.ErrRevoked) {
+	pair, err := s.auth.Refresh(ctx, req.Body.RefreshToken, "")
+	// ⚠️ 重放 / 已吊销 / 账号停用 / 改密后失效 —— 模块全部返回同一个码，
+	// 于是这里也只有一种回应。⛔ 区分它们等于把内部状态透给攻击者。
+	if errors.Is(err, auth.ErrRevoked) {
 		return api.RefreshToken401JSONResponse{Message: "会话已失效，请重新登录"}, nil
 	}
 	if err != nil {
 		return nil, s.fail("RefreshToken", err)
 	}
-	a, err := s.accounts.FindByID(ctx, accountID)
-	if err != nil {
-		return nil, s.fail("RefreshToken.account", err)
-	}
-	return api.RefreshToken200JSONResponse(toTokenPair(pair, a.ID, a.DisplayName())), nil
+	return api.RefreshToken200JSONResponse(toTokenPair(pair)), nil
 }
 
 func (s *Server) Logout(ctx context.Context, req api.LogoutRequestObject) (api.LogoutResponseObject, error) {
-	if err := s.tokens.Revoke(ctx, req.Body.RefreshToken); err != nil {
+	// ⭐ 登出是幂等的：已失效的 token 再登出一次也返回 204。
+	// ⚠️ 报错会让「这个 token 存在过」变成可探测的信息。
+	if err := s.auth.Logout(ctx, req.Body.RefreshToken); err != nil && !errors.Is(err, auth.ErrRevoked) {
 		return nil, s.fail("Logout", err)
 	}
 	return api.Logout204Response{}, nil
 }
 
-func toTokenPair(p *token.Pair, accountID string, display string) api.TokenPair {
+func toTokenPair(p *auth.Pair) api.TokenPair {
 	return api.TokenPair{
 		AccessToken:  p.AccessToken,
 		RefreshToken: p.RefreshToken,
 		ExpiresIn:    p.ExpiresIn,
-		AccountId:    accountID,
-		Display:      display,
+		AccountId:    p.AccountID,
+		Display:      p.Display,
 	}
 }
 
@@ -410,4 +406,16 @@ func (s *Server) GetMyRecent(ctx context.Context, req api.GetMyRecentRequestObje
 		out = append(out, toAPISession(ss))
 	}
 	return out, nil
+}
+
+// clientIP 从上下文取解析后的可信 IP。
+//
+// ⚠️ 空串 = 来源不可用 → 模块【降级】：关掉 IP 维度的退避，账号维度照常。
+// ⛔ 那不是失败，理由与代价写在模块 guard.go 的 ipUnavailable 一段。
+//
+// ⚠️ 解析本身不在这里：它需要 HTTP 头，而 strict-server 的 handler 只拿到
+// ctx。⇒ 由中间件解析一次后放进 ctx（见 httpauth）。
+func clientIP(ctx context.Context) string {
+	ip, _ := httpauth.ClientIP(ctx)
+	return ip
 }

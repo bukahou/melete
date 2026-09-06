@@ -19,6 +19,30 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // ⛔⛔ 预取请求【一律不走刷新路径】。
+  //
+  // ⚠️ 这不是优化，是一个会造成全设备强制登出的真实缺陷的堵法：
+  //
+  //   1. 模块（gokit/localauth）的 RotateReplayed 处置是【吊销该用户全部会话】，
+  //      且刻意没有开关 —— 理由是代价不对称（误伤=重登一次；漏放=攻击者
+  //      偷到的 refresh 链完好无损续到 TTL 结束）。
+  //   2. Next 默认对视口内 <Link> 预取，本站布局 3 个 + 刷题页 3 个 + 卡片 4 个。
+  //   3. 本 proxy 的 matcher 覆盖 RSC 数据请求（预取不走 /_next/）。
+  //
+  //   ⇒ access cookie 过期后的第一次渲染，约 10 个预取【并发】拿同一个
+  //     refresh 去换 ⇒ 1 个 Rotated、其余命中 prev ⇒ 判为 Replayed
+  //     ⇒ 全部会话被吊销 ⇒ 用户在所有设备上被登出，且不知道为什么。
+  //
+  // ⭐ 问题不在模块 —— 是本站制造出了「同一个 refresh 被并发使用」这个
+  // 在模块看来【与失窃无法区分】的形态。
+  //
+  // ⚠️ 进程内 single-flight 去重不够：melete 是 2 副本，跨副本挡不住。
+  // ⭐ 正解是这一层：**预取本来就不该有副作用**，让它触发 token 轮换
+  // 等于把一个只读操作变成了写操作。真实导航会自己走刷新，用户无感。
+  if (req.headers.get("next-router-prefetch") === "1") {
+    return NextResponse.next();
+  }
+
   // access 没了但 refresh 还在 → 静默续期后放行本次请求
   const rt = req.cookies.get(REFRESH_COOKIE)?.value;
   if (rt) {

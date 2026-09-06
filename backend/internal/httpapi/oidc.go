@@ -33,8 +33,7 @@ import (
 	"github.com/bukahou/akasha/pkg/oidcrp"
 	"github.com/go-chi/chi/v5"
 
-	"github.com/bukahou/melete/backend/internal/account"
-	"github.com/bukahou/melete/backend/internal/token"
+	"github.com/bukahou/melete/backend/internal/auth"
 )
 
 // OIDCConfig 后端作为 OIDC client 所需的全部配置。
@@ -80,17 +79,16 @@ type OIDCHandler struct {
 	flow        *oidcrp.Flow
 	lastAttempt time.Time
 
-	cfg      OIDCConfig
-	accounts account.Service
-	tokens   *token.Issuer
-	log      *slog.Logger
+	cfg  OIDCConfig
+	auth *auth.Service
+	log  *slog.Logger
 }
 
-func NewOIDCHandler(ctx context.Context, cfg OIDCConfig, accounts account.Service, tokens *token.Issuer, log *slog.Logger) *OIDCHandler {
+func NewOIDCHandler(ctx context.Context, cfg OIDCConfig, authSvc *auth.Service, log *slog.Logger) *OIDCHandler {
 	if log == nil {
 		log = slog.Default()
 	}
-	h := &OIDCHandler{cfg: cfg, accounts: accounts, tokens: tokens, log: log}
+	h := &OIDCHandler{cfg: cfg, auth: authSvc, log: log}
 	if err := h.ensureFlow(ctx); err != nil {
 		log.Warn("Akasha 第三方登录暂不可用，将在请求时重试", "issuer", cfg.Issuer, "err", err)
 	} else {
@@ -169,17 +167,20 @@ func (h *OIDCHandler) onAuthenticated(w http.ResponseWriter, r *http.Request, re
 	if display == "" {
 		display = "学习者"
 	}
-	acct, err := h.accounts.EstablishSSO(r.Context(), id.Subject, display)
-	if err != nil {
-		return "", fmt.Errorf("确立账号: %w", err)
-	}
 	device := "oidc/web"
 	if isNative(res.Next) {
 		device = "oidc/ios"
 	}
-	pair, err := h.tokens.Issue(r.Context(), acct.ID, device)
+	// ⚠️ 「按 (provider, subject) 找或建账号」这一段属 akasha 范围（案卷 §35），
+	// 本次【不改其编排】—— 改的只是它底下的存储表（account → users+identities）
+	// 与它之后的发会话（melete 自己签 → 模块的 SessionGuard）。
+	//
+	// ⚠️ clientIP 传空串：这个回调是浏览器从 Akasha 302 回来的，
+	// 走的链路与普通 API 请求不同。⛔ 与其填一个可能不可信的值，
+	// 不如明确交空 —— 模块收到空串会降级，而不是记录一个错的 IP。
+	pair, err := h.auth.EstablishFederated(r.Context(), id.Subject, display, device, "")
 	if err != nil {
-		return "", fmt.Errorf("签发 token: %w", err)
+		return "", fmt.Errorf("确立账号并发会话: %w", err)
 	}
 	return h.clientCallbackURL(pair, res.Next), nil
 }
@@ -194,7 +195,7 @@ func (h *OIDCHandler) onAuthenticated(w http.ResponseWriter, r *http.Request, re
 //
 //	浏览器脚本不参与），随后立刻拿它去 /auth/refresh 换一对新的 ——
 //	refresh 轮换让 URL 里那个用一次即废，日志里留下的是张作废的票。
-func (h *OIDCHandler) clientCallbackURL(pair *token.Pair, next string) string {
+func (h *OIDCHandler) clientCallbackURL(pair *auth.Pair, next string) string {
 	if isNative(next) {
 		frag := url.Values{}
 		frag.Set("access_token", pair.AccessToken)

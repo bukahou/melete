@@ -17,12 +17,16 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	_ "github.com/go-sql-driver/mysql"
 
+	"github.com/bukahou/gokit/localauth"
+
 	"github.com/bukahou/melete/backend/internal/account"
 	"github.com/bukahou/melete/backend/internal/api"
+	"github.com/bukahou/melete/backend/internal/auth"
 	"github.com/bukahou/melete/backend/internal/bank"
 	"github.com/bukahou/melete/backend/internal/config"
 	"github.com/bukahou/melete/backend/internal/httpapi"
 	"github.com/bukahou/melete/backend/internal/httpauth"
+	"github.com/bukahou/melete/backend/internal/localauthx"
 	"github.com/bukahou/melete/backend/internal/platform/database"
 	"github.com/bukahou/melete/backend/internal/question"
 	"github.com/bukahou/melete/backend/internal/study"
@@ -65,11 +69,53 @@ func run() error {
 	questionRepo := question.NewMySQLRepository(db)
 	bankSvc := bank.NewService(bank.NewMySQLRepository(db))
 	questionSvc := question.NewService(questionRepo)
-	accountSvc := account.NewService(account.NewMySQLRepository(db))
+	accountRepo := account.NewMySQLRepository(db)
 	studySvc := study.NewService(db, questionRepo)
-	tokenIssuer := token.NewIssuer(db, cfg.JWTSecret)
+
+	// ── localauth 接线（阶段 3）──────────────────────────────────
+	//
+	// ⭐ 从这里起，melete 不再有自己的登录逻辑：退避、哈希比对、轮换、
+	// 重放判定、账号状态复查全部在模块里。⛔ 本文件只负责把实现接上去。
+	creds := localauthx.NewCredentialStore(db)
+	ipFailures, err := localauthx.NewFailureStore(db, "ip")
+	if err != nil {
+		return err
+	}
+	acctFailures, err := localauthx.NewFailureStore(db, "account")
+	if err != nil {
+		return err
+	}
+	// ⚠️ 四个位置参数【必填且无零值语义】—— 模块刻意用位置参数而不是可留空的
+	// Config：编译期强于运行期，必填让这个决定必须在【写代码时】做出，
+	// 而那是唯一有人在思考部署拓扑的时刻。
+	guard, err := localauth.New(
+		// ⭐ melete 走 CF Tunnel，origin 是 LAN 地址无公网入口
+		// ⇒ 案卷 §2.11 检查③「不可绕过」结构上天然满足。
+		localauth.TrustCloudflare(),
+		// ⚠️ melete 目前【开放注册】，准入返回 nil。
+		// ⛔ 这是有意的现状记录，不是遗漏 —— 案卷 §19.4 记着 melete
+		// 「违反 5.3 JIT 约束」这笔债，它属 OIDC 侧，§35 已划归 akasha 范围。
+		localauth.AdmissionFunc(func(context.Context, localauth.AdmitRequest) error { return nil }),
+		ipFailures, acctFailures,
+		localauth.WithAuditHook(auditTo(log)),
+	)
+	if err != nil {
+		return err
+	}
+	sessionGuard, err := localauth.NewSessionGuard(
+		localauthx.NewSessionStore(db),
+		creds.AccountStatus,
+		auth.RefreshTTL,
+		localauth.WithSessionAudit(auditTo(log)),
+	)
+	if err != nil {
+		return err
+	}
+	authSvc := auth.NewService(guard, sessionGuard, accountRepo,
+		creds.LookupHashByUsername, cfg.JWTSecret, log)
+
 	oidcVerifier := token.NewOIDCVerifier(cfg.OIDCIssuer, cfg.OIDCClientID)
-	server := httpapi.NewServer(bankSvc, questionSvc, accountSvc, studySvc, tokenIssuer, oidcVerifier, log)
+	server := httpapi.NewServer(bankSvc, questionSvc, studySvc, authSvc, oidcVerifier, log)
 
 	r := chi.NewRouter()
 	// ⚠️ 刻意【不用】middleware.RealIP：它无条件信任 X-Forwarded-For 的第一个值，
@@ -92,7 +138,6 @@ func run() error {
 	// 契约生成的路由挂在 /api/v1 下，与 OpenAPI 的 servers 一致。
 	// 认证见 internal/httpauth：所有端点要服务间密钥，业务端点额外要会话 JWT。
 	authPrefix := apiBase + "/auth/"
-	loginLimiter := httpauth.NewRateLimit(cfg.LoginRateMax, cfg.LoginRateWindow)
 
 	ctx := context.Background()
 	// 后端替 web 与 iOS 当 Akasha 的 OIDC client（两个浏览器导航端点，绕开 JSON 生成层）
@@ -104,13 +149,24 @@ func run() error {
 		CookieSecret: cfg.JWTSecret, // oidcrp 会 HKDF 派生，不直接使用
 		WebOrigin:    cfg.WebOrigin,
 		MountPath:    apiBase + "/auth/oidc",
-	}, accountSvc, tokenIssuer, log)
+	}, authSvc, log)
 
 	r.Route(apiBase, func(v1 chi.Router) {
-		// 认证端点对公网开放，是唯一可被无限试探的入口 —— 按 IP 限流
-		v1.Use(loginLimiter.Middleware(authPrefix))
+		// ⛔ 这里曾经有一个按 IP 的登录限流器，2026-09-06 用户裁定整个删除：
+		// 「限流暂不考虑（现在基本没人），整体纳入集群层待办」。
+		//
+		// ⚠️ 这是一次【有意的风险接受】，不是问题被解决了：
+		// 当前 /auth/* 零速率防护。模块的退避只按 IP + 账号计数，
+		// 而轮换 IP + 轮换用户名的洪水两个键都不重复 ⇒ bcrypt 每次都跑，
+		// 且【不需要任何凭据】。真正的防线在集群入口层（Cilium CEC +
+		// Envoy local_ratelimit，键取 CF-Connecting-IP），已登记待办。
+		// ⛔ 删掉这段代码不等于那条债还清了。
+		// ⭐ 先解析可信客户端 IP —— 模块的 Guard 只收结果不做解析
+		// （它的调用方常常隔着一次 RPC）。⚠️ 解析失败不阻断请求：
+		// 那意味着请求没走预期链路，模块会降级成只按账号维度退避。
+		v1.Use(httpauth.ResolveClientIP(localauth.TrustCloudflare()))
 		// 业务端点要求 access token；认证端点豁免（那时还没有 token）
-		v1.Use(httpauth.RequireUserExcept(tokenIssuer, authPrefix))
+		v1.Use(httpauth.RequireUserExcept(authSvc, authPrefix))
 		oidcHandler.Register(v1) // 在 /auth/ 前缀下：限流与豁免天然覆盖
 		api.HandlerFromMux(api.NewStrictHandler(server, nil), v1)
 	})
@@ -142,4 +198,22 @@ func run() error {
 	}
 	<-idle
 	return nil
+}
+
+// auditTo 把模块的审计事件送进本服务的日志。
+//
+// ⚠️ 模块把「降级」「IP 被拦」「会话吊销失败」这类事情做成【可计数的事件】
+// 而不是静默行为 —— 接不上这个钩子，那些事情就只在模块内部发生过。
+// ⭐ cross-exam 005 记过一个同类系统的缺陷：会话审计事件一条不记，
+// 于是吊销失败在日志里毫无症状。
+func auditTo(log *slog.Logger) localauth.AuditHook {
+	return func(ctx context.Context, e localauth.AuditEvent) {
+		log.LogAttrs(ctx, slog.LevelInfo, "localauth",
+			slog.String("kind", string(e.Kind)),
+			slog.String("username", e.Username),
+			slog.String("user_id", e.UserID),
+			slog.String("client_ip", e.ClientIP),
+			slog.String("detail", e.Detail),
+		)
+	}
 }
