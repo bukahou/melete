@@ -19,43 +19,53 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 🔴🔴 未解决的严重问题：预取放大导致的全设备强制登出
+  // ⭐⭐ 刷新【只发生在文档导航上】—— 这是「预取放大导致全设备登出」的修法。
   //
-  // ## 机制（三段都已实测证实）
+  // ## 要挡的是什么
   //
-  //  1. gokit/localauth 的 RotateReplayed 处置是【吊销该用户全部会话】，
-  //     且刻意没有开关（代价不对称：误伤=重登一次；漏放=攻击者偷到的
-  //     refresh 链完好续到 TTL 结束）。已端到端实测：重放旧 refresh 后，
-  //     连刚换出来的新 refresh 也随之失效。
-  //  2. Next 默认对视口内 <Link> 预取；本站布局 3 个 + 刷题页 3 个 + 卡片 4 个。
-  //  3. 本 proxy 的 matcher 覆盖 RSC 请求。
+  // 模块（gokit/localauth）检测到 refresh 重放时【吊销该用户全部会话】，
+  // 且刻意没有开关（代价不对称：误伤=重登一次；漏放=攻击者偷到的 refresh
+  // 链完好续到 TTL 结束）。而并发使用同一个 refresh，在模块看来
+  // 【与失窃无法区分】。
   //
-  //  ⇒ access cookie 过期后的第一次渲染，约 10 个预取【并发】拿同一个
-  //    refresh 来换 ⇒ 1 个成功、其余判为 Replayed ⇒ 用户在所有设备上被登出。
-  //  ⚠️ 实测：10 个并发预取 → 9 条 replay_detected，会话被吊销。
+  // Next 默认对视口内 <Link> 预取（本站布局 3 + 刷题页 3 + 卡片 4），
+  // 而本 proxy 的 matcher 覆盖 RSC 请求 ⇒ access 过期后一次渲染约 10 个
+  // 预取【并发】拿同一个 refresh 来换 ⇒ 1 个成功、其余判为 Replayed
+  // ⇒ 用户在所有设备上被登出。⚠️ 实测过：10 个并发预取 → 9 条 replay_detected。
   //
-  // ## ⛔ 「预取请求跳过刷新」这个修法【不可实现】—— 2026-09-07 实测
+  // ## ⛔ 为什么不能按「预取头」判断（2026-09-07 实测）
   //
-  // proxy 收到的请求头只有：accept / host / user-agent / x-forwarded-*。
+  // proxy 收到的请求头只有 accept / host / user-agent / x-forwarded-*。
   // `Next-Router-Prefetch`、`RSC`、`Next-Router-State-Tree` 全部在 proxy
-  // 看到请求【之前】就被剥掉了；`?_rsc=` 查询参数同样不在 nextUrl 里。
-  // ⇒ 这一层【结构上无法区分】预取与真实导航。
+  // 看到请求【之前】就被剥掉了，`?_rsc=` 查询参数也不在 nextUrl 里。
+  // ⚠️ 我曾按读那个头写过一版并当作已修 —— 它编译进去了、看起来合理、
+  // 完全没生效。是门槛实测把它抓出来的。
   //
-  // ⚠️ 我曾按「读 next-router-prefetch 头」写过一版并当作已修复 ——
-  // 它编译进去了、看起来合理、而且【完全没有生效】。
-  // ⭐ 是 work 钉的那条门槛（「预取不得触发 Replayed」）把它抓出来的：
-  // 若只做代码审查，这个修法会一路过到生产。
+  // ## ⭐ 改用 Accept 区分，因为它【是】proxy 收得到的
   //
-  // ## 处置：等用户裁决（已按背景/影响/推荐呈报）
+  //   文档导航  Accept: text/html,...        ← 浏览器一次只加载一个文档，天然串行
+  //   RSC/预取  Accept: text/x-component     ← 会并发，⛔ 不许刷新
   //
-  // 候选：给所有 <Link> 加 prefetch={false}（确定有效，牺牲导航速度）
-  //      / 刷新移到客户端 single-flight（geass-v3 的形状，work 已验证它免疫）
-  //      / 请 gokit 给轮换加一个极短的宽限窗口（⛔ 动的是三家共享的安全语义）
-  // ⛔ 在裁决之前【不假装已修】—— 留着这段注释，让下一个读到的人
-  //    知道这里有一个已知的、可复现的、会导致全设备登出的问题。
+  // ⇒ 刷新只在文档导航上发生 ⇒ 同一时刻只有一个 ⇒ 不会被判成重放。
+  //
+  // ⚠️ 代价写明：RSC 请求在 access 过期时拿不到新票，于是走下面的
+  // 重定向 —— 那会让客户端路由退化成一次硬导航（整页加载），
+  // 而硬导航是文档请求，会正常续期。⇒ 用户看到的是「点一下慢了一拍」，
+  // ⛔ 不是被登出。
+  const isDocument = (req.headers.get("accept") ?? "").includes("text/html");
 
-  // access 没了但 refresh 还在 → 静默续期后放行本次请求
   const rt = req.cookies.get(REFRESH_COOKIE)?.value;
+  if (rt && !isDocument) {
+    // ⛔ RSC / 预取：不刷新、也不去登录页。
+    //
+    // ⚠️ 送去登录页会把「token 该续期了」变成「你被登出了」——
+    // 而用户手上明明有一个有效的 refresh。
+    // ⭐ 重定向回同一地址会让路由退化成硬导航，那一次是文档请求，
+    // 会走上面的续期分支。代价是一次整页加载，⛔ 不是一次登出。
+    return NextResponse.redirect(req.url);
+  }
+
+  // access 没了但 refresh 还在 → 静默续期后放行本次请求（只到这里的都是文档导航）
   if (rt) {
     const res = await fetch(`${API}/auth/refresh`, {
       method: "POST",
