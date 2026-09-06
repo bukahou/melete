@@ -24,7 +24,7 @@ func TestWalkingShrinkingQueueVisitsEveryItem(t *testing.T) {
 		t.Helper()
 		if _, err := db.Exec(`UPDATE card c JOIN question q ON q.id = c.question_id
 		                      SET c.due = UTC_TIMESTAMP() + INTERVAL 4 DAY
-		                      WHERE c.account_id = ? AND q.external_no = ?`, acct, externalNo); err != nil {
+		                      WHERE c.user_id = ? AND q.external_no = ?`, acct, externalNo); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -79,7 +79,7 @@ func TestOldIncrementingOffsetSkips(t *testing.T) {
 		visited = append(visited, no)
 		if _, err := db.Exec(`UPDATE card c JOIN question q ON q.id = c.question_id
 		                      SET c.due = UTC_TIMESTAMP() + INTERVAL 4 DAY
-		                      WHERE c.account_id = ? AND q.external_no = ?`, acct, no); err != nil {
+		                      WHERE c.user_id = ? AND q.external_no = ?`, acct, no); err != nil {
 			t.Fatal(err)
 		}
 	}

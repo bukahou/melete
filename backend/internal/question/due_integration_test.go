@@ -42,20 +42,28 @@ func openDueTestDB(t *testing.T) *sqlx.DB {
 func dueFixture(t *testing.T, db *sqlx.DB) (bankID int64, accountID userid.UserID) {
 	t.Helper()
 	ctx := context.Background()
-	for _, s := range []string{
-		`DELETE FROM card`, `DELETE FROM attempt`, `DELETE FROM answer_claim`,
-		`DELETE FROM choice`, `DELETE FROM question`, `DELETE FROM bank`, `DELETE FROM account`,
-	} {
-		if _, err := db.ExecContext(ctx, s); err != nil {
-			t.Fatalf("清库: %v", err)
-		}
-	}
+
+	// ⭐ 2026-09-07（阶段 6）改成【非破坏性】：造自己的数据、只删自己造的行。
+	//
+	// ⚠️ 原本是 `DELETE FROM card/attempt/.../bank/account` —— 清空整个库。
+	// 后果是它处在第三态：设了 DSN 就清库、不设就 skip ⇒ **从来没被执行过**。
+	// ⛔ 既不是通过也不是失败，是从未运行。
+	tag := "t-due-" + randSuffix()
 	r, err := db.ExecContext(ctx,
-		`INSERT INTO bank (slug,name,locale,kind) VALUES ('t-due','测试','zh','cert')`)
+		`INSERT INTO bank (slug,name,locale,kind) VALUES (?,?,'zh','cert')`, tag, tag)
 	if err != nil {
 		t.Fatal(err)
 	}
 	bankID, _ = r.LastInsertId()
+	t.Cleanup(func() {
+		// ⛔ 只删自己造的，按 bank_id 逐级清。
+		_, _ = db.Exec(`DELETE c FROM card c JOIN question q ON q.id=c.question_id WHERE q.bank_id=?`, bankID)
+		_, _ = db.Exec(`DELETE a FROM attempt a JOIN question q ON q.id=a.question_id WHERE q.bank_id=?`, bankID)
+		_, _ = db.Exec(`DELETE x FROM answer_claim x JOIN question q ON q.id=x.question_id WHERE q.bank_id=?`, bankID)
+		_, _ = db.Exec(`DELETE c FROM choice c JOIN question q ON q.id=c.question_id WHERE q.bank_id=?`, bankID)
+		_, _ = db.Exec(`DELETE FROM question WHERE bank_id=?`, bankID)
+		_, _ = db.Exec(`DELETE FROM bank WHERE id=?`, bankID)
+	})
 	accountID = mkUser(t, db, "due-"+randSuffix())
 
 	// ⚠️ 另建一个账号并给它反向的到期时间：若查询漏了 user_id 条件，
@@ -219,6 +227,13 @@ func mkUser(t *testing.T, db *sqlx.DB, name string) userid.UserID {
 	                      VALUES (?,?,1,UTC_TIMESTAMP(),UTC_TIMESTAMP(),?)`, bin, name, name); err != nil {
 		t.Fatal(err)
 	}
+	// ⛔ 只删自己造的这一个账号及其数据。
+	t.Cleanup(func() {
+		_, _ = db.Exec(`DELETE FROM card WHERE user_id=?`, bin)
+		_, _ = db.Exec(`DELETE FROM attempt WHERE user_id=?`, bin)
+		_, _ = db.Exec(`DELETE FROM user_sessions WHERE user_id=?`, bin)
+		_, _ = db.Exec(`DELETE FROM users WHERE id=?`, bin)
+	})
 	return userid.UserID(id)
 }
 

@@ -36,7 +36,7 @@ func TestSessionStoreContractIntegration(t *testing.T) {
 	storetest.RunSessionStoreTests(t, func(t *testing.T) localauth.SessionStore {
 		// 每个子测试一张干净的表（套件要求）。
 		// ⛔ 清全表在这里是安全的：user_sessions 是本次新建的，melete 现在的
-		// 登录走的仍是旧的 account_session，两者并存（阶段 6 才拆）。
+		// 登录走的是 user_sessions（阶段 2 之前那张旧登录会话表已于阶段 6 退役）。
 		if _, err := db.Exec(`DELETE FROM user_sessions`); err != nil {
 			t.Fatal(err)
 		}

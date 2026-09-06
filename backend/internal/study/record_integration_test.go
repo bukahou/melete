@@ -47,23 +47,39 @@ func openTestDB(t *testing.T) *sqlx.DB {
 }
 
 // fixture 建一个题库、一道四选一的题、一条 ai_verdict 主张（正确答案 A）和一个账号。
-func fixture(t *testing.T, db *sqlx.DB, stem string) (accountID userid.UserID, questionID int64) {
+//
+// ⭐ 2026-09-07（阶段 6）改成【非破坏性】：造自己的数据、只删自己造的行。
+//
+// ⚠️ 它原本 `DELETE FROM card/attempt/answer_claim/choice/question/bank/account` ——
+// 也就是【清空整个库】。后果是这个测试处在一种第三态：
+// 设了 DSN 就清库、不设就 skip ⇒ **从来没有被执行过**。
+// ⛔ 那既不是通过也不是失败，是从未运行 —— 与 cross-exam 005 在 geass-v3
+// 发现的「契约测试有但从未带 DSN 跑过」同一种状态。
+//
+// ⭐ 改造的直接触发点是阶段 6 要 DROP account 表：不改的话它会从
+// 「能跑但清库」变成「必定报表不存在」——⚠️ 性质变了但依然没人跑，
+// 而那正是让一笔债永远看不见的方式。
+func fixture(t *testing.T, db *sqlx.DB, stem string) (accountID userid.UserID, questionID int64, slug string) {
 	t.Helper()
 	ctx := context.Background()
-	for _, s := range []string{
-		`DELETE FROM card`, `DELETE FROM attempt`, `DELETE FROM answer_claim`,
-		`DELETE FROM choice`, `DELETE FROM question`, `DELETE FROM bank`, `DELETE FROM account`,
-	} {
-		if _, err := db.ExecContext(ctx, s); err != nil {
-			t.Fatalf("清库 %q: %v", s, err)
-		}
-	}
+	tag := fmt.Sprintf("it-%d", time.Now().UnixNano()%1e9)
+
 	r, err := db.ExecContext(ctx,
-		`INSERT INTO bank (slug,name,locale,kind) VALUES ('t-bank','测试题库','zh','cert')`)
+		`INSERT INTO bank (slug,name,locale,kind) VALUES (?,?,'zh','custom')`, tag, tag)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("建题库: %v", err)
 	}
 	bankID, _ := r.LastInsertId()
+	slug = tag
+	t.Cleanup(func() {
+		// ⛔ 只删自己造的：按 bank_id 逐级清掉，⛔ 不碰任何别的行。
+		_, _ = db.Exec(`DELETE c FROM card c JOIN question q ON q.id=c.question_id WHERE q.bank_id=?`, bankID)
+		_, _ = db.Exec(`DELETE a FROM attempt a JOIN question q ON q.id=a.question_id WHERE q.bank_id=?`, bankID)
+		_, _ = db.Exec(`DELETE x FROM answer_claim x JOIN question q ON q.id=x.question_id WHERE q.bank_id=?`, bankID)
+		_, _ = db.Exec(`DELETE c FROM choice c JOIN question q ON q.id=c.question_id WHERE q.bank_id=?`, bankID)
+		_, _ = db.Exec(`DELETE FROM question WHERE bank_id=?`, bankID)
+		_, _ = db.Exec(`DELETE FROM bank WHERE id=?`, bankID)
+	})
 
 	r, err = db.ExecContext(ctx,
 		`INSERT INTO question (bank_id,external_no,stem,kind,pick_count) VALUES (?,1,?,'single',1)`,
@@ -84,7 +100,7 @@ func fixture(t *testing.T, db *sqlx.DB, stem string) (accountID userid.UserID, q
 		t.Fatal(err)
 	}
 	accountID = mkUser(t, db, fmt.Sprintf("t-%d", time.Now().UnixNano()%1e9))
-	return accountID, questionID
+	return accountID, questionID, slug
 }
 
 func readCard(t *testing.T, db *sqlx.DB, acct userid.UserID, q int64) cardRow {
@@ -106,7 +122,7 @@ func TestRecordAttemptIntegration(t *testing.T) {
 	for len(([]rune(stem))) < 1000 {
 		stem += "题面文字"
 	}
-	acct, qid := fixture(t, db, stem)
+	acct, qid, slug := fixture(t, db, stem)
 	svc := NewService(db, question.NewMySQLRepository(db))
 
 	t.Run("诚实答错 → 卡片进入 relearning/learning，reps=1", func(t *testing.T) {
@@ -190,17 +206,34 @@ func TestRecordAttemptIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("到期统计：这题刚做完不该算到期", func(t *testing.T) {
+	// ⚠️ 2026-09-07：这两条断言原本写成 len(sum)==1 && sum[0]，
+	// 那是【清库测试】的遗产 —— 库里只有一个题库时下标 0 当然是自己那个。
+	// 改成非破坏性之后库里有真实题库，⛔ 下标不再有意义。
+	// ⭐ 按自己的 slug 定位，顺带让断言表达的东西更准确：
+	//   要断言的从来不是「全库只有一个题库」，而是「我这个题库的数字对」。
+	mine := func(t *testing.T) DueSummary {
+		t.Helper()
 		sum, err := svc.LoadDueSummary(ctx, acct)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(sum) != 1 {
-			t.Fatalf("题库数 = %d", len(sum))
+		for _, r := range sum {
+			if r.BankSlug == slug {
+				return r
+			}
 		}
-		t.Logf("题库 %s: 到期 %d，没做过 %d", sum[0].BankSlug, sum[0].Due, sum[0].Unseen)
-		if sum[0].Unseen != 0 {
-			t.Errorf("唯一那道题已做过，unseen 应为 0，实际 %d", sum[0].Unseen)
+		t.Fatalf("汇总里找不到本测试的题库 %q（共 %d 个题库）", slug, len(sum))
+		return DueSummary{}
+	}
+
+	t.Run("到期统计：这题刚做完不该算到期", func(t *testing.T) {
+		r := mine(t)
+		t.Logf("题库 %s: 到期 %d，没做过 %d", r.BankSlug, r.Due, r.Unseen)
+		if r.Unseen != 0 {
+			t.Errorf("唯一那道题已做过，unseen 应为 0，实际 %d", r.Unseen)
+		}
+		if r.Due != 0 {
+			t.Errorf("刚做完不该算到期，实际 %d", r.Due)
 		}
 	})
 
@@ -209,12 +242,8 @@ func TestRecordAttemptIntegration(t *testing.T) {
 		                      WHERE user_id=? AND question_id=?`, acct, qid); err != nil {
 			t.Fatal(err)
 		}
-		sum, err := svc.LoadDueSummary(ctx, acct)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if sum[0].Due != 1 {
-			t.Errorf("到期数 = %d，期望 1", sum[0].Due)
+		if r := mine(t); r.Due != 1 {
+			t.Errorf("到期数 = %d，期望 1", r.Due)
 		}
 	})
 }
@@ -223,7 +252,7 @@ func TestRecordAttemptIntegration(t *testing.T) {
 func TestNoReferenceNotJudgedAsLyingIntegration(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
-	acct, qid := fixture(t, db, "短题面")
+	acct, qid, _ := fixture(t, db, "短题面")
 	if _, err := db.Exec(`DELETE FROM answer_claim WHERE question_id=?`, qid); err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +285,7 @@ func TestNoReferenceNotJudgedAsLyingIntegration(t *testing.T) {
 func TestCorrectionActuallyDrivesSchedulingIntegration(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
-	acct, qid := fixture(t, db, "短题面")
+	acct, qid, _ := fixture(t, db, "短题面")
 	svc := NewService(db, question.NewMySQLRepository(db))
 
 	// 答错（答案是 A，选 C）却按「掌握」—— 嘴硬
@@ -295,7 +324,7 @@ func TestCorrectionActuallyDrivesSchedulingIntegration(t *testing.T) {
 func TestLoadProgressDueCountIntegration(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
-	acct, qid := fixture(t, db, "短题面")
+	acct, qid, slug := fixture(t, db, "短题面")
 	svc := NewService(db, question.NewMySQLRepository(db))
 
 	// ⚠️ 同时断言【其它字段】。LoadProgress 有 4 个占位符，
@@ -304,7 +333,7 @@ func TestLoadProgressDueCountIntegration(t *testing.T) {
 	// 2026-09-04 变异测试实测：那个变异在只查 dueCount 的版本下完全不红。
 	must := func(wantDue, wantSeen int, when string) {
 		t.Helper()
-		p, err := svc.LoadProgress(ctx, acct, "t-bank")
+		p, err := svc.LoadProgress(ctx, acct, slug)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -324,11 +353,17 @@ func TestLoadProgressDueCountIntegration(t *testing.T) {
 	// ⚠️ 另建一个题库并给它一张到期卡片：统计必须按题库隔离。
 	// 没有第二个题库，「漏掉 bank_id 条件」这个缺陷测不出来 ——
 	// 单题库时期所有跨题库缺陷都是隐形的（首页 500 那次就是这么来的）。
-	rb, err := db.Exec(`INSERT INTO bank (slug,name,locale,kind) VALUES ('t-other','另一个','zh','cert')`)
+	otherTag := fmt.Sprintf("t-other-%d", time.Now().UnixNano()%1e9)
+	rb, err := db.Exec(`INSERT INTO bank (slug,name,locale,kind) VALUES (?,?,'zh','cert')`, otherTag, otherTag)
 	if err != nil {
 		t.Fatal(err)
 	}
 	otherBank, _ := rb.LastInsertId()
+	t.Cleanup(func() {
+		_, _ = db.Exec(`DELETE c FROM card c JOIN question q ON q.id=c.question_id WHERE q.bank_id=?`, otherBank)
+		_, _ = db.Exec(`DELETE FROM question WHERE bank_id=?`, otherBank)
+		_, _ = db.Exec(`DELETE FROM bank WHERE id=?`, otherBank)
+	})
 	rq, err := db.Exec(`INSERT INTO question (bank_id,external_no,stem,kind,pick_count)
 	                    VALUES (?,1,'别的题','single',1)`, otherBank)
 	if err != nil {
@@ -358,11 +393,7 @@ func TestLoadProgressDueCountIntegration(t *testing.T) {
 	must(1, 1, "把 due 拨到过去")
 
 	// ⛔ 别人的到期卡片不得计入我的数字
-	r, err := db.Exec(`INSERT INTO account (akasha_sub,display) VALUES ('other','别人')`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	other, _ := r.LastInsertId()
+	other := mkUser(t, db, fmt.Sprintf("other-%d", time.Now().UnixNano()%1e9))
 	if _, err := db.Exec(`
 		INSERT INTO card (user_id,question_id,state,due,stability,difficulty,reps,lapses)
 		VALUES (?,?,2, UTC_TIMESTAMP() - INTERVAL 9 DAY, 1,5,1,0)`, other, qid); err != nil {
@@ -393,5 +424,14 @@ func mkUser(t *testing.T, db *sqlx.DB, name string) userid.UserID {
 	                      VALUES (?,?,1,UTC_TIMESTAMP(),UTC_TIMESTAMP(),?)`, bin, name, name); err != nil {
 		t.Fatal(err)
 	}
+	// ⛔ 只删自己造的这一个账号及其数据。
+	// ⚠️ 少了这段就是上一版留下 6 个僵尸用户的原因 —— 而那正是
+	// 「非破坏性」被说成做到了、其实只做了一半的样子。
+	t.Cleanup(func() {
+		_, _ = db.Exec(`DELETE FROM card WHERE user_id=?`, bin)
+		_, _ = db.Exec(`DELETE FROM attempt WHERE user_id=?`, bin)
+		_, _ = db.Exec(`DELETE FROM user_sessions WHERE user_id=?`, bin)
+		_, _ = db.Exec(`DELETE FROM users WHERE id=?`, bin)
+	})
 	return userid.UserID(id)
 }
