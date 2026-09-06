@@ -162,6 +162,49 @@ paths:
         "204":
           description: 已吊销（幂等：token 不存在也返回 204）
 
+  /auth/sessions:
+    get:
+      tags: [auth]
+      summary: 我的登录设备
+      description: |
+        ⛔ 返回值里【没有任何 token 或哈希字段】—— 那是撤销凭据，
+        把它摆到界面上等于让任何能看到屏幕的人拿走会话。
+      operationId: listSessions
+      responses:
+        "200":
+          description: 当前有效的会话
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SessionInfo" }
+
+  /auth/sessions/revoke-others:
+    post:
+      tags: [auth]
+      summary: 登出其它设备（保留当前这台）
+      description: |
+        ⭐ 「保留哪一条」取自当前 access token 的 sid，⛔ 不接受客户端指定 ——
+        否则任何人都能构造一个「保留别人的会话、踢掉我的」的请求。
+        ⚠️ 若当前 token 没有 sid（阶段 3 之前签发的旧票），返回 409 而
+        ⛔ 不退化成「登出全部」—— 那会把一次误操作放大成全员掉线。
+      operationId: revokeOtherSessions
+      responses:
+        "200":
+          description: 已登出其它设备
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked: { type: integer, description: 被登出的会话数 }
+        "409":
+          description: 当前令牌不含会话标识，请重新登录后再试
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /attempts:
     post:
       tags: [study]
@@ -604,6 +647,22 @@ components:
       required: [refreshToken]
       properties:
         refreshToken: { type: string }
+
+    SessionInfo:
+      type: object
+      required: [id, createdAt, lastActiveAt, expiresAt, current]
+      properties:
+        id:           { type: string, description: 会话 id（canonical UUID） }
+        createdAt:    { type: string, format: date-time }
+        lastActiveAt: { type: string, format: date-time }
+        expiresAt:    { type: string, format: date-time }
+        deviceInfo:   { type: string, description: User-Agent 摘要，供用户辨认「这是不是我」 }
+        clientIp:
+          type: string
+          description: |
+            ⚠️ 必须是【解析后的可信 IP】，⛔ 不得是 X-Forwarded-For 整条链 ——
+            那是客户端可伪造的，展示给用户等于给他看一条攻击者能随便写的字符串。
+        current:      { type: boolean, description: 是否就是发起本次请求的这条会话 }
 
     TokenPair:
       type: object

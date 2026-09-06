@@ -51,18 +51,33 @@ func SessionID(ctx context.Context) (string, bool) {
 }
 
 // RequireUserExcept 验签 access token 并把身份注入上下文，
-// 放行 exempt 中列出的路径前缀（认证端点在拿到 token 之前本就无 token 可验）。
+// 放行 exempt 中列出的**完整路径**（拿到 token 之前本就无 token 可验）。
 //
 // 为什么是「一个中间件 + 路径豁免」而不是「两组路由各挂各的」：
 // 生成的路由表只能向同一个 chi 路由器注册一次，注册两遍会 panic。
+//
+// ⛔⛔ 2026-09-07 从【前缀匹配】改成【完整路径匹配】。
+//
+// ⚠️ 起因是一个我自己当场造出来的缺陷：新加的 `/auth/sessions`
+// （会话列表，必须认证）落进了 `/auth/` 这个豁免前缀 ——
+// 端点等于没挂认证。这次是 requireAccount 失败关闭兜住了（返回 500），
+// ⛔ 但那是运气，不是设计。
+//
+// ⭐ 真正的问题不是这一处，是这个【形状】：前缀豁免意味着
+// 「以后每一个加在 /auth/ 下的端点都默认是公开的」，
+// 而加端点的人不会去读中间件。改成完整路径之后，
+// 忘记登记的新端点会【要求认证】而不是【放弃认证】——
+// ⇒ 默认值通向安全的那一侧，与模块把 RotateUnknown 放在零值位同源。
 func RequireUserExcept(parser TokenParser, exempt ...string) func(http.Handler) http.Handler {
+	allow := make(map[string]bool, len(exempt))
+	for _, p := range exempt {
+		allow[p] = true
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			for _, p := range exempt {
-				if strings.HasPrefix(r.URL.Path, p) {
-					next.ServeHTTP(w, r)
-					return
-				}
+			if allow[strings.TrimSuffix(r.URL.Path, "/")] {
+				next.ServeHTTP(w, r)
+				return
 			}
 			raw, ok := bearerToken(r)
 			if !ok {

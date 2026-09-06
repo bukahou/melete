@@ -19,29 +19,40 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // ⛔⛔ 预取请求【一律不走刷新路径】。
+  // 🔴🔴 未解决的严重问题：预取放大导致的全设备强制登出
   //
-  // ⚠️ 这不是优化，是一个会造成全设备强制登出的真实缺陷的堵法：
+  // ## 机制（三段都已实测证实）
   //
-  //   1. 模块（gokit/localauth）的 RotateReplayed 处置是【吊销该用户全部会话】，
-  //      且刻意没有开关 —— 理由是代价不对称（误伤=重登一次；漏放=攻击者
-  //      偷到的 refresh 链完好无损续到 TTL 结束）。
-  //   2. Next 默认对视口内 <Link> 预取，本站布局 3 个 + 刷题页 3 个 + 卡片 4 个。
-  //   3. 本 proxy 的 matcher 覆盖 RSC 数据请求（预取不走 /_next/）。
+  //  1. gokit/localauth 的 RotateReplayed 处置是【吊销该用户全部会话】，
+  //     且刻意没有开关（代价不对称：误伤=重登一次；漏放=攻击者偷到的
+  //     refresh 链完好续到 TTL 结束）。已端到端实测：重放旧 refresh 后，
+  //     连刚换出来的新 refresh 也随之失效。
+  //  2. Next 默认对视口内 <Link> 预取；本站布局 3 个 + 刷题页 3 个 + 卡片 4 个。
+  //  3. 本 proxy 的 matcher 覆盖 RSC 请求。
   //
-  //   ⇒ access cookie 过期后的第一次渲染，约 10 个预取【并发】拿同一个
-  //     refresh 去换 ⇒ 1 个 Rotated、其余命中 prev ⇒ 判为 Replayed
-  //     ⇒ 全部会话被吊销 ⇒ 用户在所有设备上被登出，且不知道为什么。
+  //  ⇒ access cookie 过期后的第一次渲染，约 10 个预取【并发】拿同一个
+  //    refresh 来换 ⇒ 1 个成功、其余判为 Replayed ⇒ 用户在所有设备上被登出。
+  //  ⚠️ 实测：10 个并发预取 → 9 条 replay_detected，会话被吊销。
   //
-  // ⭐ 问题不在模块 —— 是本站制造出了「同一个 refresh 被并发使用」这个
-  // 在模块看来【与失窃无法区分】的形态。
+  // ## ⛔ 「预取请求跳过刷新」这个修法【不可实现】—— 2026-09-07 实测
   //
-  // ⚠️ 进程内 single-flight 去重不够：melete 是 2 副本，跨副本挡不住。
-  // ⭐ 正解是这一层：**预取本来就不该有副作用**，让它触发 token 轮换
-  // 等于把一个只读操作变成了写操作。真实导航会自己走刷新，用户无感。
-  if (req.headers.get("next-router-prefetch") === "1") {
-    return NextResponse.next();
-  }
+  // proxy 收到的请求头只有：accept / host / user-agent / x-forwarded-*。
+  // `Next-Router-Prefetch`、`RSC`、`Next-Router-State-Tree` 全部在 proxy
+  // 看到请求【之前】就被剥掉了；`?_rsc=` 查询参数同样不在 nextUrl 里。
+  // ⇒ 这一层【结构上无法区分】预取与真实导航。
+  //
+  // ⚠️ 我曾按「读 next-router-prefetch 头」写过一版并当作已修复 ——
+  // 它编译进去了、看起来合理、而且【完全没有生效】。
+  // ⭐ 是 work 钉的那条门槛（「预取不得触发 Replayed」）把它抓出来的：
+  // 若只做代码审查，这个修法会一路过到生产。
+  //
+  // ## 处置：等用户裁决（已按背景/影响/推荐呈报）
+  //
+  // 候选：给所有 <Link> 加 prefetch={false}（确定有效，牺牲导航速度）
+  //      / 刷新移到客户端 single-flight（geass-v3 的形状，work 已验证它免疫）
+  //      / 请 gokit 给轮换加一个极短的宽限窗口（⛔ 动的是三家共享的安全语义）
+  // ⛔ 在裁决之前【不假装已修】—— 留着这段注释，让下一个读到的人
+  //    知道这里有一个已知的、可复现的、会导致全设备登出的问题。
 
   // access 没了但 refresh 还在 → 静默续期后放行本次请求
   const rt = req.cookies.get(REFRESH_COOKIE)?.value;

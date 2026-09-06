@@ -125,6 +125,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 我的登录设备
+         * @description ⛔ 返回值里【没有任何 token 或哈希字段】—— 那是撤销凭据，
+         *     把它摆到界面上等于让任何能看到屏幕的人拿走会话。
+         */
+        get: operations["listSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/sessions/revoke-others": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 登出其它设备（保留当前这台）
+         * @description ⭐ 「保留哪一条」取自当前 access token 的 sid，⛔ 不接受客户端指定 ——
+         *     否则任何人都能构造一个「保留别人的会话、踢掉我的」的请求。
+         *     ⚠️ 若当前 token 没有 sid（阶段 3 之前签发的旧票），返回 409 而
+         *     ⛔ 不退化成「登出全部」—— 那会把一次误操作放大成全员掉线。
+         */
+        post: operations["revokeOtherSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/attempts": {
         parameters: {
             query?: never;
@@ -520,6 +564,25 @@ export interface components {
         RefreshRequest: {
             refreshToken: string;
         };
+        SessionInfo: {
+            /** @description 会话 id（canonical UUID） */
+            id: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastActiveAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description User-Agent 摘要，供用户辨认「这是不是我」 */
+            deviceInfo?: string;
+            /**
+             * @description ⚠️ 必须是【解析后的可信 IP】，⛔ 不得是 X-Forwarded-For 整条链 ——
+             *     那是客户端可伪造的，展示给用户等于给他看一条攻击者能随便写的字符串。
+             */
+            clientIp?: string;
+            /** @description 是否就是发起本次请求的这条会话 */
+            current: boolean;
+        };
         /**
          * @description access 是 JWT（不落库，TTL 1h）；refresh 是不透明随机串（落库，可吊销）。
          *     对齐 geass-v3：refresh 不做成 JWT —— 生命周期以月计的凭证必须能撤回。
@@ -865,6 +928,58 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前有效的会话 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionInfo"][];
+                };
+            };
+        };
+    };
+    revokeOtherSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已登出其它设备 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description 被登出的会话数 */
+                        revoked: number;
+                    };
+                };
+            };
+            /** @description 当前令牌不含会话标识，请重新登录后再试 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

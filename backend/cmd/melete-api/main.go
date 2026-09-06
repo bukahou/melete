@@ -137,7 +137,23 @@ func run() error {
 
 	// 契约生成的路由挂在 /api/v1 下，与 OpenAPI 的 servers 一致。
 	// 认证见 internal/httpauth：所有端点要服务间密钥，业务端点额外要会话 JWT。
-	authPrefix := apiBase + "/auth/"
+	// ⛔⛔ 免认证端点必须【逐条列出完整路径】，⛔ 不能用前缀。
+	//
+	// ⚠️ 2026-09-07 从 `apiBase + "/auth/"` 改过来：加 /auth/sessions
+	// （会话列表，必须认证）时它直接落进了那个豁免前缀，端点等于没挂认证。
+	// ⭐ 前缀豁免的问题不是「这次漏了一个」，是【默认值通向不安全的一侧】：
+	// 以后每个加在 /auth/ 下的端点都默认公开，而加端点的人不会去读中间件。
+	// 改成完整路径之后，忘记登记的新端点会【要求认证】而不是【放弃认证】。
+	//
+	// ⚠️ 加新的免认证端点时，必须在这里显式加一行 —— 那正是希望发生的摩擦。
+	publicPaths := []string{
+		apiBase + "/auth/password",      // 登录：这时还没有 token
+		apiBase + "/auth/refresh",       // 刷新：拿 refresh 换，不看 access
+		apiBase + "/auth/logout",        // 登出：同上
+		apiBase + "/auth/sso",           // id_token 换本站 token
+		apiBase + "/auth/oidc/start",    // 浏览器导航，手写挂载
+		apiBase + "/auth/oidc/callback", // 同上
+	}
 
 	ctx := context.Background()
 	// 后端替 web 与 iOS 当 Akasha 的 OIDC client（两个浏览器导航端点，绕开 JSON 生成层）
@@ -166,7 +182,7 @@ func run() error {
 		// 那意味着请求没走预期链路，模块会降级成只按账号维度退避。
 		v1.Use(httpauth.ResolveClientIP(localauth.TrustCloudflare()))
 		// 业务端点要求 access token；认证端点豁免（那时还没有 token）
-		v1.Use(httpauth.RequireUserExcept(authSvc, authPrefix))
+		v1.Use(httpauth.RequireUserExcept(authSvc, publicPaths...))
 		oidcHandler.Register(v1) // 在 /auth/ 前缀下：限流与豁免天然覆盖
 		api.HandlerFromMux(api.NewStrictHandler(server, nil), v1)
 	})

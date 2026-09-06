@@ -419,3 +419,60 @@ func clientIP(ctx context.Context) string {
 	ip, _ := httpauth.ClientIP(ctx)
 	return ip
 }
+
+// ListSessions 我的登录设备。
+//
+// ⛔ 返回值里没有任何 token / 哈希字段 —— 模块的 SessionRecord 本身就不带，
+// 这是它的类型层面保证（案卷记过一个同类系统实测验证过这一条）。
+func (s *Server) ListSessions(ctx context.Context, req api.ListSessionsRequestObject) (api.ListSessionsResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "ListSessions")
+	if err != nil {
+		return nil, err
+	}
+	// ⭐ 当前会话取自 token 的 sid，用来给界面标出「这一台就是你现在用的」。
+	current, _ := httpauth.SessionID(ctx)
+	rows, err := s.auth.ListSessions(ctx, string(accountID))
+	if err != nil {
+		return nil, s.fail("ListSessions", err)
+	}
+	out := make(api.ListSessions200JSONResponse, 0, len(rows))
+	for _, r := range rows {
+		item := api.SessionInfo{
+			Id: r.ID, CreatedAt: r.CreatedAt, LastActiveAt: r.LastActiveAt,
+			ExpiresAt: r.ExpiresAt, Current: r.ID == current,
+		}
+		if r.DeviceInfo != "" {
+			item.DeviceInfo = &r.DeviceInfo
+		}
+		if r.ClientIP != "" {
+			item.ClientIp = &r.ClientIP
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+// RevokeOtherSessions 登出其它设备。
+func (s *Server) RevokeOtherSessions(ctx context.Context, req api.RevokeOtherSessionsRequestObject) (api.RevokeOtherSessionsResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "RevokeOtherSessions")
+	if err != nil {
+		return nil, err
+	}
+	// ⛔⛔ 保留哪一条【只能】来自当前这张票，不接受客户端指定。
+	//
+	// ⚠️ sid 为空时返回 409 而不是「登出全部」：
+	// 阶段 3 之前签发的旧票没有 sid，若在这里退化成全部吊销，
+	// 用户点一次「登出其它设备」会把自己也踢掉 ——
+	// 一次误操作被放大成全员掉线，而一个同类系统实测栽过的缺陷正是这个形状。
+	current, ok := httpauth.SessionID(ctx)
+	if !ok {
+		return api.RevokeOtherSessions409JSONResponse{
+			Message: "当前令牌不含会话标识，请重新登录后再试",
+		}, nil
+	}
+	n, err := s.auth.RevokeOtherSessions(ctx, string(accountID), current)
+	if err != nil {
+		return nil, s.fail("RevokeOtherSessions", err)
+	}
+	return api.RevokeOtherSessions200JSONResponse{Revoked: n}, nil
+}
