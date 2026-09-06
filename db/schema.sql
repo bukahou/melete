@@ -246,6 +246,9 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   id             BINARY(16)    NOT NULL,
   user_id        BINARY(16)    NOT NULL,
   refresh_hash   BINARY(32)    NOT NULL,
+  -- ⭐ 上一个 refresh 的摘要 —— Rotate 要靠它区分「重放」与「来历不明」，
+  --    而两者的处置相反（吊销该用户全部会话 vs 只拒绝这一次）。
+  prev_refresh_hash BINARY(32) NULL,
   device_info    VARCHAR(255)  NULL,
   client_ip      VARBINARY(16) NULL,   -- ⛔ 不得是 XFF 整条链（那是客户端可伪造的）
   created_at     DATETIME      NOT NULL,
@@ -256,6 +259,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   revoked_at     DATETIME      NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uk_refresh (refresh_hash),
+  KEY idx_prev_refresh (prev_refresh_hash),
   KEY idx_user_live (user_id, revoked_at),
   KEY idx_expires (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
