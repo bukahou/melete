@@ -112,9 +112,21 @@ func TestIDsAreTimeOrdered(t *testing.T) {
 // 让缺陷【写不出来】比让它可被发现更硬。
 func TestUUIDConversionHasSingleHome(t *testing.T) {
 	const pkg = "github.com/google/uuid"
+	// ⚠️ 白名单只放【真正在做编解码】的那一处，外加两个测试文件。
+	//
+	// 2026-09-06 本测试拦下了 session_store_integration_test.go —— 那是它
+	// 正常工作的样子。放行它之前想清楚了理由，⛔ 不是反射性加白名单：
+	//   · 它只用 uuid 【生成】契约测试要的确定性 id（NewSHA1 名字空间 UUID），
+	//     产出的是 canonical 文本，⛔ 从不接触 BINARY(16)
+	//   · 真正的编解码仍然只发生在 uuid.go 的 encodeID / decodeID 里
+	//
+	// ⛔ 什么情况【不能】加白名单：某个文件自己把 string 转成 []byte 去写库，
+	//    或自己拼 hex 去查库 —— 那正是本测试要挡的东西，
+	//    「测试文件而已」不构成理由。
 	allowed := map[string]bool{
-		filepath.Join("internal", "localauthx", "uuid.go"):      true,
-		filepath.Join("internal", "localauthx", "uuid_test.go"): true,
+		filepath.Join("internal", "localauthx", "uuid.go"):                          true,
+		filepath.Join("internal", "localauthx", "uuid_test.go"):                     true,
+		filepath.Join("internal", "localauthx", "session_store_integration_test.go"): true,
 	}
 
 	root, err := filepath.Abs("../..") // backend/
