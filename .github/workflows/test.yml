@@ -173,10 +173,17 @@ jobs:
         working-directory: web
         run: npm ci
 
-      - name: Lint
-        working-directory: web
-        run: npm run lint
-
+      # ⛔ 刻意【没有】lint 步骤（2026-09-08 首跑后移除）：
+      #   package.json 里的 `lint` 是 `next lint`，而本仓
+      #   ⓐ 没有 eslint 依赖 ⓑ 没有 eslint 配置文件
+      #   ⇒ 它从来就没有真正检查过任何东西。Next 16 删掉了 next lint，
+      #      只是把「静默无效」变成了「显式报错」——
+      #      ⭐ CI 首跑把这个存量死脚本照了出来。
+      #   ⛔ 不在 CI 里跑一个从没工作过的脚本：它要么假绿，要么假红，
+      #      两种都比没有更糟。要真 lint 就先把 eslint 装上配好（另议）。
+      #
+      # ⭐ 类型安全网仍在：next build 会做 TypeScript 类型检查，
+      #   类型错误照样让本 job 变红。
       - name: Build
         working-directory: web
         run: npm run build
