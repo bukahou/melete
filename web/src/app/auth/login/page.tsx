@@ -67,6 +67,15 @@ export default async function LoginPage({
         </button>
       </form>
 
+      {/* ⭐ 找回密码入口。⚠️ 对 Akasha 账号这条路自然走不通（他们没有本站
+          验证过的邮箱），而那一页的文案已经说明了 —— ⛔ 不在这里分叉，
+          否则「你是不是密码账号」就从这里泄漏了。 */}
+      <p className="mt-4 w-full text-right text-xs">
+        <Link href="/auth/forgot" className="text-muted underline underline-offset-4 transition-colors hover:text-ink">
+          忘记密码？
+        </Link>
+      </p>
+
       <div className="my-7 flex w-full items-center gap-4 text-xs text-muted">
         <span className="h-px flex-1 bg-line" />
         或

@@ -11,6 +11,9 @@ import type { components } from "./api.gen";
 // 类型直接来自 OpenAPI 契约（npm run gen:api 重新生成）。
 // 后端改了契约、前端类型立刻跟着变 —— 这是 Spec-first 的实际收益。
 export type Bank = components["schemas"]["Bank"];
+// 账号设置用（阶段 5 的端点，2026-09-07 接前端）
+export type SessionInfo = components["schemas"]["SessionInfo"];
+export type PasswordChanged = components["schemas"]["PasswordChanged"];
 export type BankMeta = components["schemas"]["BankMeta"];
 export type BankDetail = components["schemas"]["BankDetail"];
 export type Tag = components["schemas"]["Tag"];

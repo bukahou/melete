@@ -18,12 +18,14 @@ export type {
   Bank, BankDetail, Tag, QuestionSummary, QuestionDetail, QuestionPage,
   AnswerClaim, Choice, Reference, AttemptResult, ScheduleResult, DrillMode,
   Progress, TagStat, Resume, FocusCursor, DrillContext, Overview, StudySession,
+  SessionInfo, PasswordChanged,
 } from "./claims";
 export { SOURCE_LABEL, voteDistribution, hasDisagreement, DRILL_MODES, parseDrillMode } from "./claims";
 
 import type {
   Bank, BankDetail, Tag, QuestionDetail, QuestionPage, AttemptResult, DrillMode,
   Progress, TagStat, Resume, DrillContext, Overview, StudySession,
+  SessionInfo, PasswordChanged,
 } from "./claims";
 
 import { accessToken } from "./auth";
@@ -108,3 +110,85 @@ export const getMyTagStats = (type: Tag["type"], minAttempts = 3, bank?: string)
   get<TagStat[]>(`/me/tag-stats?type=${type}&minAttempts=${minAttempts}${bank ? `&bank=${encodeURIComponent(bank)}` : ""}`, 0, true);
 export const getMyOverview = () => get<Overview>("/me/overview", 0, true);
 export const getMyRecent = (limit = 5) => get<StudySession[]>(`/me/recent?limit=${limit}`, 0, true);
+
+// ---- 账号设置（阶段 5 的端点，2026-09-07 接前端）----
+//
+// ⚠️ 全部 personalized=true（no-store）：因人而异，⛔ 绝不进共享缓存。
+// 会话列表尤其如此 —— 缓存串号意味着看到别人的登录设备。
+
+/** 我的登录设备。⛔ 返回值不含任何 token/hash，那是后端的类型层面保证。 */
+export const getSessions = () => get<SessionInfo[]>("/auth/sessions", 0, true);
+
+/** 服务端调用：改密 / 首次设密。⚠️ oldPassword 留空 = 首次设密。 */
+export async function changePassword(body: {
+  oldPassword?: string;
+  newPassword: string;
+  deviceInfo?: string;
+}): Promise<{ ok: true; data: PasswordChanged; pair?: unknown } | { ok: false; status: number; message: string }> {
+  const res = await fetch(`${BASE}/auth/password/change`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) return { ok: true, data: (await res.json()) as PasswordChanged };
+  // ⚠️ 401（旧密码错）与 400（新密码不合规）必须分开 —— 调用方已通过认证，
+  // 混成一个会让他不知道该改什么。⛔ 与登录路径的「不可区分」不冲突：
+  // 那里的调用方是未认证的。
+  const msg = await res.text().catch(() => "");
+  return { ok: false, status: res.status, message: msg };
+}
+
+/** 服务端调用：登出其它设备。keepSessionID 由后端从 token 的 sid 取，⛔ 前端不传。 */
+export async function revokeOtherSessions(): Promise<{ ok: boolean; revoked?: number; status: number }> {
+  const res = await fetch(`${BASE}/auth/sessions/revoke-others`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(await authHeaders()) },
+  });
+  if (!res.ok) return { ok: false, status: res.status };
+  const body = (await res.json()) as { revoked: number };
+  return { ok: true, revoked: body.revoked, status: res.status };
+}
+
+/** 服务端调用：给新邮箱发验证码。 */
+export async function sendEmailChangeCode(newEmail: string): Promise<number> {
+  const res = await fetch(`${BASE}/auth/email/code`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ newEmail }),
+  });
+  return res.status;
+}
+
+/** 服务端调用：确认改邮箱。 */
+export async function confirmEmailChange(code: string, deviceInfo?: string): Promise<number> {
+  const res = await fetch(`${BASE}/auth/email/confirm`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ code, deviceInfo }),
+  });
+  return res.status;
+}
+
+/** 发找回码。⛔ 无论地址存不存在都返回 204 —— 前端不得据此判断账号是否存在。 */
+export async function sendRecoveryCode(email: string): Promise<number> {
+  const res = await fetch(`${BASE}/auth/recovery/code`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  return res.status;
+}
+
+/** 用验证码重置密码。 */
+export async function completeRecovery(body: {
+  email: string;
+  code: string;
+  newPassword: string;
+}): Promise<number> {
+  const res = await fetch(`${BASE}/auth/recovery/complete`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return res.status;
+}

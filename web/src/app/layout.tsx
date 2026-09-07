@@ -44,6 +44,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 </Link>
               )}
               {signedIn && (
+                <Link href="/settings" className="text-muted transition-colors hover:text-ink">
+                  设置
+                </Link>
+              )}
+              {signedIn && (
                 <span className="flex items-baseline gap-3">
                   <a
                     href="/auth/logout"
