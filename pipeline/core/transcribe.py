@@ -40,7 +40,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
+from paths import REPO, bank_dir, rel  # 路径解析的唯一归属地, 见该模块 docstring
 INBOX = Path.home() / "melete-inbox"
 SHARD_PAGES = 12  # 一片 12 页 ≈ 20 题，与 enrich.py 的 25 题一片量级相当
 RENDER_DPI = 150  # 原扫描是 200dpi；150 已足够辨认且页图更小
@@ -52,7 +52,7 @@ RENDER_DPI = 150  # 原扫描是 200dpi；150 已足够辨认且页图更小
 def load_spec(bank: str) -> dict:
     p = REPO / "pipeline" / "banks" / bank / "transcribe_spec.json"
     if not p.exists():
-        sys.exit(f"✗ 找不到 {p.relative_to(REPO)}")
+        sys.exit(f"✗ 找不到 {rel(p)}")
     return json.loads(p.read_text(encoding="utf-8"))
 
 
@@ -62,7 +62,7 @@ def pages_dir(bank: str) -> Path:
 
 
 def shard_dir(bank: str) -> Path:
-    d = REPO / "data" / bank / "transcribed"
+    d = bank_dir(bank) / "transcribed"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -393,7 +393,7 @@ def cmd_write(bank: str, src: Path) -> None:
             print(f"    {e}")
         sys.exit(1)
     tmp.replace(out)
-    print(f"✓ 写入 {out.relative_to(REPO)}  本片共 {len(merged)} 题"
+    print(f"✓ 写入 {rel(out)}  本片共 {len(merged)} 题"
           f"（新增 {n_new}，覆盖 {n_over}）")
     for sec in sections:
         print(f"  分域：問{sec['from']}-{sec['to']} {sec['name']}")
@@ -444,12 +444,12 @@ def cmd_merge(bank: str) -> None:
         },
         "questions": questions,
     }
-    out = REPO / "data" / bank / "questions.json"
+    out = bank_dir(bank) / "questions.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
 
     figures = [q["no"] for q in questions if "has_figure" in q["warnings"]]
-    print(f"✓ {out.relative_to(REPO)}  {len(questions)} 题")
+    print(f"✓ {rel(out)}  {len(questions)} 题")
     print(f"  含图的题 {len(figures)} 道{'：' + str(figures) if figures else ''}")
     print(f"  素材 {spec['questions_pdf']}  sha256={sha256(pdf)[:16]}…")
 

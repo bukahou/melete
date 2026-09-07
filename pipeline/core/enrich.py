@@ -33,7 +33,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
+from paths import REPO, bank_dir, rel  # 路径解析的唯一归属地, 见该模块 docstring
 SHARD_SIZE = 25
 KEBAB = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 CONFIDENCE = {"high", "medium", "low"}
@@ -56,19 +56,19 @@ OPTIONAL_KEYS = {"notes", "fp"}
 # ---------- 载入 ----------
 
 def load_bank(bank: str):
-    qs_path = REPO / "data" / bank / "questions.json"
+    qs_path = bank_dir(bank) / "questions.json"
     spec_path = REPO / "pipeline" / "banks" / bank / "enrich_spec.json"
     if not qs_path.exists():
-        sys.exit(f"✗ 找不到 {qs_path.relative_to(REPO)}，先跑 ingest.py")
+        sys.exit(f"✗ 找不到 {rel(qs_path)}，先跑 ingest.py")
     if not spec_path.exists():
-        sys.exit(f"✗ 找不到 {spec_path.relative_to(REPO)}，新题库需要先写富化规格")
+        sys.exit(f"✗ 找不到 {rel(spec_path)}，新题库需要先写富化规格")
     doc = json.loads(qs_path.read_text(encoding="utf-8"))
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
     return doc, spec
 
 
 def shard_dir(bank: str) -> Path:
-    return REPO / "data" / bank / "enriched"
+    return bank_dir(bank) / "enriched"
 
 
 def shard_ranges(total_no: list[int]) -> list[tuple[int, int]]:
@@ -236,7 +236,7 @@ def check_item(item: dict, q: dict, spec: dict) -> list[str]:
 
     # ⭐ 权威答案源：spec 声明了就要求 verdict 与它一致。
     #
-    # IPA 的官方解答与 源站 那种题库标注【不是同一种东西】——
+    # IPA 的官方解答与第三方汇编的题库标注【不是同一种东西】——
     # 后者 38% 与社区投票不一致（这正是 answer_claim 多来源设计的由来），
     # 前者是出题机构自己公布的正解，不存在「它错了」这种情形。
     #
@@ -522,7 +522,7 @@ def cmd_merge(bank: str) -> None:
     if problems:
         sys.exit(f"\n✗ 有 {problems} 片未通过校验，先修好再 merge")
 
-    out = REPO / "data" / bank / "enriched.json"
+    out = bank_dir(bank) / "enriched.json"
     doc["enriched_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     for q in doc["questions"]:
         e = items.get(q["no"])

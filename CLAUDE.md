@@ -7,52 +7,60 @@
 
 ---
 
-## ⚠️ 安全边界（最优先，动手前必读）
+## ⚠️ 边界（最优先，动手前必读）
 
-### 本仓库必须永久保持 private
-
-最硬的理由是**版权**，不是内网信息：
-
-- 题库源自第三方汇编（源站 类），含 1011 道完整题目 + 答案
-- **AWS Certification Agreement 明确禁止披露考试内容**
-- 公开 = 分发考试转储；这在作品集里是减分项，不是加分项
-
-**这不是「暂时私有、以后开源」。** 仓库整体永久私有。
-
-### 但代码有开源价值，所以边界现在就划好
+### 本仓库是公开仓 —— 题库数据不在这里
 
 ```
-melete/
-├── pipeline/
-│   ├── core/                 通用管道，零题库特有逻辑   ┐
-│   └── banks/<slug>/         题库特有解析器（永久私有） │
-├── data/<slug>/              ⚠️ 题库数据，绝不出私有仓  │ 将来可拆出去开源
-├── backend/                  Go 服务（通用）            ┘
-└── web/                      Next.js（通用）
+melete (public)          代码：backend / web / pipeline
+config (private)         数据：banks/melete/ ← 题库在这里
 ```
 
-将来若拆分开源，拆的是 `backend/` + `web/` + `pipeline/core/`。
-**前提：backend 不得硬编码任何 AWS / SAA-C03 特有的东西。**
-这也是「标签用通用 `(type, value)`」设计的第二个收益。
+`pipeline/core/*.py` 通过 **`MELETE_DATA_ROOT`** 找到数据（见 `pipeline/core/paths.py`）。
+**必填、无默认值** —— 一个"合理的默认值"会让脚本把题库写回公开仓，
+正是把数据挪出去要避免的那件事本身。
 
-### 凭证纪律
+设置：`source ~/work/github/config/local/ubuntu/env/melete.env`
+
+### 为什么数据不能进来
+
+题库素材来自第三方汇编，含完整题目与答案，相关认证协议禁止披露考试内容。
+公开一份考试转储在作品集里是减分项，不是加分项。
+
+⚠️ **删文件不够。** 公开仓的 git 历史全部可读 —— `git clone` 就拿到全部对象。
+2026-09-07 公开时用 `git filter-repo` 把 `data/` 从全部历史重写掉，
+并推到一个**从未接收过那些 blob** 的新仓库（force push 后 GitHub 仍保留
+不可达对象，知道 SHA 就能取回）。旧仓 `bukahou/meleteold` 保持 private 封存。
+
+### 三道闸，缺一不可
+
+| 闸 | 位置 | 防的是 |
+|---|---|---|
+| `MELETE_DATA_ROOT` 无默认值 | `pipeline/core/paths.py` | 脚本猜错路径往仓里写 |
+| `.gitignore` 的 `/data/` | 仓根 | 写进来了也 commit 不了 |
+| CI 断言 `data/` 为空 | `.github/workflows/test.yml` | `git add -f` 绕过上一条 |
+
+⛔ 三道都是必要的：前两道各自都能被绕开，第三道是兜底。
+
+### 凭证纪律（公开仓的严格版）
 
 - **凭证类一律无默认值 + required** —— 生产忘配就启动失败，优于默默连错库
 - 本地开发凭证走 config 私有仓 `local/ubuntu/env/melete.env`，变量前缀 `MELETE_`
 - 生产凭证走 K8s Secret
 - `.env.example` 只放明显是占位的值
 - 代码里零硬编码
+- ⛔ **本仓公开后，任何分支上的任何提交都是公开的** ——
+  不能再有"先提交上去，反正是私有的，回头再清理"。GitHub 有秒级爬虫
 
 ### 不写进本仓库的东西
 
 | | 原因 |
 |---|---|
+| 题库数据（`data/`） | 见上。三道闸拦着 |
 | 原始素材（PDF 等） | 体积大 + 版权。走**收件区**约定，见下方「素材收件区」一节 |
 | 内网 IP / 节点名 / 集群拓扑 | 部署清单放 config 私有仓 `clusters/集群甲/apps/melete/` |
 | 任何真实凭证 | 见上。**已 commit 的凭证视为已泄漏**，删文件和补 .gitignore 都无效 |
-
----
-
+| 各题库的素材脏点清单 | 它描述的是素材不是代码，归属地在 `config/banks/melete/README.md` |
 ## 定位
 
 被动阅读不产生学习，主动回忆才产生。所以：
@@ -197,23 +205,29 @@ PDF → questions.json → enriched.json → [导入] → DB
 **原始素材（PDF 等）不进仓库** —— 体积大 + 版权。约定如下：
 
 ```
-$MELETE_INBOX/<bank-slug>/<任意文件名>        默认 ~/melete-inbox/
+$MELETE_INBOX/<bank-slug>/<任意文件名>              默认 ~/melete-inbox/
           ↓  python3 pipeline/core/ingest.py <bank-slug>
-data/<bank-slug>/questions.json               结构化产物（进 git）
-data/<bank-slug>/source.yaml                  素材登记单（进 git，仅元数据）
+$MELETE_DATA_ROOT/<bank-slug>/questions.json       结构化产物  ⚠️ 落在 config 私有仓
+$MELETE_DATA_ROOT/<bank-slug>/source.yaml          素材登记单
 ```
+
+⚠️ **产物不落在本仓** —— `MELETE_DATA_ROOT` 指向 config 私有仓的 `banks/melete/`。
+本仓的 `.gitignore` 把 `/data/` 挡死，就是为了万一配置出错时兜住。
 
 流程：
 
 1. 素材长期存放在**你自己的磁盘**上，仓库不管
 2. 要导入时，复制到收件区里对应的题库子目录
-3. 跑 `ingest.py`
+3. 跑 `ingest.py`（未设 `MELETE_DATA_ROOT` 会直接报错退出，不会猜路径）
 4. 处理完，**由你自己**把素材拿走 —— **脚本不删除、不移动任何用户文件**
 
 ### 登记单（source.yaml）解决什么问题
 
-素材拿走之后，仓库仍然知道：产物来自哪个文件（`filename` + `sha256` + `bytes`）、
+素材拿走之后，仍然知道：产物来自哪个文件（`filename` + `sha256` + `bytes`）、
 什么时候导入的、用哪个 git 版本的解析器生成的、产出了多少题多少告警。
+
+⭐ 注意登记单里记的是**解析器的 git 版本**，查的是**本仓**（解析器是代码，在这里），
+不是数据仓 —— 见 `pipeline/core/ingest.py` 的 `git_rev_of()`。
 
 将来拿到新版素材，**比对 sha256 即可判断是不是同一份**，不用凭记忆。
 
@@ -224,13 +238,14 @@ data/<bank-slug>/source.yaml                  素材登记单（进 git，仅元
 ### P0 已完成
 
 ```
-pipeline/banks/aws-saa-c03/parse.py     解析器
-data/aws-saa-c03/questions.json         1011 道题（1.4 MB）
+pipeline/banks/aws-saa-c03/parse.py                解析器          ← 本仓
+$MELETE_DATA_ROOT/aws-saa-c03/questions.json       1019 道题       ← config 私有仓
 ```
 
 重跑方式：
 
 ```bash
+source ~/work/github/config/local/ubuntu/env/melete.env   # 设 MELETE_DATA_ROOT
 # 把 PDF 放进 ~/melete-inbox/aws-saa-c03/ 后：
 python3 pipeline/core/ingest.py aws-saa-c03
 ```
@@ -238,36 +253,29 @@ python3 pipeline/core/ingest.py aws-saa-c03
 ### 解析质量
 
 ```
-题目总数    1019  （题号连续无缺；8 道英文题头曾漏抓，2026-09-02 找回）
+题目总数    1019  （题号连续无缺）
 零告警      989  (97.1%)
-有告警       30   ← 含后补检测：撞词重复/错切/连字恢复/图片策略块
+有告警       30
 多选题      123
 答案主张    bank_label 1019 · community_vote 898
 ```
 
-**21 道告警题的 warnings 字段已带进 JSON**，留给 P1 的 AI 环节或人工处理。
-典型脏点：投票表头无数据（15）、答案字母不在选项里（7）、整题缺选项（2）。
+告警题的 `warnings` 字段带进 JSON，留给富化环节或人工处理。
 
-### 素材已知特征
+### 素材的已知脏点 → 见 config 私有仓
 
-- 题库标注答案与社区投票 **340 道不一致**（884 道有对照数据的题中占 38%）
-- **47 道低共识题**（社区首选得票 < 60%）—— 真正有争议的难题
-- 共 **1019 道、题号连续无缺**。其中 8 道（108/129/253/326/429/718/939/960）
-  的题头是英文「Question #N」（正文仍中文），曾被只认中文题头的解析器漏抓、
-  整题内容吞进前一题（#252 投票分布出现 200% 即此表征）。
-  ⚠️ 教训：当时用中文 grep「验证」出这 8 题不存在 ——
-  **验证工具与被验证者共享同一盲区时，验证必然通过**。哨兵：投票和 >100 即报警
-- 「ﬁ」连字在文本层丢失致「file 系统/服务器」变「le 系统/服务器」
-  （#260/#283/#332/#800），解析器已按已验证模式自动恢复并登记
-- 题号 905 以后共 104 道**无社区投票数据**（最新加入的）；另有 15 道投票表头无数据
-- **#96 与 #253 题干引用的 IAM 策略是图片**，文本层不存在，无法独立裁决
-  （#96 有冒号结尾启发式兜底；#253 是「中部引用」形态，现有启发式抓不到，
-  靠富化侧人工发现 —— 两道均以 data_issue 处理）
-- ~~0 道题引用图表~~ —— **被 #96 推翻**：架构图确实一张都没有，但存在以图片形式
-  嵌入的策略/代码块（目前已知仅 #96 一例，解析器已有冒号结尾启发式兜底）
-- 原 PDF 每页一张 1756×2484@150dpi 整页图 = 水印背景，**不是内容，可忽略**
-- 存在西里尔字母混入拉丁选项字母的脏点（如 `С` U+0421），解析器已归一
+各题库素材的具体脏点（哪几道题引用图片、连字丢失、字母被西里尔字母污染、
+哪些题头是英文导致被漏抓）**不在本仓** —— 它们描述的是素材，不是代码，
+归属地是 `config/banks/melete/README.md`。
 
+⭐ 但其中一条教训是通用的，留在这里：
+
+> **验证工具与被验证者共享同一盲区时，验证必然通过。**
+
+曾有 8 道题的题头是英文而解析器只认中文，于是被整题吞进前一题。
+当时"验证这 8 题是否存在"用的是中文 grep —— 与解析器同一个盲区，
+所以验证顺利通过，问题直到很久以后才暴露。
+哨兵不能与被测者同源：这里的哨兵是「投票百分比之和 > 100 即报警」。
 ### P1 的设计要点
 
 三种标签 + 答案裁决 + 解析，**必须在同一次 AI 调用里产出**，不要分三遍跑 1011 道题：

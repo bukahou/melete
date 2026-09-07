@@ -7,18 +7,24 @@
 
 ---
 
-## 🔒 本仓库必须永久保持 PRIVATE
+## 🔒 题库数据不在本仓
 
-**理由是版权，不是内网信息。**
+本仓是代码。题库数据（题目 / 答案 / 富化产物）在一个**私有仓**里，
+由 `MELETE_DATA_ROOT` 指出位置 —— 见 `pipeline/core/paths.py`。
 
-- 含第三方汇编题库，1011 道完整题目 + 答案
-- AWS Certification Agreement 明确禁止披露考试内容
-- 公开 = 分发考试转储；这在作品集里是减分项
+理由是版权：各题库素材的授权状况不同，**统一按不可分发处理**。
+把数据放在代码之外，边界就不依赖任何人记得住规矩。
 
-**这不是「暂时私有、以后开源」。** 若将来要开源，拆出去的是
-`backend/` + `web/` + `pipeline/core/`，而 `data/` 与题库特有解析器永久留在私有仓。
+```bash
+source ~/work/github/config/local/ubuntu/env/melete.env   # 设 MELETE_DATA_ROOT
+python3 pipeline/core/ingest.py <bank-slug>
+```
 
-变更仓库可见性前请重读根目录 `CLAUDE.md` 的「安全边界」一节。
+⛔ **`MELETE_DATA_ROOT` 无默认值，未设即报错退出。** 不是洁癖：
+一个"合理的默认值"会让脚本把题库写回本仓，正是这个边界要防的事。
+
+三道闸：无默认值的环境变量 · `.gitignore` 的 `/data/` · CI 断言 `data/` 为空。
+详见 `CLAUDE.md` 的「边界」一节。
 
 ---
 

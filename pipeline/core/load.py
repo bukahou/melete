@@ -25,7 +25,7 @@ try:
 except ImportError:
     sys.exit("✗ 需要 mysql-connector-python：pip install mysql-connector-python")
 
-REPO = Path(__file__).resolve().parents[2]
+from paths import REPO, bank_dir, rel  # 路径解析的唯一归属地, 见该模块 docstring
 BATCH = 200
 DSN_RE = re.compile(r"^(?P<user>[^:]+):(?P<password>.*)@tcp\((?P<host>[^:)]+):(?P<port>\d+)\)/(?P<database>[^?]+)")
 
@@ -341,9 +341,9 @@ def main() -> None:
         sys.exit("✗ 未提供 DSN。设置 MELETE_DB_DSN 或用 --dsn\n"
                  "  凭证类无默认值是有意为之 —— 忘配就失败，优于默默连错库")
 
-    src = REPO / "data" / args.bank / "enriched.json"
+    src = bank_dir(args.bank) / "enriched.json"
     if not src.exists():
-        sys.exit(f"✗ 找不到 {src.relative_to(REPO)}\n"
+        sys.exit(f"✗ 找不到 {rel(src)}\n"
                  f"  先跑：python3 pipeline/core/enrich.py merge {args.bank}")
     spec_path = REPO / "pipeline" / "banks" / args.bank / "enrich_spec.json"
     spec = json.loads(spec_path.read_text(encoding="utf-8")) if spec_path.exists() else {}

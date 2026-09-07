@@ -46,7 +46,7 @@ OPT_START = re.compile(r"^\s{0,8}([A-F])\.\s*(.*)$")
 ANS_LINE = re.compile(r"Correct Answer\s*:\s*([A-F]+)", re.M)
 VOTE_PAIR = re.compile(r"([A-F]+)\s*\(\s*(\d+)\s*%\s*\)")
 PICK_N = re.compile(r"\(Choose\s+(two|three|four|2|3|4)[.)]?", re.I)
-# ★ 源站 抓取侧的缺陷：正文里形如「<字母>. 」的片段被当成选项标签剥掉，
+# ★ 源站抓取侧的缺陷：正文里形如「<字母>. 」的片段被当成选项标签剥掉，
 # 于是末字母落在 A–F 的缩写 + 句号 + 空格被吞掉三个字符：
 #     "VPC. Create" → "VPCreate"    "ALB. Turn" → "ALTurn"    "MFA. Configure" → "MFConfigure"
 # 全库 32 题（6.0%），parse.py 原本零告警 —— 属静默缺陷。
@@ -142,7 +142,7 @@ def repair_text(text: str) -> tuple[str, list[str]]:
 
 EN_NUM = {"two": 2, "three": 3, "four": 4, "2": 2, "3": 3, "4": 4}
 
-# ★ 讨论区起点：源站 的评论都以「用户名 + 徽章/相对时间」开头，例如
+# ★ 讨论区起点：源站的评论都以「用户名 + 徽章/相对时间」开头，例如
 #     robertohyena Highly Voted  1 year, 7 months ago
 #     TonytheTiger  3 weeks, 3 days ago
 #     someone Most Recent  2 days ago

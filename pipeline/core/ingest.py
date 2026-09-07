@@ -26,7 +26,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
+from paths import REPO, bank_dir, rel  # 路径解析的唯一归属地, 见该模块 docstring
 DEFAULT_INBOX = Path(os.environ.get("MELETE_INBOX", Path.home() / "melete-inbox"))
 
 
@@ -46,14 +46,19 @@ def git_rev_of(path: Path) -> str:
     否则登记单会声称用了某个 commit 的解析器，而实际跑的是工作区里改过的版本 ——
     那样这份登记单就是在撒谎，可追溯性归零。
     """
-    rel = str(path.relative_to(REPO))
+    # ⭐ 这里【就该】相对 REPO：本函数只用于查解析器 (pipeline/banks/<bank>/parse.py)
+    #    的 git 版本，解析器是代码、在本仓里。数据搬到 MELETE_DATA_ROOT 之后，
+    #    对数据路径调本函数会 ValueError —— 那是正确的失败，别改成 paths.rel() 兜住它。
+    # ⚠️ 变量名不能叫 rel: 会遮蔽模块级导入的 paths.rel(),
+    #    以后谁在本函数里用 rel() 就是 UnboundLocalError。
+    repo_rel = str(path.relative_to(REPO))
     try:
         rev = subprocess.run(
-            ["git", "log", "-1", "--format=%h", "--", rel],
+            ["git", "log", "-1", "--format=%h", "--", repo_rel],
             cwd=REPO, capture_output=True, text=True, timeout=10,
         ).stdout.strip() or "uncommitted"
         dirty = subprocess.run(
-            ["git", "status", "--porcelain", "--", rel],
+            ["git", "status", "--porcelain", "--", repo_rel],
             cwd=REPO, capture_output=True, text=True, timeout=10,
         ).stdout.strip()
         return f"{rev}-dirty" if dirty else rev
@@ -102,10 +107,10 @@ def main() -> None:
 
     inbox = args.inbox / args.bank
     parser_py = REPO / "pipeline" / "banks" / args.bank / "parse.py"
-    out_dir = REPO / "data" / args.bank
+    out_dir = bank_dir(args.bank)
 
     if not parser_py.exists():
-        sys.exit(f"✗ 找不到解析器: {parser_py.relative_to(REPO)}\n"
+        sys.exit(f"✗ 找不到解析器: {rel(parser_py)}\n"
                  f"  新题库需要先写 pipeline/banks/{args.bank}/parse.py")
     if not inbox.is_dir():
         sys.exit(f"✗ 收件区不存在: {inbox}\n"

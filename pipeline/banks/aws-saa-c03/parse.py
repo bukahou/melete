@@ -227,7 +227,7 @@ def parse_block(no: int, body: str) -> dict:
             # （#252 曾因英文题头漏切吞掉 #253 而出现 A:100 + C:100 = 200%）。
             # 阈值留舍入余量：各项独立四舍五入可使合计到 101-102%
             # （#483 的 53+33+15=101 是正常题，曾被 >100 的阈值误报）。
-            # 合计 <100 是 源站 长尾截断，同样不告警。
+            # 合计 <100 是源站的长尾截断，同样不告警。
             if sum(dist.values()) > 105:
                 warnings.append("vote_distribution_sum_gt_100")
             claims.append({

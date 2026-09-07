@@ -36,10 +36,16 @@ venv/
 .DS_Store
 Thumbs.db
 
-# 注：data/**/*.json（题库中间产物）**故意纳入版本管理** ——
-# 它是 source of truth，需要 review 和 diff。前提是本仓库永久 private。
+# ⛔⛔ 题库数据【绝不入本仓】—— 本仓是公开仓 (2026-09-07 起)
 #
-# 唯一例外：enriched.json 是 enriched/*.json 分片的 merge 产物，
-# 每完成一片就要全量重写 1.5MB，进 git 只是无谓膨胀。
-# 需要时一条命令重建：python3 pipeline/core/enrich.py merge <bank>
-data/*/enriched.json
+# 数据在私有的 config 仓 banks/melete/，pipeline 通过 MELETE_DATA_ROOT 定位
+# (见 pipeline/core/paths.py)。
+#
+# 这条规则的历史：2026-09-07 之前本仓是 private，data/ 是【故意纳入】版本管理的
+# (它是 source of truth，需要 review 和 diff)。公开时那些历史用 git filter-repo
+# 整体重写掉了 —— 删文件不够，公开仓的历史全部可读，clone 就拿到全部对象。
+#
+# ⚠️ 所以这一行不是"整理目录"，是防泄漏的最后一道闸：
+#    万一 MELETE_DATA_ROOT 配错让脚本往仓里写，至少 commit 不进去。
+#    (⛔ git add -f 能绕过它，所以 CI 另有一条断言，见 .github/workflows/test.yml)
+/data/

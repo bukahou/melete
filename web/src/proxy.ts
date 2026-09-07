@@ -7,7 +7,8 @@ const API = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
  * 全站登录墙 + **access token 自动续期**。
  *
  * 登录墙的理由是版权边界（用户拍板，见 learning-flows.md §3）：
- * 题库内容公网可访问 = 分发考试转储，与仓库必须永久 private 是同一个问题。
+ * 题库内容公网可访问 = 向任何人分发题库，与「数据放私有仓」是同一个问题 ——
+ * 代码仓公开而数据私有，站点却裸奔的话，前面那道边界等于没有。
  *
  * 自动续期是双 token 架构在 web 端的落点，与 iOS 的 interceptor 同构
  * （见 geass-mobile/CLAUDE.md：401 → 自动 refresh → 重试）：
