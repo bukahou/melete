@@ -157,7 +157,7 @@ jobs:
   #    也因此 dev 与 prod 可以共用同一个镜像。
   # ---------------------------------------------------------
   web:
-    name: web lint & build
+    name: web build
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
