@@ -1,0 +1,182 @@
+## ============================================================
+## test.yml — Melete CI 测试
+## ============================================================
+## 触发：push 到 dev / feature/**，以及指向 dev / main 的 PR
+## 行为：卫生闸 + 后端 build/vet/test（带真实 MySQL）+ 前端 build
+##       ⛔ 不推镜像、不改 config 仓 —— 那是 release.yml 的事
+##
+## ⭐ 为什么后端要起一个真的 MySQL：
+##   本仓 6 个集成测试写着「未设 MELETE_TEST_DSN，跳过」。
+##   CI 不给库 ⇒ 它们一次都不执行，而 CI 照样显示绿色。
+##   ⚠️ 这个坑本仓踩过两次（提交 d28d1cd / 478387b 的标题就是
+##      「从未被执行过的集成测试」）—— 护栏不跑 = 护栏不存在，
+##      而且比没有护栏更糟，因为它给人安全感。
+##
+## ⭐⭐ 起了库还不够，必须【断言它真的接上了】：
+##   环境变量名打错一个字母，测试就静默退回「全部跳过」，CI 照样绿 ——
+##   跟没起库毫无区别，且更难发现。所以下面有一条 no-skip 门禁。
+##   （这是本项目反复付学费的那条：**没扫到的类别不会显示为红色，只会不存在**。）
+## ============================================================
+
+name: test
+
+on:
+  push:
+    branches: [dev, "feature/**"]
+  pull_request:
+    branches: [dev, main]
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------
+  # Job 1: 信息卫生闸 —— 三道闸的第三道
+  # ---------------------------------------------------------
+  # 前两道是 MELETE_DATA_ROOT 无默认值（pipeline/core/paths.py）与
+  # .gitignore 的 /data/。两道各自都能被绕开：
+  #   · 环境变量可以手动指到仓内
+  #   · git add -f 可以强推被忽略的文件
+  # 这一道是兜底。⚠️ 本仓是【公开仓】，题库数据一旦进来就是版权事故。
+  #
+  # ⭐ 想验证这道闸是活的：临时 `mkdir -p data && echo x > data/probe.json
+  #    && git add -f data/probe.json`，本 job 必须变红。
+  #    一个从没拒绝过任何东西的门禁等于没有门禁。
+  # ---------------------------------------------------------
+  hygiene:
+    name: 卫生闸（data/ 必须为空）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: data/ 必须不存在或为空
+        run: |
+          if [ -d data ] && [ -n "$(ls -A data 2>/dev/null)" ]; then
+            echo "::error::data/ 非空 —— 题库数据不得进入本公开仓（见 CLAUDE.md「边界」）"
+            ls -la data
+            exit 1
+          fi
+          echo "✅ data/ 为空或不存在"
+
+  # ---------------------------------------------------------
+  # Job 2: 后端 —— build + vet + test（带真实 MySQL）
+  # ---------------------------------------------------------
+  backend:
+    name: backend build & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-not-a-real-secret
+          MYSQL_DATABASE: melete_test
+        ports: ["3306:3306"]
+        # ⚠️ 没有 health check 的话，后面的步骤会在 MySQL 还没起来时就连 ——
+        # 那种失败看起来像「测试挂了」，实际是竞态。
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      # go-sql-driver DSN（sqlx.Connect("mysql", dsn)）。
+      # ⛔ 这不是凭证 —— 是 CI 容器里一次性的库，随 job 消失。
+      MELETE_TEST_DSN: "root:ci-root-not-a-real-secret@tcp(127.0.0.1:3306)/melete_test?charset=utf8mb4&parseTime=true&time_zone=%27%2B00%3A00%27"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: 建表（19 张，与生产同一份 schema.sql）
+        run: |
+          mysql -h 127.0.0.1 -P 3306 -uroot -pci-root-not-a-real-secret melete_test < db/schema.sql
+          n=$(mysql -h 127.0.0.1 -P 3306 -uroot -pci-root-not-a-real-secret melete_test -N -B \
+                -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='melete_test';")
+          echo "建出 $n 张表"
+          # ⭐ 阳性对照：0 张表说明 schema 根本没执行，而后面的测试会以
+          #    「连不上/没表」的形式失败，那种报错会把人引向错误的方向。
+          [ "$n" -ge 15 ] || { echo "::error::建表数 $n 异常，schema.sql 可能没跑"; exit 1; }
+
+      - name: Build
+        working-directory: backend
+        run: go build ./...
+
+      - name: Vet
+        working-directory: backend
+        run: go vet ./...
+
+      - name: Test（含集成测试）
+        working-directory: backend
+        run: go test ./... -v 2>&1 | tee /tmp/gotest.log
+
+      # ⭐⭐ no-skip 门禁 —— 本 workflow 最重要的一步
+      #
+      # 断言的不是「测试通过」，是【集成测试真的执行了】。
+      # 若 MELETE_TEST_DSN 没接上（变量名打错、service 没起、DSN 格式变了），
+      # 测试会打印「未设 MELETE_TEST_DSN，跳过」然后 PASS —— CI 全绿而护栏没跑。
+      #
+      # ⚠️ 只断言【DSN 类】跳过为 0，⛔ 不是所有跳过：
+      #    CI 的库是空的，due / isolation 那两个测试会因「题目不足」跳过 ——
+      #    题库在私有仓，CI 拿不到，那是【已知且正确】的跳过。
+      #    但它们必须被【显式打印出来】，不能静默 —— 静默的跳过就是下一个
+      #    「从未被执行过的测试」。
+      - name: 门禁 —— 集成测试必须真的跑过
+        run: |
+          if grep -q "未设 MELETE_TEST_DSN" /tmp/gotest.log; then
+            echo "::error::集成测试因未设 MELETE_TEST_DSN 而跳过 —— 库没接上，本次 CI 的绿色是假的"
+            grep -n "未设 MELETE_TEST_DSN" /tmp/gotest.log
+            exit 1
+          fi
+          echo "✅ 无 DSN 类跳过：集成测试确实连上了库并执行了"
+          echo "── 其余跳过（已知、可接受，但必须可见）──"
+          grep -E "^\s*--- SKIP|SKIP:" /tmp/gotest.log || echo "（无）"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### 后端测试"
+            echo '```'
+            grep -E "^(ok|FAIL|---)" /tmp/gotest.log | tail -30 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------
+  # Job 3: 前端 —— lint + build
+  # ---------------------------------------------------------
+  # ⭐ 本仓前端【没有】NEXT_PUBLIC_*（API 地址只在服务端用，走 ConfigMap
+  #    运行时注入）⇒ build 不需要任何环境相关的 build-arg，
+  #    也因此 dev 与 prod 可以共用同一个镜像。
+  # ---------------------------------------------------------
+  web:
+    name: web lint & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install
+        working-directory: web
+        run: npm ci
+
+      - name: Lint
+        working-directory: web
+        run: npm run lint
+
+      - name: Build
+        working-directory: web
+        run: npm run build
