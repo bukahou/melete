@@ -31,8 +31,8 @@ const (
 
 // canLogin ⭐ 白名单，⛔ 不是黑名单。
 //
-// ⚠️ 写成 `status != StatusBanned` 是一个真实发生过的缺陷：
-// cross-exam 005 记录一个同类系统的缺陷 —— 用黑名单判定导致
+// ⚠️ 写成 `status != StatusBanned` 是一个真实发生过的缺陷（一个同类系统实测栽过）：
+// 用黑名单判定导致
 // 【停用的账号仍可登录】。黑名单要求你穷举所有坏状态，而新增一个状态
 // 是最正常不过的事；白名单只要求你列出好状态，新增状态默认被拒。
 func canLogin(status int) bool { return status == StatusActive }

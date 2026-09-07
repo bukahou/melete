@@ -317,7 +317,7 @@ func run() error {
 //
 // ⚠️ 模块把「降级」「IP 被拦」「会话吊销失败」这类事情做成【可计数的事件】
 // 而不是静默行为 —— 接不上这个钩子，那些事情就只在模块内部发生过。
-// ⭐ cross-exam 005 记过一个同类系统的缺陷：会话审计事件一条不记，
+// ⭐ 案卷记过一个同类系统实测栽过的缺陷：会话审计事件一条不记，
 // 于是吊销失败在日志里毫无症状。
 func auditTo(log *slog.Logger) localauth.AuditHook {
 	return func(ctx context.Context, e localauth.AuditEvent) {

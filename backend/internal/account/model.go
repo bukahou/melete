@@ -28,7 +28,7 @@ const (
 
 // CanLogin ⭐ 白名单，⛔ 不是黑名单。
 // 写成 `!= StatusBanned` 会让新增的状态默认可登录 ——
-// cross-exam 005 记录一个同类系统的缺陷正是这个形状。
+// 一个同类系统实测栽过的缺陷正是这个形状。
 func (a *Account) CanLogin() bool { return a != nil && a.Status == StatusActive }
 
 // DisplayName 给界面一个总是可用的称呼。

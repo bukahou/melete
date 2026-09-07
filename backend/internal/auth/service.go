@@ -24,11 +24,11 @@ import (
 )
 
 const (
-	// AccessTTL ⭐ 案卷裁决 ② 定为 15min（原 1h）。
+	// AccessTTL ⭐ 案卷裁决 ② 收短（原先偏长）。
 	//
-	// ⚠️ melete 没有 Redis ⇒ 没有吊销存储 ⇒ access TTL【就是】改密/封禁的
-	// 残留窗口。与另一服务同量级（具体值见部署配置）。
-	// 降到 15min 让两边同量级，成本是客户端多刷几次（web/iOS 都已有拦截器）。
+	// ⚠️ 无吊销存储（本服务不引 Redis）⇒ access TTL【就是】改密/封禁的残留窗口。
+	// 取值在「够短以限残留窗口」与「够长以少刷新」间折衷；
+	// 客户端多刷几次的成本可接受（web/iOS 都已有拦截器）。具体值见部署配置。
 	AccessTTL = 15 * time.Minute
 	// RefreshTTL 30 天
 	RefreshTTL = 30 * 24 * time.Hour

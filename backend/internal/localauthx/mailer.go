@@ -11,7 +11,7 @@ import (
 
 // logMailer 把验证码打进日志。
 //
-// ⛔⛔ 仅供开发。⚠️ 它开的洞不小：**此通道不适用于生产** ——
+// ⛔⛔ 仅供开发。⚠️ 此通道不适用于生产：验证码不经安全信道投递 ——
 // 而找回密码的全部安全性就建立在「只有邮箱主人看得到那个码」上。
 //
 // 用户 2026-09-06 裁决 ③ 定了三条闸门，⛔ 缺一不可：
@@ -36,8 +36,8 @@ var ErrMailerNotConfigured = errors.New(
 func NewMailer(kind string, log *slog.Logger) (localauth.MessageSender, error) {
 	switch kind {
 	case "log":
-		log.Warn("⛔ 发信通道 = log：验证码将【不经安全信道投递】，"+
-			"此通道不适用于生产。⛔ 禁止用于生产。",
+		log.Warn("⛔ 发信通道 = log：验证码不经安全信道投递，"+
+			"不适用于生产。",
 			"mailer", "log")
 		return &logMailer{log: log}, nil
 	case "":

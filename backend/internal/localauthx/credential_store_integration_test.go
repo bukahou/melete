@@ -84,7 +84,7 @@ func TestLoadCredentialOIDCAccountIntegration(t *testing.T) {
 //
 // ⚠️ 变异验证：把 canLogin 改成 `status != StatusBanned`（黑名单），
 // 「停用账号不可登录」这条立刻变红。一个同类系统实测栽过的缺陷就是这个
-// （cross-exam 005 §27：黑名单判定导致停用账号仍可登录）。
+// （黑名单判定导致停用账号仍可登录）。
 func TestStatusIsWhitelistIntegration(t *testing.T) {
 	s, db := newAccounts(t)
 	ctx := context.Background()
