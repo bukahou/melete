@@ -15,6 +15,13 @@
 -- ⭐ 3 个 id 是用 Go 的 uuid.NewV7() 现生成后写死的，⛔ 不用 MySQL 的 UUID()
 --    —— 那个是 v1（时间戳字段顺序不利于索引），与本项目其余 id 不同源。
 --    写死而不是运行时生成，是为了让这次迁移【可重放且结果相同】。
+--
+-- ⛔⛔ 下面这三个 UUID 是【占位符，不是当初实际写入的值】。
+--     本仓 2026-09-07 公开时，真实账号 id 从全部历史中重写掉了 ——
+--     它们是真实用户的标识，不该出现在公开仓里。
+--     这份迁移是一次性的、早已执行完毕，占位符不影响任何东西；
+--     ⚠️ 但【不要照抄重放】：重放会把三个账号的 id 改成这些假值。
+--     真实映射在私有的 meleteold 仓的历史里，以及生产库的 users 表里。
 CREATE TEMPORARY TABLE _acct_map (old_id BIGINT PRIMARY KEY, new_id BINARY(16) NOT NULL);
 INSERT INTO _acct_map (old_id, new_id) VALUES
   (1,  UNHEX(REPLACE('00000000-0000-7000-8000-000000000001','-',''))),
