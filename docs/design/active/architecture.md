@@ -252,7 +252,7 @@ WHERE qt.question_id = ?;
 DNS:  flarectl 建 CNAME → tunnel UUID（Proxied）
 ```
 
-清单放 **config 私有仓** `clusters/集群甲/apps/melete/`，本仓库不含内网信息。
+清单放 **config 私有仓** `clusters/requiem/apps/melete/`，本仓库不含内网信息。
 
 ⚠️ hostname 待定 —— 需先查 config 仓 CLAUDE.md 的「在用 hostname 清单」避免撞名。
 

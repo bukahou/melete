@@ -58,7 +58,7 @@ config (private)         数据：banks/melete/ ← 题库在这里
 |---|---|
 | 题库数据（`data/`） | 见上。三道闸拦着 |
 | 原始素材（PDF 等） | 体积大 + 版权。走**收件区**约定，见下方「素材收件区」一节 |
-| 内网 IP / 节点名 / 集群拓扑 / Tunnel UUID / 具体主机名 | ⛔ **任何文件都不行，含设计文档与注释**。部署清单在 config 私有仓 `clusters/集群甲/apps/melete/`<br>⚠️ 这条原先写的是「**部署清单**放 config 私有仓」，于是 `docs/design/active/deployment.md` 钻了空子 —— 它是设计文档不是清单，就把当时执行的 `flarectl dns create --content <tunnel UUID>` 原样抄了进来（`9e2c385`，2026-09-02）。<br>⭐ 教训：规则按**文件类型**划范围就会漏，按**信息类型**划才不会。而且仓库当时是 private，这条规则不产生任何可感代价 —— **规则只在被违反且有后果时才显出漏洞，私有仓不给它这个机会**。 |
+| 内网 IP / 节点名 / 集群拓扑 / Tunnel UUID / 具体主机名 | ⛔ **任何文件都不行，含设计文档与注释**。部署清单在 config 私有仓 `clusters/requiem/apps/melete/`<br>⚠️ 这条原先写的是「**部署清单**放 config 私有仓」，于是 `docs/design/active/deployment.md` 钻了空子 —— 它是设计文档不是清单，就把当时执行的 `flarectl dns create --content <tunnel UUID>` 原样抄了进来（`9e2c385`，2026-09-02）。<br>⭐ 教训：规则按**文件类型**划范围就会漏，按**信息类型**划才不会。而且仓库当时是 private，这条规则不产生任何可感代价 —— **规则只在被违反且有后果时才显出漏洞，私有仓不给它这个机会**。 |
 | 任何真实凭证 | 见上。**已 commit 的凭证视为已泄漏**，删文件和补 .gitignore 都无效 |
 | 各题库的素材脏点清单 | 它描述的是素材不是代码，归属地在 `config/banks/melete/README.md` |
 

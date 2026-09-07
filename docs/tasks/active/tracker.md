@@ -154,12 +154,12 @@ data_issue  6（结构性不可判）· notes 57（advisory）
       · 后端用 `--platform=$BUILDPLATFORM` 交叉编译，避开 QEMU 跑 go build（慢 5-10 倍）
       · web 镜像**环境无关**（无 NEXT_PUBLIC_*），改 API 地址只需改 ConfigMap
       · 已验证 amd64 + arm64 双架构可构建
-- [x] config 仓部署清单 `clusters/集群甲/apps/melete/`（7 文件）+ ArgoCD Application
+- [x] config 仓部署清单 `clusters/requiem/apps/melete/`（7 文件）+ ArgoCD Application
       · 9 个资源全部通过服务端 dry-run schema 校验，未 apply
       · DSN 指向 开发机 MySQL（验收合格后才迁 TiDB，流程写在 config.yaml 注释）
 - [x] Akasha client 追加生产回调地址（保留 localhost）
       · 后端成为唯一 OIDC client，web 与 iOS 共用同一 client_id → 同一 pairwise sub → 同一账号
-      · Akasha 的 client 注册改由 config 仓 `clusters/集群甲/apps/akasha/clients.yaml` 挂载
+      · Akasha 的 client 注册改由 config 仓 `clusters/requiem/apps/akasha/clients.yaml` 挂载
 - [x] CF 建两条 DNS CNAME → tunnel UUID（Proxied）：`melete` 与 `melete-api`
       · 已生效，两域名返回 404 = 链路已通到集群 Gateway，只差 HTTPRoute 接住
       · 已更新 config 仓 CLAUDE.md 的「在用 hostname 清单」
@@ -278,7 +278,7 @@ Akasha 只追加两条后端回调白名单（prod + localhost）。
     ✅ melete 已切换（2026-09-03）：删 `backend/pkg/oidcrp`，import `github.com/bukahou/akasha/pkg/oidcrp v0.1.0`（akasha 5922c22）
   - Task B：Akasha clients 由 Secret 挂载的 `clients.yaml` 启动加载，`clients` 表退役（留置 30 天）。
     **melete 侧待办**：按 akasha 定的 schema 把现状（melete 2 条后端回调 + geass 1 条）写进
-    `config/clusters/集群甲/apps/akasha/clients.yaml`。这之后白名单变更 = 改 yaml + push + 人点 SYNC，手改生产库的路物理消失
+    `config/clusters/requiem/apps/akasha/clients.yaml`。这之后白名单变更 = 改 yaml + push + 人点 SYNC，手改生产库的路物理消失
   - 设计讨论记录（含 akasha 维护方的五条修正）见本次会话；决策依据：clients 在运行时无合法写路径，是伪装成状态的配置
 
 ## P7 · 第三个题库：IPA IT パスポート 🔄（2026-09-05 起）

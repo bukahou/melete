@@ -315,7 +315,7 @@ web/Dockerfile                     melete-web    237 MB
 ## 3. CD（ArgoCD）
 
 ```
-config 仓 clusters/集群甲/apps/melete/
+config 仓 clusters/requiem/apps/melete/
   ├─ namespace.yaml
   ├─ config.yaml        ConfigMap（非敏感）+ Secret（敏感，明文，随 config 私有仓）
   ├─ api.yaml           Deployment + Service（ClusterIP，无 Ingress）
