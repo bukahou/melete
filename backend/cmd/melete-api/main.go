@@ -241,11 +241,15 @@ func run() error {
 		apiBase + "/auth/sso",           // id_token 换本站 token
 		apiBase + "/auth/oidc/start",    // 浏览器导航，手写挂载
 		apiBase + "/auth/oidc/callback", // 同上
-		// ── 阶段 5 的公开端点（注册与找回，此时用户当然还没有 token）──
+		// ── 阶段 5 的公开端点（注册，此时用户当然还没有 token）──
 		apiBase + "/auth/register/code",
 		apiBase + "/auth/register",
-		apiBase + "/auth/recovery/code",
-		apiBase + "/auth/recovery/complete",
+		// ⛔ 找回密码的两个端点【暂时移出白名单】(2026-09-07)：
+		// 生产发信通道尚是 log 型（验证码不经安全信道投递），在有真实邮件通道之前
+		// 不对匿名开放找回 —— 否则任何人可为任意邮箱触发验证码。前端入口也已同步撤下。
+		// ⭐ 恢复时：配好真实 MessageSender 后，把下面两行放回本白名单。
+		//   apiBase + "/auth/recovery/code",
+		//   apiBase + "/auth/recovery/complete",
 		// ⚠️ ⛔ 改邮箱的两个端点【不在这里】：/auth/email/code 与
 		// /auth/email/confirm 必须认证 —— 它们改的是【当前登录用户】的邮箱。
 		// ⭐ 而 /auth/register 与它们共享 /auth/ 前缀：若豁免还是前缀匹配，

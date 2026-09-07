@@ -67,14 +67,15 @@ export default async function LoginPage({
         </button>
       </form>
 
-      {/* ⭐ 找回密码入口。⚠️ 对 Akasha 账号这条路自然走不通（他们没有本站
-          验证过的邮箱），而那一页的文案已经说明了 —— ⛔ 不在这里分叉，
-          否则「你是不是密码账号」就从这里泄漏了。 */}
+      {/* ⛔ 找回密码入口【暂时撤下】(2026-09-07)：生产的发信通道尚是 log 型
+          (验证码不经安全信道投递)，在有真实邮件通道之前，找回流程不对外开放
+          —— 后端也已把 /auth/recovery/* 移出免认证白名单，两处同时改。
+          ⭐ 恢复时：这里放回 <Link href="/auth/forgot">，并在 publicPaths 加回两个 recovery 端点。
       <p className="mt-4 w-full text-right text-xs">
         <Link href="/auth/forgot" className="text-muted underline underline-offset-4 transition-colors hover:text-ink">
           忘记密码？
         </Link>
-      </p>
+      </p> */}
 
       <div className="my-7 flex w-full items-center gap-4 text-xs text-muted">
         <span className="h-px flex-1 bg-line" />
