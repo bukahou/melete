@@ -77,6 +77,7 @@ func toAPISummary(q question.Summary) api.QuestionSummary {
 		Id: q.ID, ExternalNo: q.ExternalNo, Stem: q.Stem,
 		Kind: api.QuestionSummaryKind(q.Kind), PickCount: q.PickCount,
 		Contested: q.Contested, Enriched: q.Enriched,
+		Localized: &q.Localized,
 	}
 }
 
@@ -109,6 +110,7 @@ func toAPIDetail(d *question.Detail) api.QuestionDetail {
 		Kind: api.QuestionDetailKind(d.Kind), PickCount: d.PickCount,
 		Contested: d.Contested, Enriched: d.Enriched,
 		BankSlug: d.BankSlug, DataIssue: d.DataIssue,
+		Localized: &d.Localized, SourceLocale: &d.SourceLocale,
 		Reference:    toAPIReference(d.Reference),
 		Choices:      make([]api.Choice, 0, len(d.Choices)),
 		Claims:       make([]api.AnswerClaim, 0, len(d.Claims)),
@@ -116,7 +118,7 @@ func toAPIDetail(d *question.Detail) api.QuestionDetail {
 		Tags:         make([]api.Tag, 0, len(d.Tags)),
 	}
 	for _, c := range d.Choices {
-		out.Choices = append(out.Choices, api.Choice{Label: c.Label, Body: c.Body})
+		out.Choices = append(out.Choices, api.Choice{Label: c.Label, Body: c.Body, Localized: &c.Localized})
 	}
 	for _, c := range d.Claims {
 		out.Claims = append(out.Claims, toAPIClaim(c))
@@ -188,7 +190,8 @@ func toAPISession(ss study.Session) api.StudySession {
 //
 // ⭐ 未自评时返回 nil —— 那时根本没有卡片被排。
 // ⛔ 不能看零值猜：Correction 的零值是「rating 0、无理由」，Due 是零时间，
-//    照直映射出去就成了一条「下次复习时间 0001-01-01」的假调度。
+//
+//	照直映射出去就成了一条「下次复习时间 0001-01-01」的假调度。
 func toAPISchedule(r *study.Result) *api.ScheduleResult {
 	if !r.Scheduled {
 		return nil

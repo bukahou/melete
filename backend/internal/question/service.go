@@ -17,7 +17,9 @@ const (
 // 上层（HTTP handler）只依赖这个接口，不依赖 Repository 或具体 SQL。
 type Service interface {
 	ListQuestions(ctx context.Context, bankID int64, f ListFilter) (*Page, error)
-	GetQuestion(ctx context.Context, id int64) (*Detail, error)
+	// GetQuestion 的 locale 空串 = 源语言。译文缺失时回退源语言，
+	// 并由 Detail 上的 Localized 告诉界面「这是回退」（⛔ 不静默）。
+	GetQuestion(ctx context.Context, id int64, locale string) (*Detail, error)
 }
 
 type service struct{ repo Repository }
@@ -43,6 +45,6 @@ func (s *service) ListQuestions(ctx context.Context, bankID int64, f ListFilter)
 	return s.repo.ListQuestions(ctx, bankID, f)
 }
 
-func (s *service) GetQuestion(ctx context.Context, id int64) (*Detail, error) {
-	return s.repo.FindQuestionByID(ctx, id)
+func (s *service) GetQuestion(ctx context.Context, id int64, locale string) (*Detail, error) {
+	return s.repo.FindQuestionByID(ctx, id, locale)
 }

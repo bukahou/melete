@@ -15,12 +15,23 @@ type Summary struct {
 	// 这不是边缘情况：884 道有对照数据的题里占 38%。
 	Contested bool `db:"contested"`
 	Enriched  bool `db:"enriched"`
+	// Localized 说明 Stem 是不是请求语言的译文。
+	//
+	// ⭐ false = 没有该语言的译文，上面给的是【源语言】原文。
+	// 界面必须把这件事显示出来（「本题暂无日文版」），⛔ 不静默回退 ——
+	// 与「答案主张并列展示」同一条哲学：把状况摆出来，不替学习者下结论。
+	// ⚠️ 请求源语言本身时也是 false（那本来就不是译文），界面据此不必标注：
+	//    判断标注与否用「请求的 locale ≠ 题库源语言 且 !Localized」。
+	Localized bool `db:"localized"`
 }
 
 // Choice 是一个选项。
 type Choice struct {
 	Label string `db:"label"`
 	Body  string `db:"body"`
+	// Localized 同 Summary.Localized —— 选项的译文可能与题干不同步
+	// （比如译文只补了题干），所以各自带各自的标记。
+	Localized bool `db:"localized"`
 }
 
 // Claim 是一条**带来源的答案主张**。
@@ -102,7 +113,10 @@ func ResolveReference(claims []Claim) *Reference {
 // Detail 是单题详情。
 type Detail struct {
 	Summary
-	BankSlug     string
+	BankSlug string
+	// SourceLocale 是题库正文的语言。⭐ 界面靠它把「没有译文」与
+	// 「请求的就是源语言」区分开 —— 只看 Localized 两者都是 false。
+	SourceLocale string
 	Reference    *Reference
 	DataIssue    *string
 	Warnings     []string
@@ -120,8 +134,10 @@ type ListFilter struct {
 	OnlyEnriched  bool
 	Mode          string
 	AccountID     userid.UserID
-	Limit         int
-	Offset        int
+	// Locale 是希望拿到的语言。空串 = 只要源语言，⛔ 不查 i18n 表。
+	Locale string
+	Limit  int
+	Offset int
 }
 
 // Page 是一页题目。
