@@ -44,8 +44,26 @@ from paths import REPO, bank_dir, rel
 #    否则「第 3 片」在两段里指的不是同一批题，人工对照立刻失效。
 from enrich import SHARD_SIZE, fingerprint, shard_name, shard_ranges
 
-# 平假名 + 片假名。⭐ 这是本模块最重要的哨兵，理由见 check_item。
+# 平假名 + 片假名。⭐ 与下面的简体字黑名单一起构成「这是不是中文原文」的判据。
 KANA = re.compile(r"[぀-ゟ゠-ヿ]")
+CJK = re.compile(r"[一-鿿]")
+
+# ⭐ 日语里【根本不存在】的简体字。命中即判为「中文原文被抄了过来」。
+#
+# 为什么要有这一条（2026-09-08 加）：原来只用「有汉字却无假名」做判据，
+# 于是「亚马逊 S3」的正确日译「Amazon S3」（零假名零汉字）被判成没翻译，
+# 而「S3 标准」→「S3 標準」同样被拒。⚠️ 闸门在逼译者往正确译文里硬塞假名，
+# ⛔ 那正是「为了过闸而改内容」——我自己在假名哨兵那条警告过的自毁形状。
+#
+# 简体字判据反过来【更锋利】：它不管长短，只问「这个字日语里有没有」。
+# 实测本题库 5226 条原文，98.5% 含至少一个黑名单字；
+# 与下面的「汉字≥6 需有假名」合起来，两条都漏掉的只剩 0.8%（都是极短串）。
+# ⛔ 注意「双」「区」「数」「据」这类【日语也有】的字不得入表 —— 会误伤正确译文。
+SIMPLIFIED_ONLY = frozenset("亚个们为义乐习书买产亲从仓优传伤价备复头实宁审层岁币帮师带库应废开张录惊户执扩报拟损时显术权业东严临举仅计订认讨让训议记讲论设访证评识诉词试详语误说请读课调谈谁谢贝财责账货质购贷费资车转轮软轻输达过运进连选递适远违边还这钟银错键镜锁铁问间闭关阅险隐项顺须领频题顾预页风飞马驱验组织经结给络统继线级纪约纳纸终维缓编缩网电长门队阶动势发变处标样检构树桥极测济满灭现环监盘确码离种积稳竞笔简类罗职联胜脑节药获营蓝补见观规视览觉单储启击邻务阻鲁凭历纵览")
+
+# 汉字多到这个数还一个假名都没有，才判为可疑。
+# 低于它的多是「S3 標準」「Amazon S3」这类纯名词，正确日译本就可能零假名。
+KANA_REQUIRED_FROM = 6
 # 译文短于原文这个比例即判为截断。取值宽松是有意的 —— 这条只抓「只译了第一句」，
 # ⛔ 不试图评价译文质量，那不是机器能做的事。
 MIN_LENGTH_RATIO = 0.25
@@ -154,11 +172,21 @@ def check_item(it: dict, q: dict, glo: dict) -> list[str]:
     # ⚠️ 为什么不用「译文与原文不相等」做判据：那与被测者同源 ——
     # 改几个字、删句标点就能骗过去，而假名骗不过去（要造假名就得真的在写日语）。
     # 这条呼应仓库里那句教训：「验证工具与被验证者共享同一盲区时，验证必然通过」。
-    for name, text in [("stem", stem), *((f"choices[{k}]", v) for k, v in sorted(choices.items()))]:
-        if isinstance(text, str) and text.strip() and not KANA.search(text):
-            errs.append(f"{name} 里一个假名都没有 —— 多半是没翻译，原文被直接抄了过来")
-    if isinstance(expl, str) and expl.strip() and not KANA.search(expl):
-        errs.append("explanation 里一个假名都没有 —— 多半是没翻译")
+    def looks_untranslated(text: str) -> str | None:
+        bad = SIMPLIFIED_ONLY & set(text)
+        if bad:
+            return f"含简体字「{''.join(sorted(bad))[:6]}」—— 日语里没有这些字，中文原文被抄了过来"
+        if len(CJK.findall(text)) >= KANA_REQUIRED_FROM and not KANA.search(text):
+            return "汉字这么多却一个假名都没有 —— 多半是没翻译"
+        return None
+
+    checked = [("stem", stem), *((f"choices[{k}]", v) for k, v in sorted(choices.items()))]
+    if isinstance(expl, str):
+        checked.append(("explanation", expl))
+    for name, text in checked:
+        if isinstance(text, str) and text.strip():
+            if why := looks_untranslated(text):
+                errs.append(f"{name} {why}")
 
     # 截断哨兵
     src_stem = source_of(q)
@@ -181,17 +209,30 @@ def check_item(it: dict, q: dict, glo: dict) -> list[str]:
         parts_src.append(src_expl)
         parts_dst.append(expl)
     joined_src, joined_dst = " ".join(parts_src), " ".join(parts_dst)
-    for src_term, accepted in sorted(glo["terms"].items()):
-        # ⚠️ 一个中文词可以有【多个都正确】的日文写法，这不是术语表没定死，
-        # 而是语言事实：「负载均衡器」在产品名里是 Application Load Balancer，
-        # 在普通名词位置是ロードバランサー —— 强行二选一会把正确的译文判成错的。
-        # ⇒ 值允许是列表，命中任意一个即通过。⛔ 但列表要短：
-        #   写不出「都对」的理由就不该多加一个，那是在把闸门自己拆掉。
-        if src_term not in joined_src:
-            continue
-        if not any(d in joined_dst for d in accepted):
-            errs.append(f"原文有「{src_term}」，译文里找不到约定译词"
-                        + "（" + " / ".join(f"「{d}」" for d in accepted) + "）")
+    # 术语表的两条语义：
+    #
+    # ① 值可以是列表 = 这个词有多个【都正确】的写法。「负载均衡器」在产品名里是
+    #    Application Load Balancer，在普通名词位置是ロードバランサー ——
+    #    强行二选一会把正确的译文判成错的。⛔ 但列表要短：说不出「为什么都对」
+    #    就别多加一项，那是在把闸门自己拆掉。
+    #
+    # ② ⭐ 最长匹配优先：长词命中后【吃掉】它占的那段原文，短词不再对那段提要求。
+    #
+    # ⚠️ 中文没有词边界，子串匹配必然出这个问题（2026-09-08 由「解析」会话撞出）：
+    # 「S3 单区域不频繁访问」里的「区域」是 **Zone 不是 Region**，
+    # 官方日译是「S3 One Zone-IA」，正确译文里【不该】出现「リージョン」。
+    # 而旧逻辑要求它出现 ⇒ 要过闸只能把 Zone 错译成 Region，
+    # ⛔ 又是「为了过闸而写错内容」。本题库有 35 道题会撞上。
+    # ⇒ 这是通用缺陷，不是「单区域」一个词的事：任何「X区域」「X主题」类复合词都会重犯。
+    unconsumed = joined_src
+    for src_term in sorted(glo["terms"], key=len, reverse=True):
+        if src_term in unconsumed:
+            accepted = glo["terms"][src_term]
+            if not any(d in joined_dst for d in accepted):
+                errs.append(f"原文有「{src_term}」，译文里找不到约定译词"
+                            + "（" + " / ".join(f"「{d}」" for d in accepted) + "）")
+            # 吃掉：更短的子串不再对这一段提要求
+            unconsumed = unconsumed.replace(src_term, "\x00" * len(src_term))
     # keep：服务名等必须原样保留，⛔ 不许意译也不许改写成假名
     for term in glo["keep"]:
         if term in joined_src and term not in joined_dst:
