@@ -95,7 +95,10 @@ def load_glossary(bank: str, locale: str) -> dict:
             f"     41 片跨多次会话，术语一旦漂了就要返工几十片。"
         )
     g = json.loads(p.read_text(encoding="utf-8"))
-    return {"terms": g.get("terms", {}), "keep": list(g.get("keep", []))}
+    # 值归一成列表：写成字符串是「只有一种正确写法」的简写
+    terms = {k: ([v] if isinstance(v, str) else list(v))
+             for k, v in g.get("terms", {}).items() if not k.startswith("_")}
+    return {"terms": terms, "keep": list(g.get("keep", []))}
 
 
 def shard_dir(bank: str, locale: str) -> Path:
@@ -178,9 +181,17 @@ def check_item(it: dict, q: dict, glo: dict) -> list[str]:
         parts_src.append(src_expl)
         parts_dst.append(expl)
     joined_src, joined_dst = " ".join(parts_src), " ".join(parts_dst)
-    for src_term, dst_term in sorted(glo["terms"].items()):
-        if src_term in joined_src and dst_term not in joined_dst:
-            errs.append(f"原文有「{src_term}」，译文里找不到约定译词「{dst_term}」")
+    for src_term, accepted in sorted(glo["terms"].items()):
+        # ⚠️ 一个中文词可以有【多个都正确】的日文写法，这不是术语表没定死，
+        # 而是语言事实：「负载均衡器」在产品名里是 Application Load Balancer，
+        # 在普通名词位置是ロードバランサー —— 强行二选一会把正确的译文判成错的。
+        # ⇒ 值允许是列表，命中任意一个即通过。⛔ 但列表要短：
+        #   写不出「都对」的理由就不该多加一个，那是在把闸门自己拆掉。
+        if src_term not in joined_src:
+            continue
+        if not any(d in joined_dst for d in accepted):
+            errs.append(f"原文有「{src_term}」，译文里找不到约定译词"
+                        + "（" + " / ".join(f"「{d}」" for d in accepted) + "）")
     # keep：服务名等必须原样保留，⛔ 不许意译也不许改写成假名
     for term in glo["keep"]:
         if term in joined_src and term not in joined_dst:
@@ -234,12 +245,15 @@ def cmd_status(bank: str, locale: str) -> None:
         if not p.exists():
             todo.append(r)
             continue
-        if check_shard(p, qmap, glo):
-            bad.append(r)
-            continue
-        done.append(r)
-        for it in json.loads(p.read_text(encoding="utf-8"))["items"]:
-            n_stem += 1
+        broken = bool(check_shard(p, qmap, glo))
+        (bad if broken else done).append(r)
+        for it in json.loads(p.read_text(encoding="utf-8")).get("items", []):
+            # ⚠️ 未填满的片也计进来。片没填满 = 校验不过 = 不算「完成」，
+            # 这是照抄 enrich.py 的语义（片存在即完成，⛔ 不维护进度清单）。
+            # 但只报「完成片数」会让跨天做到一半的人以为工作丢了 ——
+            # 已经翻好的 5 题明明在盘上，进度却显示 0。⇒ 两个数都报。
+            n_part = 1
+            n_stem += n_part
             if it.get("explanation"):
                 n_expl += 1
     total = len(qmap)
@@ -248,11 +262,19 @@ def cmd_status(bank: str, locale: str) -> None:
     print(f"术语表    {len(glo['terms'])} 条约定译词 · {len(glo['keep'])} 个保留原样的名字")
     print(f"分片      {len(ranges)} 片 × {SHARD_SIZE} 题")
     print(f"题面进度  {n_stem}/{total} 题  ({n_stem/total*100:.1f}%)   ← 不翻就没法做题")
+    if bad:
+        print(f"          （其中 {len(bad)} 片未填满，算在题面进度里但不算完成片）")
     print(f"解析进度  {n_expl}/{n_has_expl} 题  ({n_expl/max(n_has_expl,1)*100:.1f}%)   ← 缺了回退中文并标注")
     print(f"校验失败  {len(bad)} 片" + (f"  → {[shard_name(r) for r in bad]}" if bad else ""))
     print(f"待处理    {len(todo)} 片")
-    if todo:
-        print(f"\n下一片    {shard_name(todo[0])}   （跑 translate.py next {bank} --locale {locale}）")
+    # ⚠️ 「下一片」必须与 cmd_next 取的是【同一片】。
+    # 曾经 status 只看「不存在的片」而 next 还会把「存在但没填满的片」算进去 ——
+    # status 说下一片是 0026，next 给的却是 0001。跨天做的人照着 status 走就做错片，
+    # 而两边都不报错。⇒ 顺序在这里定死：先补没填满/坏掉的，再开新片。
+    up_next = (bad + todo)
+    if up_next:
+        first = min(up_next)
+        print(f"\n下一片    {shard_name(first)}   （跑 translate.py next {bank} --locale {locale}）")
 
 
 def cmd_next(bank: str, locale: str, count: int, with_explanation: bool) -> None:
