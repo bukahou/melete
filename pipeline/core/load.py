@@ -115,8 +115,22 @@ class Loader:
         原文就此从库里消失（SAP-C02 的英文原文正是这么丢的，只剩 enriched.json 里有）。
         这里译文另存一张表，question.stem 永远是原文 ⇒ 同一道题可以同时供多种语言。
         """
-        rows = [(qmap[(it.get("session", ""), it["no"])], locale, it["stem"])
-                for it in tr_items if (it.get("session", ""), it["no"]) in qmap and it.get("stem")]
+        rows, orphan = [], []
+        for it in tr_items:
+            key = (it.get("session", ""), it["no"])
+            if key not in qmap:
+                # ⚠️ 译文有、库里没有这道题。⛔ 不静默丢弃 ——
+                # 它意味着有人白翻了一道题（#477 就是：0 选项，导入时被跳过）。
+                # 数量对不上而没人知道原因，是最难查的一类问题。
+                orphan.append(it["no"])
+                continue
+            if it.get("stem"):
+                rows.append((qmap[key], locale, it["stem"]))
+        if orphan:
+            print(f"⚠ 译文里有 {len(orphan)} 题在库中不存在，已跳过："
+                  f"{orphan[:8]}{' …' if len(orphan) > 8 else ''}")
+            print(f"  （多半是素材缺陷题被导入时跳过了 —— 那几题的译文属于白翻，"
+                  f"归属地是素材脏点清单）")
         self._exec("""INSERT INTO question_i18n (question_id, locale, stem, source)
                       VALUES (%s,%s,%s,'ai')
                       ON DUPLICATE KEY UPDATE stem=VALUES(stem)""", rows)
