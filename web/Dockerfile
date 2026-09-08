@@ -65,6 +65,18 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
+# 版本号 —— 由 CI 传入（release.yml 用镜像 tag 作为值）。
+#
+# ⭐ 刻意放在【运行阶段】而不是 build 阶段，也刻意【不】用 NEXT_PUBLIC_*：
+#   页面是 SSR，服务端在渲染时读 process.env 即可 ——
+#   ⓐ 不进客户端 bundle；ⓑ 不需要为了改版本号重新 build。
+#   这与本仓「API 地址只在服务端用、走运行时注入」是同一条原则。
+#
+# 默认值 dev 只用于本地 `docker build` 不传参的情况；
+# CI 一定传真值，⛔ 线上不会显示 dev。
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+
 # standalone 产物自带精简后的 node_modules 与 server.js
 COPY --from=build --chown=node:node /app/.next/standalone ./
 # 这两份 standalone 不含，必须单独拷 —— 少拷 static 的表现是页面能开但无样式
