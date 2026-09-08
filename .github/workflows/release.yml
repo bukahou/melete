@@ -197,8 +197,14 @@ jobs:
       # artifact 的文件名本身就是数据，省掉一次读写。
       - name: Export digest
         run: |
+          digest="${{ steps.build.outputs.digest }}"
           mkdir -p /tmp/digests
-          touch "/tmp/digests/${{ steps.build.outputs.digest }}"
+          # ⚠️⚠️ 必须剥掉 `sha256:` 前缀：upload-artifact 拒绝文件名里的【冒号】
+          #   （连同 " < > | * ? \r \n，理由是 NTFS 等文件系统不接受）。
+          #   实测报错：The path for one of the files in artifact is not valid: /sha256:6aa45ad…
+          #   ⭐ merge job 会把前缀拼回去（printf "…@sha256:%s"）——
+          #      两端必须对称，⛔ 改一端就要改另一端。
+          touch "/tmp/digests/${digest#sha256:}"
         shell: bash
 
       - uses: actions/upload-artifact@v4
