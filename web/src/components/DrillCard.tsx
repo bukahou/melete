@@ -1,17 +1,27 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Check, X } from "lucide-react";
 import { SOURCE_LABEL, type Choice, type DrillContext, type Reference, type ScheduleResult } from "@/lib/claims";
 import { QuestionBody } from "./QuestionBody";
 
 /**
- * 刷题卡片：作答 → 揭晓 → 四键自评。
+ * 刷题卡片：作答 → 揭晓（**此刻即落库**）→ 四键自评（可选）。
  *
- * 自评是 FSRS 标准四键（用户拍板，见 learning-flows.md）——
- * 它同时是「不清楚的」集合的来源（rating ≤ 2）与 P3 记忆调度的输入。
- * 点了自评才落记录：作答 + 自评是一条完整的 attempt，不拆两次写。
+ * ## ⭐ 2026-09-08：保存从「自评」解绑到「揭晓」
+ *
+ * 旧版是「点了自评才落记录」，理由是「作答+自评是一条完整的 attempt，不拆两次写」。
+ * ⚠️ 那条理由在数据上被证伪了：一个用户连续多天在用，attempt 表一条都没有 ——
+ * 她答完看一眼答案就翻页，从不点自评。界面上她看到的是「每天打开都从头开始」，
+ * 库里是 0 行，两边都不报错。
+ *
+ * ⇒ **作答本身就是事实**（答对没、用了多久、从哪个入口来），
+ *   它不该依赖一个可选的后续动作才能存活。
+ *   自评是增强（驱动 FSRS 调度），⛔ 不是保存的前提。
+ *
+ * 现在：揭晓 → POST /api/attempts（rating 留空）→ 拿到 attemptId；
+ *       点自评 → PATCH /api/attempts/{id} → 排卡片、返回「下次何时再见」。
  */
 
 const RATINGS: Array<{ value: number; label: string; hint: string; color: string }> = [
@@ -69,8 +79,14 @@ export function DrillCard({
   // ⚠️ expired 与 failed 分开：会话过期时重试【永远不会成功】，
   // 而原来两者都显示「记录失败了，可以重试」—— 用户会反复点，
   // 每一题都记不上，且完全不知道原因（刷了半小时白刷）。
+  //
+  // ⭐ saveState 现在描述的是【这次作答有没有被记下来】（揭晓时决定），
+  //    ⛔ 不再是「自评有没有提交成功」。
   const [saveState, setSaveState] =
     useState<"idle" | "saving" | "saved" | "failed" | "expired">("idle");
+  // 自评是可选的第二步，单独一套状态 —— 自评失败⛔不代表作答没记下来。
+  const [rateState, setRateState] = useState<"idle" | "saving" | "done" | "failed">("idle");
+  const attemptId = useRef<number | null>(null);
   const startedAt = useRef(Date.now());
 
   const chosen = picked.join("");
@@ -94,9 +110,20 @@ export function DrillCard({
   const [confirmed, setConfirmed] = useState(false);
   const revealed = pickCount === 1 ? ready : confirmed;
 
-  async function rate(rating: number) {
-    if (saveState === "saving" || saveState === "saved") return;
-    setRated(rating);
+  // ⭐ 揭晓那一刻就把作答记下来 —— ⛔ 不等自评。
+  //
+  // ⚠️ 用 ref 而不是看 saveState 做去重：揭晓在一次渲染里可能触发多次
+  // （单选的 ready 与多选的 confirmed 都会让 revealed 翻真），
+  // 而 setState 是异步的 —— 靠状态判重会漏，靠 ref 才是同步的。
+  const recorded = useRef(false);
+  useEffect(() => {
+    if (!revealed || recorded.current) return;
+    recorded.current = true;
+    void recordAnswer();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealed]);
+
+  async function recordAnswer() {
     setSaveState("saving");
     try {
       const res = await fetch("/api/attempts", {
@@ -105,14 +132,14 @@ export function DrillCard({
         body: JSON.stringify({
           questionId,
           chosen,
-          rating,
+          // ⛔ 不带 rating：这一步只记录「答了什么、对不对」
           durationMs: Date.now() - startedAt.current,
           context,
         }),
       });
       if (res.ok) {
-        const body = (await res.json().catch(() => null)) as { schedule?: ScheduleResult } | null;
-        setSchedule(body?.schedule ?? null);
+        const body = (await res.json().catch(() => null)) as { attemptId?: number } | null;
+        attemptId.current = body?.attemptId ?? null;
         setSaveState("saved");
       } else {
         // 401 = 会话过期（BFF 在转发前先查了会话）。重试无用，只能重新登录。
@@ -120,6 +147,31 @@ export function DrillCard({
       }
     } catch {
       setSaveState("failed");
+    }
+  }
+
+  /** 自评：给已记录的作答补 rating，换回 FSRS 调度结果。⛔ 失败不影响作答已被记录。 */
+  async function rate(rating: number) {
+    if (rateState === "saving" || rateState === "done") return;
+    setRated(rating);
+    // 作答还没记上（还在飞 / 失败 / 过期）就没有可补的对象
+    if (saveState !== "saved" || attemptId.current == null) return;
+    setRateState("saving");
+    try {
+      const res = await fetch(`/api/attempts/${attemptId.current}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rating }),
+      });
+      if (res.ok) {
+        const body = (await res.json().catch(() => null)) as { schedule?: ScheduleResult } | null;
+        setSchedule(body?.schedule ?? null);
+        setRateState("done");
+      } else {
+        setRateState("failed");
+      }
+    } catch {
+      setRateState("failed");
     }
   }
 
@@ -190,18 +242,20 @@ export function DrillCard({
             </div>
           )}
 
-          {/* 四键自评 —— 记录这次作答的必经之路 */}
+          {/* 四键自评 —— ⭐ 可选。作答在揭晓那一刻已经记下来了。 */}
           <div className="rounded-md border border-line bg-raise p-4">
             <p className="text-xs text-muted">
-              {saveState === "saved"
-                ? schedule
-                  ? nextLine(schedule)
-                  : "已记录。这个自评会进入你的复习计划。"
+              {saveState === "expired"
+                ? "登录已过期 —— 这一题没有记录下来。"
                 : saveState === "failed"
-                  ? "记录失败了，再点一次自评可以重试。"
-                  : saveState === "expired"
-                    ? "登录已过期 —— 这一题没有记录下来。"
-                    : "这道题你答得怎么样？—— 自评决定它何时回到你的复习队列"}
+                  ? "这一题没能记录下来（网络或服务异常）。"
+                  : saveState === "saving"
+                    ? "正在记录…"
+                    : schedule
+                      ? nextLine(schedule)
+                      : rateState === "failed"
+                        ? "作答已记录；自评没提交上，可以再点一次。"
+                        : "✓ 已记录。想让它进入复习计划的话，评一下掌握程度（可选）"}
             </p>
             {saveState === "expired" && (
               <div
@@ -243,7 +297,7 @@ export function DrillCard({
                   <button
                     key={r.value}
                     type="button"
-                    disabled={saveState === "saving" || saveState === "saved" || saveState === "expired"}
+                    disabled={saveState !== "saved" || rateState === "saving" || rateState === "done"}
                     onClick={() => rate(r.value)}
                     className="rounded-md border py-2.5 text-center transition-all disabled:cursor-default"
                     style={{
@@ -251,7 +305,7 @@ export function DrillCard({
                       background: active
                         ? `color-mix(in oklab, ${r.color} 12%, transparent)`
                         : "transparent",
-                      opacity: saveState === "saved" && !active ? 0.35 : 1,
+                      opacity: rateState === "done" && !active ? 0.35 : 1,
                     }}
                   >
                     <span className="block text-sm font-medium" style={active ? { color: r.color } : undefined}>
@@ -283,14 +337,15 @@ function DrillNav({
   nav: { prevHref?: string; skipHref?: string; nextHref?: string; shrinking: boolean };
   answered: boolean;
 }) {
-  // ⛔⛔ 未自评时【不能】把前进按钮做成主 CTA。
+  // ⭐ 2026-09-08：`answered` 现在的含义是【这次作答已落库】（揭晓即发生），
+  //   ⛔ 不再是「已自评」。所以揭晓之后前进就是正常的下一题，
+  //   「跳过（不记录）」只适用于**没答就走**的情况。
   //
-  // 2026-09-05 实测的后果：用户选完答案、看到揭晓，按钮已经是个醒目的
-  // 主色块写着「跳过」—— 看起来就是前进的路，点下去这道题**从未被记录**，
-  // FSRS 拿不到任何信号。当天浏览了一轮，attempt 表一条都没多。
+  // ⚠️ 保留下面这条视觉纪律 —— 它当初的教训依然成立：
+  // 2026-09-05 实测，把「跳过」做成醒目主色块，用户以为那就是前进的路，
+  // 点下去这题从未被记录，当天刷了一轮 attempt 表一条没多。
+  // ⇒ 真正会丢弃这道题的动作，⛔ 永远不能比记录它的动作更醒目。
   //
-  // ⚠️ 问题不在文案而在【视觉权重】：把丢弃这道题的动作做得比记录它更醒目。
-  // 现在未评分时它是一个安静的文字链接，并明写「不记录」。
   // ⚠️ 只有【会缩短的集合】才用 nextHref（它指向 offset 0）。
   // 普通浏览（无 mode）的下一题永远是 offset+1 —— 那种列表不会缩短。
   // 第一版写成 `nextHref ?? skipHref`，于是普通浏览也跳去了 offset 0。

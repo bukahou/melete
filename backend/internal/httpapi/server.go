@@ -257,7 +257,33 @@ func (s *Server) RecordAttempt(ctx context.Context, req api.RecordAttemptRequest
 	if err != nil {
 		return nil, s.fail("RecordAttempt", err)
 	}
-	out := api.RecordAttempt200JSONResponse{Correct: res.Correct}
+	out := api.RecordAttempt200JSONResponse{Correct: res.Correct, AttemptId: &res.AttemptID}
+	if res.Reference != nil {
+		out.Reference = toAPIReference(res.Reference)
+	}
+	out.Schedule = toAPISchedule(res)
+	return out, nil
+}
+
+// RateAttempt 给一条已记录的作答补上自评。
+//
+// ⭐ 这是「揭晓即记录」拆出来的第二步：作答已经在 RecordAttempt 落库了，
+// 这里只补 rating 并据此排 FSRS 卡片。⛔ 不再有「不评分就什么都不存」。
+func (s *Server) RateAttempt(ctx context.Context, req api.RateAttemptRequestObject) (api.RateAttemptResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "RateAttempt")
+	if err != nil {
+		return nil, err
+	}
+	res, err := s.studies.RateAttempt(ctx, accountID, req.Id, req.Body.Rating)
+	if err != nil {
+		// ⚠️ 不存在与不属于本账号合并成同一个 404（见 study.ErrAttemptNotFound）——
+		// 区分开就等于确认「这个 id 存在，只是不是你的」。
+		if errors.Is(err, study.ErrAttemptNotFound) {
+			return api.RateAttempt404JSONResponse{NotFoundJSONResponse: notFound("作答记录不存在")}, nil
+		}
+		return nil, s.fail("RateAttempt", err)
+	}
+	out := api.RateAttempt200JSONResponse{Correct: res.Correct, AttemptId: &res.AttemptID}
 	if res.Reference != nil {
 		out.Reference = toAPIReference(res.Reference)
 	}

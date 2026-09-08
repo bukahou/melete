@@ -328,12 +328,37 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 记录一次作答（对错由服务端按参考答案判定） */
+        /**
+         * 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
+         * @description ⭐ 2026-09-08 起：作答在**揭晓答案那一刻**就记录，⛔ 不再依赖自评。
+         *     rating 不再必填 —— 不评分也留下完整的一条 attempt（对错、用时、出处）。
+         *     自评是可选增强，通过 `PATCH /attempts/{id}` 补上，届时才驱动 FSRS 卡片调度。
+         */
         post: operations["recordAttempt"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/attempts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 给一条已记录的作答补上自评（驱动 FSRS 卡片调度）
+         * @description 只更新自己的 attempt（服务端按会话账号校验归属）。补上 rating 后才排卡片、返回调度结果。
+         */
+        patch: operations["rateAttempt"];
         trace?: never;
     };
     "/me/progress": {
@@ -644,12 +669,24 @@ export interface components {
             questionId: number;
             /** @description 排序后的字母集合，如 "AB" */
             chosen: string;
-            /** @description FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy */
-            rating: number;
+            /**
+             * @description ⭐ 可选。FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy。
+             *     揭晓即记录不需要它；一般留空、稍后经 PATCH /attempts/{id} 补。
+             */
+            rating?: number;
             durationMs?: number;
             context?: components["schemas"]["DrillContext"];
         };
+        RatingInput: {
+            /** @description FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy */
+            rating: number;
+        };
         AttemptResult: {
+            /**
+             * Format: int64
+             * @description 这条作答的 id —— 供随后 PATCH 补自评
+             */
+            attemptId?: number;
             /** @description 服务端按参考答案判定 */
             correct: boolean;
             reference?: components["schemas"]["Reference"];
@@ -1443,6 +1480,33 @@ export interface operations {
         };
         responses: {
             /** @description 已记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttemptResult"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rateAttempt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RatingInput"];
+            };
+        };
+        responses: {
+            /** @description 已评分 */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -14,11 +14,14 @@ export async function POST(req: Request) {
   const body = (await req.json()) as {
     questionId: number;
     chosen: string;
-    rating: number;
+    rating?: number;
     durationMs?: number;
     context?: DrillContext;
   };
-  if (!body?.questionId || !body?.chosen || !body?.rating) {
+  // ⭐ 2026-09-08 起 rating 不再是必填 —— 作答在揭晓那一刻就记录。
+  // ⚠️ 曾经这里把 !body.rating 也算作「参数不完整」而 400，
+  //    正是「不评分 = 什么都不存」那条链上的一环。
+  if (!body?.questionId || !body?.chosen) {
     return NextResponse.json({ message: "参数不完整" }, { status: 400 });
   }
   // 不再传 accountId —— api 从转发的会话 JWT 里自己取，web 无从冒充他人
