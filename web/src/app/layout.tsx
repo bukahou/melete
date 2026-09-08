@@ -4,7 +4,7 @@ import Image from "next/image";
 import logo from "./icon.png";
 import { Noto_Serif_SC } from "next/font/google";
 import { LogOut } from "lucide-react";
-import { accessToken } from "@/lib/auth";
+import { readAccessToken } from "@/lib/session";
 import "./globals.css";
 
 const notoSerif = Noto_Serif_SC({
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // 登录态只用于决定是否显示登出入口；用户名从 token 的 cookie 拿不到，
   // 显示名改由页面按需取（避免每个页面都为了 header 多打一次 API）
-  const signedIn = Boolean(await accessToken());
+  const signedIn = Boolean(await readAccessToken());
   return (
     <html lang="zh-CN" className={notoSerif.variable}>
       <body className="flex min-h-screen flex-col overflow-x-clip">
