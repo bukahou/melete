@@ -436,7 +436,11 @@ paths:
   /attempts:
     post:
       tags: [study]
-      summary: 记录一次作答（对错由服务端按参考答案判定）
+      summary: 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
+      description: |
+        ⭐ 2026-09-08 起：作答在**揭晓答案那一刻**就记录，⛔ 不再依赖自评。
+        rating 不再必填 —— 不评分也留下完整的一条 attempt（对错、用时、出处）。
+        自评是可选增强，通过 `PATCH /attempts/{id}` 补上，届时才驱动 FSRS 卡片调度。
       operationId: recordAttempt
       requestBody:
         required: true
@@ -446,6 +450,31 @@ paths:
       responses:
         "200":
           description: 已记录
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AttemptResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /attempts/{id}:
+    patch:
+      tags: [study]
+      summary: 给一条已记录的作答补上自评（驱动 FSRS 卡片调度）
+      description: |
+        只更新自己的 attempt（服务端按会话账号校验归属）。补上 rating 后才排卡片、返回调度结果。
+      operationId: rateAttempt
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RatingInput" }
+      responses:
+        "200":
+          description: 已评分
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AttemptResult" }
@@ -797,7 +826,7 @@ components:
 
     AttemptInput:
       type: object
-      required: [questionId, chosen, rating]
+      required: [questionId, chosen]
       properties:
         questionId: { type: integer, format: int64 }
         chosen:     { type: string, description: 排序后的字母集合，如 "AB" }
@@ -805,14 +834,27 @@ components:
           type: integer
           minimum: 1
           maximum: 4
-          description: FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy
+          description: |
+            ⭐ 可选。FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy。
+            揭晓即记录不需要它；一般留空、稍后经 PATCH /attempts/{id} 补。
         durationMs: { type: integer }
         context:    { $ref: "#/components/schemas/DrillContext" }
+
+    RatingInput:
+      type: object
+      required: [rating]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 4
+          description: FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy
 
     AttemptResult:
       type: object
       required: [correct]
       properties:
+        attemptId: { type: integer, format: int64, description: 这条作答的 id —— 供随后 PATCH 补自评 }
         correct: { type: boolean, description: 服务端按参考答案判定 }
         reference: { $ref: "#/components/schemas/Reference" }
         schedule: { $ref: "#/components/schemas/ScheduleResult" }

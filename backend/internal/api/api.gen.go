@@ -358,12 +358,16 @@ type AttemptInput struct {
 	DurationMs *int          `json:"durationMs,omitempty"`
 	QuestionId int64         `json:"questionId"`
 
-	// Rating FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy
-	Rating int `json:"rating"`
+	// Rating ⭐ 可选。FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy。
+	// 揭晓即记录不需要它；一般留空、稍后经 PATCH /attempts/{id} 补。
+	Rating *int `json:"rating,omitempty"`
 }
 
 // AttemptResult defines model for AttemptResult.
 type AttemptResult struct {
+	// AttemptId 这条作答的 id —— 供随后 PATCH 补自评
+	AttemptId *int64 `json:"attemptId,omitempty"`
+
 	// Correct 服务端按参考答案判定
 	Correct bool `json:"correct"`
 
@@ -639,6 +643,12 @@ type QuestionSummary struct {
 
 // QuestionSummaryKind defines model for QuestionSummary.Kind.
 type QuestionSummaryKind string
+
+// RatingInput defines model for RatingInput.
+type RatingInput struct {
+	// Rating FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy
+	Rating int `json:"rating"`
+}
 
 // Reference 判对错用的参考答案。优先级 ai_verdict > community_vote > bank_label ——
 // AI 是唯一看过全部信息并给出理由的来源；题库标注是四个来源里
@@ -955,6 +965,9 @@ type GetMyTagStatsParamsType string
 // RecordAttemptJSONRequestBody defines body for RecordAttempt for application/json ContentType.
 type RecordAttemptJSONRequestBody = AttemptInput
 
+// RateAttemptJSONRequestBody defines body for RateAttempt for application/json ContentType.
+type RateAttemptJSONRequestBody = RatingInput
+
 // SendEmailChangeCodeJSONRequestBody defines body for SendEmailChangeCode for application/json ContentType.
 type SendEmailChangeCodeJSONRequestBody SendEmailChangeCodeJSONBody
 
@@ -990,9 +1003,12 @@ type SsoExchangeJSONRequestBody = SsoExchange
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// 记录一次作答（对错由服务端按参考答案判定）
+	// 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
 	// (POST /attempts)
 	RecordAttempt(w http.ResponseWriter, r *http.Request)
+	// 给一条已记录的作答补上自评（驱动 FSRS 卡片调度）
+	// (PATCH /attempts/{id})
+	RateAttempt(w http.ResponseWriter, r *http.Request, id int64)
 	// 给新邮箱发验证码（改邮箱第一步）
 	// (POST /auth/email/code)
 	SendEmailChangeCode(w http.ResponseWriter, r *http.Request)
@@ -1068,9 +1084,15 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
-// 记录一次作答（对错由服务端按参考答案判定）
+// 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
 // (POST /attempts)
 func (_ Unimplemented) RecordAttempt(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 给一条已记录的作答补上自评（驱动 FSRS 卡片调度）
+// (PATCH /attempts/{id})
+func (_ Unimplemented) RateAttempt(w http.ResponseWriter, r *http.Request, id int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1232,6 +1254,38 @@ func (siw *ServerInterfaceWrapper) RecordAttempt(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RecordAttempt(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RateAttempt operation middleware
+func (siw *ServerInterfaceWrapper) RateAttempt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RateAttempt(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2017,6 +2071,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/attempts", wrapper.RecordAttempt)
 	})
 	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/attempts/{id}", wrapper.RateAttempt)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/auth/email/code", wrapper.SendEmailChangeCode)
 	})
 	r.Group(func(r chi.Router) {
@@ -2118,6 +2175,43 @@ func (response RecordAttempt200JSONResponse) VisitRecordAttemptResponse(w http.R
 type RecordAttempt404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response RecordAttempt404JSONResponse) VisitRecordAttemptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RateAttemptRequestObject struct {
+	Id   int64 `json:"id"`
+	Body *RateAttemptJSONRequestBody
+}
+
+type RateAttemptResponseObject interface {
+	VisitRateAttemptResponse(w http.ResponseWriter) error
+}
+
+type RateAttempt200JSONResponse AttemptResult
+
+func (response RateAttempt200JSONResponse) VisitRateAttemptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RateAttempt404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RateAttempt404JSONResponse) VisitRateAttemptResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -2880,9 +2974,12 @@ func (response GetQuestion404JSONResponse) VisitGetQuestionResponse(w http.Respo
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-	// 记录一次作答（对错由服务端按参考答案判定）
+	// 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
 	// (POST /attempts)
 	RecordAttempt(ctx context.Context, request RecordAttemptRequestObject) (RecordAttemptResponseObject, error)
+	// 给一条已记录的作答补上自评（驱动 FSRS 卡片调度）
+	// (PATCH /attempts/{id})
+	RateAttempt(ctx context.Context, request RateAttemptRequestObject) (RateAttemptResponseObject, error)
 	// 给新邮箱发验证码（改邮箱第一步）
 	// (POST /auth/email/code)
 	SendEmailChangeCode(ctx context.Context, request SendEmailChangeCodeRequestObject) (SendEmailChangeCodeResponseObject, error)
@@ -3007,6 +3104,39 @@ func (sh *strictHandler) RecordAttempt(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RecordAttemptResponseObject); ok {
 		if err := validResponse.VisitRecordAttemptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RateAttempt operation middleware
+func (sh *strictHandler) RateAttempt(w http.ResponseWriter, r *http.Request, id int64) {
+	var request RateAttemptRequestObject
+
+	request.Id = id
+
+	var body RateAttemptJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RateAttempt(ctx, request.(RateAttemptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RateAttempt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RateAttemptResponseObject); ok {
+		if err := validResponse.VisitRateAttemptResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
