@@ -178,6 +178,27 @@ def load_glossary(bank: str, locale: str) -> dict:
     return {"terms": terms, "keep": list(g.get("keep", [])), "not_terms": not_terms}
 
 
+def load_untranslated(bank: str, locale: str) -> dict:
+    """
+    ⭐ 有意【不翻】的题：题号 → 理由。
+
+    ⚠️ 这不是「豁免」，两者的差别是结构性的，别混：
+        豁免      = 翻了，但跳过校验        ⇒ 译文进库，问题【看不见】
+        untranslated = 【不翻】，并记下理由  ⇒ 界面显示原文并标注，损失【看得见】
+    ⇒ 它没法被用来把一条可疑译文塞过闸门 —— 用它的代价就是那道题没有译文，
+      而覆盖率统计会一直显示这个缺口。**自限的机制才是安全的机制。**
+
+    为什么需要它：#627 被判定为「术语表表达不了」而不翻之后，那一片会【永远】校验失败。
+    ⚠️ 一个永远亮着的红灯等于没有红灯 —— 与「误报比漏报更伤」同一条道理。
+    ⇒ 有意的缺口必须能被表达成一个绿色状态，否则它会淹掉真正的失败。
+    """
+    p = REPO / "pipeline" / "banks" / bank / f"untranslated.{locale}.json"
+    if not p.exists():
+        return {}
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    return {int(k): v for k, v in raw.items() if not k.startswith("_")}
+
+
 def shard_dir(bank: str, locale: str) -> Path:
     return bank_dir(bank) / "translated" / locale
 
@@ -341,7 +362,7 @@ def _standalone(term: str, text: str) -> bool:
     return re.search(rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", text) is not None
 
 
-def check_shard(path: Path, qmap: dict, glo: dict) -> list[str]:
+def check_shard(path: Path, qmap: dict, glo: dict, skip: dict | None = None) -> list[str]:
     errs = []
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
@@ -351,7 +372,8 @@ def check_shard(path: Path, qmap: dict, glo: dict) -> list[str]:
     if not isinstance(items, list):
         return ["items 缺失或不是数组"]
     rng = doc.get("range")
-    want = sorted(n for n in qmap if rng and rng[0] <= n <= rng[1])
+    skip = skip or {}
+    want = sorted(n for n in qmap if rng and rng[0] <= n <= rng[1] and n not in skip)
     got = sorted(it.get("no") for it in items)
     if got != want:
         missing, extra = set(want) - set(got), set(got) - set(want)
@@ -371,6 +393,7 @@ def _scan(bank: str, locale: str):
     doc = load_enriched(bank)
     qmap = {q["no"]: q for q in doc["questions"]}
     glo = load_glossary(bank, locale)
+    glo["_skip"] = load_untranslated(bank, locale)
     # 服务名从数据推，与题库自动同步；glossary 的 keep 是补充
     glo["keep"] = sorted(set(glo["keep"]) | set(derive_keep(doc)), key=lambda x: (-len(x), x))
     d = shard_dir(bank, locale)
@@ -387,7 +410,7 @@ def cmd_status(bank: str, locale: str) -> None:
         if not p.exists():
             todo.append(r)
             continue
-        broken = bool(check_shard(p, qmap, glo))
+        broken = bool(check_shard(p, qmap, glo, glo["_skip"]))
         (bad if broken else done).append(r)
         for it in json.loads(p.read_text(encoding="utf-8")).get("items", []):
             # ⚠️ 未填满的片也计进来。片没填满 = 校验不过 = 不算「完成」，
@@ -398,7 +421,8 @@ def cmd_status(bank: str, locale: str) -> None:
             n_stem += n_part
             if it.get("explanation"):
                 n_expl += 1
-    total = len(qmap)
+    skip = glo["_skip"]
+    total = len(qmap) - len(skip)
     n_has_expl = sum(1 for q in qmap.values() if explanation_of(q))
     print(f"题库      {bank}   目标语言 {locale}")
     print(f"术语表    {len(glo['terms'])} 条约定译词 · {len(glo['keep'])} 个保留原样的名字")
@@ -407,6 +431,9 @@ def cmd_status(bank: str, locale: str) -> None:
     if bad:
         print(f"          （其中 {len(bad)} 片未填满，算在题面进度里但不算完成片）")
     print(f"解析进度  {n_expl}/{n_has_expl} 题  ({n_expl/max(n_has_expl,1)*100:.1f}%)   ← 缺了回退中文并标注")
+    if skip:
+        print(f"有意不翻  {len(skip)} 题 —— {sorted(skip)}（理由见 untranslated.{locale}.json，"
+              f"界面会显示原文并标注）")
     print(f"校验失败  {len(bad)} 片" + (f"  → {[shard_name(r) for r in bad]}" if bad else ""))
     print(f"待处理    {len(todo)} 片")
     # ⚠️ 「下一片」必须与 cmd_next 取的是【同一片】。
@@ -422,7 +449,7 @@ def cmd_status(bank: str, locale: str) -> None:
 def cmd_next(bank: str, locale: str, count: int, with_explanation: bool) -> None:
     doc, qmap, glo, d = _scan(bank, locale)
     todo = [r for r in shard_ranges(list(qmap))
-            if not (d / shard_name(r)).exists() or check_shard(d / shard_name(r), qmap, glo)]
+            if not (d / shard_name(r)).exists() or check_shard(d / shard_name(r), qmap, glo, glo["_skip"])]
     if not todo:
         print(f"✓ 全部分片已完成且校验通过，可以跑 merge 了")
         return
@@ -573,7 +600,7 @@ def cmd_check(bank: str, locale: str) -> None:
         sys.exit(f"✗ 还没有任何分片（{rel(d)}）")
     total = 0
     for p in files:
-        errs = check_shard(p, qmap, glo)
+        errs = check_shard(p, qmap, glo, glo["_skip"])
         total += len(errs)
         if errs:
             print(f"✗ {p.name}  ({len(errs)} 个问题)")
@@ -601,7 +628,7 @@ def cmd_merge(bank: str, locale: str, partial: bool = False) -> None:
     doc, qmap, glo, d = _scan(bank, locale)
     items, problems, dropped = {}, 0, 0
     for p in sorted(d.glob("*.json")):
-        errs = check_shard(p, qmap, glo)
+        errs = check_shard(p, qmap, glo, glo["_skip"])
         if errs and not partial:
             problems += 1
             print(f"✗ {p.name} 校验未过，已跳过（{len(errs)} 个问题）")
