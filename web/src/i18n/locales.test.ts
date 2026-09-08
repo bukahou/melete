@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { LOCALES, isLocale, pickLocale } from "./locales";
+import { LOCALES, isLocale, needsSourceNotice, pickLocale } from "./locales";
 
 describe("pickLocale", () => {
   it.each([
@@ -13,7 +13,7 @@ describe("pickLocale", () => {
     ["*", null, "通配不算表达偏好"],
     ["JA", "ja", "大小写不敏感"],
     ["ja;q=oops", "ja", "q 解析失败按 1.0 —— 脏参数不该让整个语言消失"],
-  ])("Accept-Language %j → %j（%s）", (header, want) => {
+  ] as Array<[string, string | null, string]>)("Accept-Language %j → %j（%s）", (header, want) => {
     expect(pickLocale(header)).toBe(want);
   });
 
@@ -75,5 +75,23 @@ describe("isLocale", () => {
     expect(isLocale("ja; DROP")).toBe(false);
     expect(isLocale("")).toBe(false);
     expect(isLocale(undefined)).toBe(false);
+  });
+});
+
+describe("needsSourceNotice", () => {
+  it("请求 ja、题库源语言 zh、没有译文 → 提示", () => {
+    expect(needsSourceNotice("zh", "ja", false)).toBe(true);
+  });
+  it("有译文 → 不提示", () => {
+    expect(needsSourceNotice("zh", "ja", true)).toBe(false);
+  });
+  // ⚠️ 这条是真正容易错的：请求的就是源语言时 localized 也是 false，
+  // 只看它就会对着【正确的原文】喊「本题暂无该语言版本」。
+  it("请求的就是源语言 → ⛔ 不提示", () => {
+    expect(needsSourceNotice("zh", "zh", false)).toBe(false);
+  });
+  it("拿不到源语言 → 宁可漏提示，也不误报", () => {
+    expect(needsSourceNotice(undefined, "ja", false)).toBe(false);
+    expect(needsSourceNotice(null, "ja", undefined)).toBe(false);
   });
 });

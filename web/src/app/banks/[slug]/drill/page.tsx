@@ -7,6 +7,7 @@ import { DrillCard } from "@/components/DrillCard";
 import { Markdown } from "@/components/Markdown";
 import { TagChip } from "@/components/TagChip";
 import { getLocale, getTranslations } from "next-intl/server";
+import { needsSourceNotice } from "@/i18n/locales";
 
 type Search = {
   i?: string;
@@ -133,8 +134,8 @@ export default async function DrillPage({
   const q = await getQuestion(page.items[0].id);
   const reference = q.reference ?? null;
   // ⭐ 请求的语言没有译文时【明说】，⛔ 不静默把原文当译文端上来。
-  // 请求的就是源语言时不提示 —— 那本来就不是「缺译文」。
-  const untranslated = q.sourceLocale != null && q.sourceLocale !== locale && !q.localized;
+  // 判断本身在 needsSourceNotice 里（有测试锁住「请求源语言时不该提示」这条）。
+  const untranslated = needsSourceNotice(q.sourceLocale, locale, q.localized);
 
   // 出处：用户是从哪个入口进来做这题的。mode 优先；多标签时记第一个（入口只会传一个）。
   // unseen 与不带条件的 all 视同「顺序刷」，其余都是专项。

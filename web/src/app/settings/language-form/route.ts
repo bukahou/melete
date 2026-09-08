@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       path: "/",
       maxAge: 60 * 60 * 24 * 365,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: oidc.origin.startsWith("https"),
     });
   }
   return res;

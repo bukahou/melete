@@ -111,5 +111,14 @@ export const config = {
   // 被 307 到登录页，永远加载不出来。
   //
   // ⚠️ /auth/ 的豁免同时也让 /auth/renew 不会被本墙拦成循环（它要在无 access 时可达）。
-  matcher: ["/((?!auth/|_next/|favicon\\.ico|icon\\.|apple-icon\\.|manifest\\.).*)"],
+  //
+  // ⭐ 语言切换的两个端点也放行，且【只有这两条完整路径】——
+  // 登录页本身要能换语言（看不懂中文的人正是在那一页被挡住的），
+  // 而它们只写一个 cookie，不读也不写任何账号数据。
+  // ⚠️ 刻意写成完整路径而不是 `settings/language` 前缀：前缀豁免意味着
+  // 「以后每一个加在这个前缀下的端点都默认公开」，而加端点的人不会来读这里 ——
+  // 与后端 RequireUserExcept 从前缀改成完整路径是同一条教训。
+  matcher: [
+    "/((?!auth/|_next/|favicon\\.ico|icon\\.|apple-icon\\.|manifest\\.|settings/language$|settings/language-form$).*)",
+  ],
 };

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { oidc } from "@/lib/auth";
 import { LOCALE_COOKIE, isLocale } from "@/i18n/locales";
 
 /**
@@ -23,8 +24,9 @@ export async function POST(req: Request) {
     maxAge: 60 * 60 * 24 * 365,
     sameSite: "lax",
     // ⛔ 不设 httpOnly：这不是凭据，且客户端切换器要读它做当前值高亮。
-    // ⚠️ secure 跟随部署：本地 http 开发时设了会写不进去。
-    secure: process.env.NODE_ENV === "production",
+    // ⚠️ secure 跟着【实际部署的协议】走，⛔ 不看 NODE_ENV ——
+    // 与 session.ts 的 cookie 同一条判据（`next start` 在本地也是 production）。
+    secure: oidc.origin.startsWith("https"),
   });
   return res;
 }

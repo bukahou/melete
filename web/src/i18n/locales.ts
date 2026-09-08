@@ -55,3 +55,22 @@ export function pickLocale(header: string | null): Locale | null {
   }
   return best;
 }
+
+/**
+ * needsSourceNotice 判断「要不要告诉用户这段正文不是译文」。
+ *
+ * ⚠️ 只看 localized 是不够的：请求源语言本身时它也是 false，
+ * 那时提示「本题暂无该语言版本」是【错的】—— 用户看的就是原文，没有缺任何东西。
+ * 所以必须同时比对题库源语言。
+ *
+ * sourceLocale 可能缺（旧版本 API / 未来的其它内容类型）—— 缺就不提示：
+ * ⭐ 宁可漏一次提示，也不要对着正确的原文喊「没有译文」。
+ */
+export function needsSourceNotice(
+  sourceLocale: string | undefined | null,
+  requested: string,
+  localized: boolean | undefined,
+): boolean {
+  if (!sourceLocale || sourceLocale === requested) return false;
+  return !localized;
+}
