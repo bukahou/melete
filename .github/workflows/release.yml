@@ -1,0 +1,332 @@
+## ============================================================
+## release.yml — Melete CI 发布
+## ============================================================
+## 分支决定环境（同一套流程，两个出口）：
+##   push dev  → tag `dev-<sha7>`      → 写 config 仓 dev/  → Argo 【自动】同步
+##   push main → tag `v1.0.0-<sha7>`   → 写 config 仓 prod/ → Argo 【手动】SYNC
+##
+## ⭐ latest 只在 main 打，dev 不推。
+##   各 Deployment 清单里写着 image:latest 作为默认值（实际部署时被 kustomization
+##   的 images 段覆盖），让 latest 跟随【生产】版本，dev 的实验构建不污染它。
+##   ⛔ 部署清单【绝不能】依赖 latest 做版本控制 —— config 仓 kustomization 里的
+##      不可变 tag 才是唯一事实来源，否则「线上跑的是哪个 commit」答不出来，也没法回滚。
+##
+## ⭐ 为什么拆 amd64 / arm64 两个 job（与 geass-v3 刻意不同）：
+##   拆的目的是逃离 QEMU（在 amd64 上模拟 arm64 编译，慢 5-10 倍，实测有挂到 53 分钟的）。
+##   geass-v3 用另一条路逃同一个问题（Dockerfile 全部 FROM --platform=$BUILDPLATFORM
+##   交叉编译），它那么选是因为**它是私有仓，arm64 runner 按分钟计费**。
+##   ⭐ 本仓 2026-09-07 转公开后 arm64 runner 免费 ⇒ 原生构建更直接：
+##      不必要求每个 Dockerfile 都写对交叉编译（web/Dockerfile 就没写），
+##      而且两个架构并行，墙钟时间反而更短。
+##
+## ⚠️ 本仓前端【没有】NEXT_PUBLIC_*（API 地址只在服务端用，走 ConfigMap 运行时注入）
+##    ⇒ dev 与 prod 共用同一个镜像内容，只是 tag 不同。⛔ 不像 geass 那样要按环境重建前端。
+##
+## ⛔ 需要的 secret（3 个）：
+##   DOCKERHUB_USERNAME · DOCKERHUB_TOKEN · CONFIG_REPO_TOKEN
+##
+## ⭐ config 路径【写死】在下面，与 geass-v3 / atlhyper 一致。
+##   曾经打算把它放进 secret（路径含集群名，而本仓公开）——
+##   2026-09-08 用户裁定不必：拿 §1.5 两条判据测集群名，①定位→内部名不可达、
+##   ②攻击→答不出动作，两条都不命中；且它早已随 atlhyper（PUBLIC）的同名
+##   workflow 公开。⇒ 为已公开的值加一层 secret 只是徒增复杂度。
+##   （重判记录见 ~/.claude/refs/identity-map.md 第 2 节）
+## ============================================================
+
+name: release
+
+on:
+  push:
+    branches: [dev, main]
+    # 纯文档改动不触发发布。
+    # ⚠️ 这里是【唯一】该做 .md 排除的地方 —— ⛔ 不要往下面 paths-filter 的
+    #    各 filter 里塞 '!**/*.md'：paths-filter 默认 predicate-quantifier 是 some，
+    #    「不是 markdown」这条会被任何非 .md 改动满足，于是每个带它的 filter 全部命中，
+    #    把「排除」写成了「包含」。（geass-v3 实测踩过，全库重建。）
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+  workflow_dispatch:
+    inputs:
+      images:
+        description: "强制构建这些镜像（逗号分隔：api,web）。留空 = 按 path filter 判断"
+        required: false
+        default: ""
+
+concurrency:
+  # ⭐ 带 ref：dev 与 main 的发布互不排队（两个环境本来就该能并行发）
+  group: release-${{ github.ref }}
+  cancel-in-progress: false # 发布不取消，让每次合并完整跑完
+
+env:
+  VERSION: v1.0.0
+  REGISTRY: docker.io
+  IMAGE_NAMESPACE: bukahou
+
+jobs:
+  # ---------------------------------------------------------
+  # ① plan —— 分支决定环境 + 判断哪些镜像要建
+  # ---------------------------------------------------------
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.pick.outputs.images }}
+      env_dir: ${{ steps.env.outputs.dir }}
+      tag: ${{ steps.env.outputs.tag }}
+      push_latest: ${{ steps.env.outputs.push_latest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Short SHA
+        id: sha
+        run: echo "sha7=$(echo ${{ github.sha }} | cut -c1-7)" >> "$GITHUB_OUTPUT"
+
+      # ⭐ 分支 → 环境。三个输出一次定完，后面各 job 只消费、不再判断分支 ——
+      #    避免「有的 job 判断了有的没判断」这种半截分流。
+      - name: Resolve environment
+        id: env
+        run: |
+          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            echo "dir=prod"                                   >> "$GITHUB_OUTPUT"
+            echo "tag=${VERSION}-${{ steps.sha.outputs.sha7 }}" >> "$GITHUB_OUTPUT"
+            echo "push_latest=true"                           >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=dev"                                    >> "$GITHUB_OUTPUT"
+            echo "tag=dev-${{ steps.sha.outputs.sha7 }}"      >> "$GITHUB_OUTPUT"
+            echo "push_latest=false"                          >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Path filter
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          # ⚠️⚠️ base 必须显式指定，⛔ 不能省。
+          #   paths-filter 的 base 默认是【仓库默认分支】(main)，只有当 base 与
+          #   被推送分支相同时它才改用「push 前的那个 commit」比较。
+          #   所以在 main 上跑没问题（默认值恰好等于被推分支），但在 dev 上跑会变成
+          #   「dev 与 main 的全部差异」—— dev 领先多少就算进来多少，过滤形同虚设。
+          #   （atlhyper 实测踩过。）
+          base: ${{ github.ref_name }}
+          filters: |
+            api:
+              - 'backend/**'
+              - 'db/**'
+              - '.github/workflows/release.yml'
+            web:
+              - 'web/**'
+              - '.github/workflows/release.yml'
+
+      # 手动强制构建：path filter 只在文件真的改了时才建（这是对的），
+      # 但有几种情况需要在【没有代码改动】时补一次：
+      #   · 新环境刚建好，某个镜像还没有对应 tag
+      #   · 上游基础镜像有安全更新，源码没动
+      #   · 调 CI 本身时只想跑一个镜像
+      # ⛔ 替代做法是「改一行注释骗触发」，那会往仓里塞无意义提交 —— 不做。
+      - name: Pick images
+        id: pick
+        env:
+          FORCE: ${{ github.event.inputs.images }}
+        run: |
+          if [ -n "${FORCE}" ]; then
+            arr=$(echo "${FORCE}" | tr ',' '\n' | sed 's/^ *//;s/ *$//' | grep -v '^$' | jq -R . | jq -sc .)
+            echo "⭐ 手动指定：$arr"
+          else
+            arr=$(jq -nc '[
+              (if $api == "true" then "api" else empty end),
+              (if $web == "true" then "web" else empty end)
+            ]' --arg api '${{ steps.filter.outputs.api }}' --arg web '${{ steps.filter.outputs.web }}')
+            echo "改动的镜像：$arr"
+          fi
+          echo "images=$arr" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------
+  # ② build —— 每个镜像 × 每个架构，各自在【原生】机器上构建，push by digest
+  #    此时还没有 tag，只有 digest；tag 在 ③ 合并 manifest 时才打。
+  # ---------------------------------------------------------
+  build:
+    name: build ${{ matrix.image }} / ${{ matrix.arch }}
+    needs: plan
+    if: needs.plan.outputs.images != '[]' && needs.plan.outputs.images != ''
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.plan.outputs.images) }}
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      # ⛔ 刻意【没有】setup-qemu：每个架构都在自己的原生 runner 上跑，
+      #    QEMU 从不参与任何一行代码的执行。装它只是每 job 白花约 10 秒。
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Resolve build context
+        id: ctx
+        run: |
+          case "${{ matrix.image }}" in
+            api) echo "context=backend"                        >> "$GITHUB_OUTPUT"
+                 echo "file=backend/deploy/docker/Dockerfile"   >> "$GITHUB_OUTPUT"
+                 echo "buildargs="                              >> "$GITHUB_OUTPUT" ;;
+            # ⚠️ APP_VERSION 只传给 web —— backend 的 Dockerfile 不声明这个 ARG，
+            #    传了会得到「One or more build-args were not consumed」警告。
+            #    ⛔ 别为了消掉警告去给 backend 加一个它用不到的 ARG。
+            web) echo "context=web"                            >> "$GITHUB_OUTPUT"
+                 echo "file=web/Dockerfile"                     >> "$GITHUB_OUTPUT"
+                 echo "buildargs=APP_VERSION=${{ needs.plan.outputs.tag }}" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "::error::未知镜像 ${{ matrix.image }}"; exit 1 ;;
+          esac
+
+      - name: Build & push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ steps.ctx.outputs.context }}
+          file: ${{ steps.ctx.outputs.file }}
+          # web 拿到 APP_VERSION=<镜像 tag>；api 这里是空串（见上）
+          build-args: ${{ steps.ctx.outputs.buildargs }}
+          platforms: linux/${{ matrix.arch }}
+          # ⚠️ 关掉 attestation，否则 manifest list 里会混进非架构条目，
+          #    imagetools 合并时会把它们也当成平台，拉取端可能选中一个空壳。
+          provenance: false
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/melete-${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.image }}-${{ matrix.arch }},mode=max
+
+      # digest 要传给 ③ 才能合 manifest。用【文件名】承载，内容为空即可 ——
+      # artifact 的文件名本身就是数据，省掉一次读写。
+      - name: Export digest
+        run: |
+          digest="${{ steps.build.outputs.digest }}"
+          mkdir -p /tmp/digests
+          # ⚠️⚠️ 必须剥掉 `sha256:` 前缀：upload-artifact 拒绝文件名里的【冒号】
+          #   （连同 " < > | * ? \r \n，理由是 NTFS 等文件系统不接受）。
+          #   实测报错：The path for one of the files in artifact is not valid: /sha256:6aa45ad…
+          #   ⭐ merge job 会把前缀拼回去（printf "…@sha256:%s"）——
+          #      两端必须对称，⛔ 改一端就要改另一端。
+          touch "/tmp/digests/${digest#sha256:}"
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.image }}-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---------------------------------------------------------
+  # ③ merge —— 把两个架构的 digest 合成一个 manifest list 并打 tag
+  # ---------------------------------------------------------
+  merge:
+    name: merge ${{ matrix.image }}
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.plan.outputs.images) }}
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - name: Create manifest list & push
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/melete-${{ matrix.image }}
+          TAG: ${{ needs.plan.outputs.tag }}
+        run: |
+          cd /tmp/digests
+          # ⭐ 阳性对照：digest 文件必须正好 2 个（amd64 + arm64）。
+          #    少一个就说明有架构没建成而 build job 却没红 —— 那会推出一个
+          #    只覆盖单架构的 manifest，在混合架构集群上表现为 exec format error。
+          n=$(ls -1 | wc -l)
+          echo "收到 $n 个 digest"
+          [ "$n" -eq 2 ] || { echo "::error::digest 数 $n ≠ 2，架构不全，拒绝打 tag"; ls -la; exit 1; }
+
+          TAGS=(-t "${IMAGE}:${TAG}")
+          if [ "${{ needs.plan.outputs.push_latest }}" = "true" ]; then
+            TAGS+=(-t "${IMAGE}:latest")
+          fi
+          # 文件名就是 digest（见 ② 的说明）
+          docker buildx imagetools create "${TAGS[@]}" \
+            $(printf "${IMAGE}@sha256:%s " $(ls -1))
+
+          echo "── 复核推上去的 manifest ──"
+          docker buildx imagetools inspect "${IMAGE}:${TAG}"
+
+  # ---------------------------------------------------------
+  # ④ deploy —— 更新 config 仓的 image tag（GitOps 的写入端）
+  # ---------------------------------------------------------
+  # ⭐ 与 geass-v3 不同：那边每个服务在自己的 build job 里各推一次 config，
+  #    6 个并发抢 push，靠 5 次 rebase 重试化解。这里改成【一个 job 一次提交】——
+  #    melete 只有 2 个镜像，没有并发的理由，而没有并发就没有重试的必要。
+  # ---------------------------------------------------------
+  deploy:
+    name: update config (${{ needs.plan.outputs.env_dir }})
+    needs: [plan, merge]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup kustomize
+        run: |
+          curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize/v5.4.3/kustomize_v5.4.3_linux_amd64.tar.gz \
+            | tar xz -C /tmp
+          sudo mv /tmp/kustomize /usr/local/bin/kustomize
+          kustomize version
+
+      - name: kustomize edit + source.json + push
+        env:
+          GH_TOKEN: ${{ secrets.CONFIG_REPO_TOKEN }}
+          # config 仓里本应用清单的目录前缀（不含 dev/ prod/）。见文件头的重判记录。
+          APP_PATH: clusters/requiem/apps/melete
+          ENV_DIR: ${{ needs.plan.outputs.env_dir }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          IMAGES: ${{ needs.plan.outputs.images }}
+          NS: ${{ env.IMAGE_NAMESPACE }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/bukahou/config.git" /tmp/config
+          cd "/tmp/config/${APP_PATH}/${ENV_DIR}"
+
+          for img in $(echo "${IMAGES}" | jq -r '.[]'); do
+            kustomize edit set image "${NS}/melete-${img}=${NS}/melete-${img}:${TAG}"
+            cat > "source-${img}.json" <<EOF
+          {"repo":"${{ github.repository }}","sha":"${{ github.sha }}","branch":"${{ github.ref_name }}"}
+          EOF
+            echo "  ${img} → ${TAG}"
+          done
+
+          cd /tmp/config
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet && { echo "(无改动，跳过)"; exit 0; }
+          git commit -m "deploy(melete/${ENV_DIR}): ${TAG}"
+          git push
+
+      - name: Summary
+        run: |
+          {
+            echo "### ✅ melete → ${{ needs.plan.outputs.env_dir }}"
+            echo "- tag: \`${{ needs.plan.outputs.tag }}\`"
+            echo "- 镜像: ${{ needs.plan.outputs.images }}"
+            if [ "${{ needs.plan.outputs.env_dir }}" = "prod" ]; then
+              echo "- ⚠️ prod 是【手动 SYNC】—— config 已更新，但线上不会自动滚动，需人点 SYNC"
+            else
+              echo "- dev 自动同步，几分钟内生效"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

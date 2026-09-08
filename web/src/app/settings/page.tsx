@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { unstable_rethrow } from "next/navigation";
 import { KeyRound, Monitor, Mail, ShieldAlert } from "lucide-react";
 import { getSessions, type SessionInfo } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
@@ -82,8 +83,12 @@ export default async function SettingsPage({
   let sessionsFailed = false;
   try {
     sessions = await getSessions();
-  } catch {
-    // ⚠️ 会话列表取不到不该让整页 500 —— 改密与改邮箱仍然可用。
+  } catch (e) {
+    // ⛔ 先放行 Next 的内部信号（redirect / notFound）—— 否则 api.ts 在 401 时
+    //    发起的「去 /auth/renew 续期」会被这个 catch 吞掉，页面带着死 token 静静渲染，
+    //    用户只看到「会话列表取不到」，永远续不上期。裸 `catch {}` 正是这种形状。
+    unstable_rethrow(e);
+    // ⚠️ 其它失败不该让整页 500 —— 改密与改邮箱仍然可用。
     sessionsFailed = true;
   }
 

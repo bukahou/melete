@@ -1,5 +1,3 @@
-import { cookies } from "next/headers";
-
 /**
  * web 端的认证 —— **token 由 melete-api 签发，本层只负责持有与转发**。
  *
@@ -11,6 +9,11 @@ import { cookies } from "next/headers";
  * 存储位置按平台取最佳实践（token 本身两端相同）：
  *   web  → httpOnly cookie：SSR 要在服务端读到它做登录墙，且 XSS 偷不走
  *   iOS  → Keychain（见 geass-mobile/CLAUDE.md）
+ *
+ * ⭐ 2026-09-08 起本文件只剩 OIDC 配置。cookie 的读、写、清、刷新、过期判定
+ *   全部搬到 lib/session.ts（门面）+ lib/session-core.ts（纯逻辑）——
+ *   此前它们散在 auth.ts / proxy.ts / 各 route 里，cookie 寿命和刷新时机脱节了 5 分钟
+ *   而没人发现。⛔ 不要再往这里加 cookie 相关的东西。
  */
 
 function required(name: string): string {
@@ -33,55 +36,3 @@ export const oidc = {
   /** api 的**公网**地址 —— 浏览器要被 302 到这里，不能用集群内的 ClusterIP */
   get apiPublicBase() { return required("MELETE_API_PUBLIC_BASE"); },
 };
-
-export const ACCESS_COOKIE = "melete_at";
-export const REFRESH_COOKIE = "melete_rt";
-
-/** API 返回的 token 组合。 */
-export interface TokenPair {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-  /**
-   * 账号 id —— canonical UUIDv7 文本。
-   *
-   * ⚠️ 2026-09-07 breaking change：曾经是 number（BIGINT 自增）。
-   * 换 UUID 的理由见 cross-exam 005 §22.2：TiDB 跳号严重，
-   * 且 v7 时间有序，避免 v4 的索引页分裂。
-   */
-  accountId: string;
-  display: string;
-}
-
-/** 当前请求可用的 access token；没有则未登录。 */
-export async function accessToken(): Promise<string | null> {
-  return (await cookies()).get(ACCESS_COOKIE)?.value ?? null;
-}
-
-export async function refreshToken(): Promise<string | null> {
-  return (await cookies()).get(REFRESH_COOKIE)?.value ?? null;
-}
-
-/**
- * 把 token 写进响应的 cookie。
- *
- * access 的 cookie 有效期刻意设得比 token 本身长一点（+5 分钟）：
- * 让「cookie 还在但 token 已过期」成为可感知的状态，由 proxy 触发刷新，
- * 而不是 cookie 先消失导致用户莫名被登出。
- */
-export function setAuthCookies(
-  res: { cookies: { set: (name: string, value: string, opts: Record<string, unknown>) => void } },
-  pair: TokenPair,
-) {
-  const secure = oidc.origin.startsWith("https");
-  const base = { httpOnly: true, sameSite: "lax" as const, secure, path: "/" };
-  res.cookies.set(ACCESS_COOKIE, pair.accessToken, { ...base, maxAge: pair.expiresIn + 300 });
-  res.cookies.set(REFRESH_COOKIE, pair.refreshToken, { ...base, maxAge: 30 * 24 * 3600 });
-}
-
-export function clearAuthCookies(res: {
-  cookies: { delete: (name: string) => void };
-}) {
-  res.cookies.delete(ACCESS_COOKIE);
-  res.cookies.delete(REFRESH_COOKIE);
-}

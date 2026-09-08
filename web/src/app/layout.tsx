@@ -4,7 +4,7 @@ import Image from "next/image";
 import logo from "./icon.png";
 import { Noto_Serif_SC } from "next/font/google";
 import { LogOut } from "lucide-react";
-import { accessToken } from "@/lib/auth";
+import { readAccessToken } from "@/lib/session";
 import "./globals.css";
 
 const notoSerif = Noto_Serif_SC({
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // 登录态只用于决定是否显示登出入口；用户名从 token 的 cookie 拿不到，
   // 显示名改由页面按需取（避免每个页面都为了 header 多打一次 API）
-  const signedIn = Boolean(await accessToken());
+  const signedIn = Boolean(await readAccessToken());
   return (
     <html lang="zh-CN" className={notoSerif.variable}>
       <body className="flex min-h-screen flex-col overflow-x-clip">
@@ -69,6 +69,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="mx-auto flex w-full max-w-[1400px] flex-wrap items-baseline gap-x-6 gap-y-1 px-6 py-6 text-xs text-muted">
             <span className="display text-sm">Μελέτη</span>
             <span>司「练习、修习」的缪斯</span>
+            {/* ⭐ 版本号 = 镜像 tag，由 CI 经 build-arg 落成运行时 ENV。
+                本 layout 是 async server component 且已因读 cookie 而动态渲染，
+                所以这里读到的是【运行时】的值，⛔ 不是 build 期被内联的常量。
+                ⚠️ 显示它的意义不只是好看：打开页面就能回答「线上跑的到底是哪个 commit」——
+                在 dev / prod 两套环境并存时，这是最省事的一条自证。 */}
+            <span className="font-mono opacity-70" title="镜像 tag">
+              {process.env.APP_VERSION ?? "dev"}
+            </span>
             <span className="ml-auto">被动阅读不产生学习，主动回忆才产生</span>
           </div>
         </footer>
