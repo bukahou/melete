@@ -173,9 +173,14 @@ jobs:
         run: |
           case "${{ matrix.image }}" in
             api) echo "context=backend"                        >> "$GITHUB_OUTPUT"
-                 echo "file=backend/deploy/docker/Dockerfile"   >> "$GITHUB_OUTPUT" ;;
+                 echo "file=backend/deploy/docker/Dockerfile"   >> "$GITHUB_OUTPUT"
+                 echo "buildargs="                              >> "$GITHUB_OUTPUT" ;;
+            # ⚠️ APP_VERSION 只传给 web —— backend 的 Dockerfile 不声明这个 ARG，
+            #    传了会得到「One or more build-args were not consumed」警告。
+            #    ⛔ 别为了消掉警告去给 backend 加一个它用不到的 ARG。
             web) echo "context=web"                            >> "$GITHUB_OUTPUT"
-                 echo "file=web/Dockerfile"                     >> "$GITHUB_OUTPUT" ;;
+                 echo "file=web/Dockerfile"                     >> "$GITHUB_OUTPUT"
+                 echo "buildargs=APP_VERSION=${{ needs.plan.outputs.tag }}" >> "$GITHUB_OUTPUT" ;;
             *)   echo "::error::未知镜像 ${{ matrix.image }}"; exit 1 ;;
           esac
 
@@ -185,6 +190,8 @@ jobs:
         with:
           context: ${{ steps.ctx.outputs.context }}
           file: ${{ steps.ctx.outputs.file }}
+          # web 拿到 APP_VERSION=<镜像 tag>；api 这里是空串（见上）
+          build-args: ${{ steps.ctx.outputs.buildargs }}
           platforms: linux/${{ matrix.arch }}
           # ⚠️ 关掉 attestation，否则 manifest list 里会混进非架构条目，
           #    imagetools 合并时会把它们也当成平台，拉取端可能选中一个空壳。
