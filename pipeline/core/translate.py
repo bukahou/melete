@@ -434,7 +434,26 @@ def cmd_write(bank: str, locale: str, src: Path) -> None:
     if not isinstance(items, list) or not items:
         sys.exit("✗ 输入文件必须定义一个非空的 ITEMS 列表")
 
+    # ⭐ 已在盘上的条目：本次写入是【增量】，缺的字段沿用旧值。
+    #
+    # ⚠️ 这条是补解析那一趟能不能跑的前提。旧版只在省略 explanation 时保留旧值，
+    # 反过来不成立 —— 省略 stem/choices 就当没有，而 check_item 又要求它们必须有。
+    # ⇒ 第二趟为了加一段解析，得把题干和全部选项原样重打一遍；
+    #   而**每一次重打都是一次改坏已验收译文的机会**。
+    # 现在：先把增量合到旧条目上，再校验【合并后】的整体。
+    existing_items: dict[int, dict] = {}
+    ranges_all = shard_ranges(list(qmap))
+    for rng in ranges_all:
+        path = d / shard_name(rng)
+        if path.exists():
+            try:
+                for i in json.loads(path.read_text(encoding="utf-8")).get("items", []):
+                    existing_items[i["no"]] = i
+            except json.JSONDecodeError:
+                pass
+
     errs = []
+    merged_items = []
     for it in items:
         no = it.get("no")
         if no not in qmap:
@@ -447,7 +466,11 @@ def cmd_write(bank: str, locale: str, src: Path) -> None:
             errs.append(f"#{no}: fp 不符（期望 {want}，收到 {got or '缺失'}）"
                         f" —— 请先跑 `translate.py next` 取真实题面")
             continue
-        errs += [f"#{no}: {e}" for e in check_item(it, qmap[no], glo)]
+        base = {k: v for k, v in existing_items.get(no, {}).items() if k != "no"}
+        incoming = {k: v for k, v in it.items() if k not in ("fp", "no")}
+        full = {"no": no, **base, **incoming}
+        merged_items.append(full)
+        errs += [f"#{no}: {e}" for e in check_item(full, qmap[no], glo)]
     if errs:
         print(f"✗ 校验未通过（{len(errs)} 个问题），未写入任何文件：")
         for e in errs[:25]:
@@ -456,9 +479,9 @@ def cmd_write(bank: str, locale: str, src: Path) -> None:
             print(f"    …… 另有 {len(errs)-25} 个")
         sys.exit(1)
 
-    ranges = shard_ranges(list(qmap))
+    ranges = ranges_all
     buckets: dict[tuple[int, int], list] = {}
-    for it in items:
+    for it in merged_items:
         rng = next((r for r in ranges if r[0] <= it["no"] <= r[1]), None)
         if rng is None:
             sys.exit(f"✗ #{it['no']} 不属于任何分片区间")
@@ -472,12 +495,8 @@ def cmd_write(bank: str, locale: str, src: Path) -> None:
         except json.JSONDecodeError:
             existing = {}
         merged = {i["no"]: i for i in existing.get("items", [])}
-        for i in batch:
-            keep = {k: v for k, v in i.items() if k != "fp"}
-            # 允许「先题面、后解析」分两趟：这一趟没给 explanation 就保留上一趟的
-            if "explanation" not in keep and merged.get(i["no"], {}).get("explanation"):
-                keep["explanation"] = merged[i["no"]]["explanation"]
-            merged[i["no"]] = keep
+        # batch 里已经是【合并后】的完整条目（见上面 merged_items），直接覆盖
+        merged.update({i["no"]: i for i in batch})
         existing.update({
             "bank": bank, "locale": locale, "range": list(rng),
             "model": existing.get("model", "claude (Claude Code 订阅额度)"),
