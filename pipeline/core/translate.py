@@ -440,31 +440,52 @@ def cmd_check(bank: str, locale: str) -> None:
     sys.exit(1 if total else 0)
 
 
-def cmd_merge(bank: str, locale: str) -> None:
+def cmd_merge(bank: str, locale: str, partial: bool = False) -> None:
+    """
+    合并分片。
+
+    默认要求【全部片都通过校验】—— 半成品进不了产物。
+
+    `--partial` 是为了一件具体的事：41 片跨多天，中途想把已经翻好的先导进 dev
+    看看真机效果。它**逐条**用 check_item 筛，⛔ 不是「跳过校验」——
+    有实质错误的条目照样进不来，放行的只是「这一片还没填满」这一种状态。
+    ⚠️ 产物里记 complete=false，导入侧据此知道自己拿到的不是全量。
+    """
     doc, qmap, glo, d = _scan(bank, locale)
-    items, problems = {}, 0
+    items, problems, dropped = {}, 0, 0
     for p in sorted(d.glob("*.json")):
         errs = check_shard(p, qmap, glo)
-        if errs:
+        if errs and not partial:
             problems += 1
             print(f"✗ {p.name} 校验未过，已跳过（{len(errs)} 个问题）")
             continue
-        for it in json.loads(p.read_text(encoding="utf-8"))["items"]:
+        for it in json.loads(p.read_text(encoding="utf-8")).get("items", []):
+            if partial:
+                # 逐条筛：⛔ 只放行「片没填满」，不放行有实质错误的条目
+                if it.get("no") not in qmap or check_item(it, qmap[it["no"]], glo):
+                    dropped += 1
+                    continue
             items[it["no"]] = it
     if problems:
-        sys.exit(f"\n✗ 有 {problems} 片未通过校验，先修好再 merge")
+        sys.exit(f"\n✗ 有 {problems} 片未通过校验，先修好再 merge"
+                 f"\n  （只是想把已翻好的先导进 dev 看效果 ⇒ 加 --partial）")
+    if dropped:
+        print(f"⚠ --partial：{dropped} 条有实质错误，已排除")
 
     out = bank_dir(bank) / f"translated.{locale}.json"
     payload = {
         "bank": bank,
         "locale": locale,
         "source_locale": doc["bank"].get("locale"),
+        # ⭐ 导入侧靠它知道自己拿到的是不是全量 —— ⛔ 别让「部分译文」看起来像「全部译完」
+        "complete": len(items) == len(qmap),
         "merged_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "items": [items[k] for k in sorted(items)],
     }
     json.dump(payload, out.open("w", encoding="utf-8"), ensure_ascii=False, indent=1)
     n_expl = sum(1 for i in payload["items"] if i.get("explanation"))
-    print(f"✓ {rel(out)}   题面 {len(items)}/{len(qmap)} · 解析 {n_expl}/{len(qmap)}")
+    flag = "" if payload["complete"] else "   ⚠ 部分（complete=false）"
+    print(f"✓ {rel(out)}   题面 {len(items)}/{len(qmap)} · 解析 {n_expl}/{len(qmap)}{flag}")
 
 
 def main() -> None:
@@ -476,8 +497,11 @@ def main() -> None:
     common.add_argument("--locale", default="ja", help="目标语言（默认 ja）")
     common.add_argument("bank")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("status", "check", "merge"):
+    for name in ("status", "check"):
         sub.add_parser(name, parents=[common])
+    p = sub.add_parser("merge", parents=[common])
+    p.add_argument("--partial", action="store_true",
+                   help="逐条筛，放行「片没填满」但不放行有实质错误的条目（产物记 complete=false）")
     p = sub.add_parser("next", parents=[common])
     p.add_argument("-n", type=int, default=1, help="一次取几片")
     p.add_argument("--no-explanation", action="store_true", help="只取题面，不带解析（先翻题面那一趟）")
@@ -493,7 +517,7 @@ def main() -> None:
     elif a.cmd == "check":
         cmd_check(a.bank, a.locale)
     elif a.cmd == "merge":
-        cmd_merge(a.bank, a.locale)
+        cmd_merge(a.bank, a.locale, a.partial)
 
 
 if __name__ == "__main__":

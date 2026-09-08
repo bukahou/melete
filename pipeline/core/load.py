@@ -94,6 +94,61 @@ class Loader:
                       ON DUPLICATE KEY UPDATE body=VALUES(body)""", rows)
         return len(rows)
 
+    # ---- 译文（question_i18n / choice_i18n / explanation）----
+    def choice_ids(self, qmap: dict) -> dict:
+        """(question_id, label) → choice.id。choice_i18n 按 choice_id 存，必须先拿到它。"""
+        ids = sorted(set(qmap.values()))
+        out = {}
+        for i in range(0, len(ids), 500):  # ⚠️ TiDB 单事务/单语句都别喂太大
+            chunk = ids[i:i + 500]
+            self.cur.execute(
+                f"SELECT question_id, label, id FROM choice WHERE question_id IN ({','.join(['%s'] * len(chunk))})",
+                chunk)
+            out.update({(q, l): c for q, l, c in self.cur.fetchall()})
+        return out
+
+    def upsert_question_i18n(self, qmap: dict, tr_items: list, locale: str) -> int:
+        """
+        题干译文 → question_i18n。
+
+        ⭐ 与旧的 display_text() 路线的根本区别：那条路把译文【写进 question.stem】，
+        原文就此从库里消失（SAP-C02 的英文原文正是这么丢的，只剩 enriched.json 里有）。
+        这里译文另存一张表，question.stem 永远是原文 ⇒ 同一道题可以同时供多种语言。
+        """
+        rows = [(qmap[(it.get("session", ""), it["no"])], locale, it["stem"])
+                for it in tr_items if (it.get("session", ""), it["no"]) in qmap and it.get("stem")]
+        self._exec("""INSERT INTO question_i18n (question_id, locale, stem, source)
+                      VALUES (%s,%s,%s,'ai')
+                      ON DUPLICATE KEY UPDATE stem=VALUES(stem)""", rows)
+        return len(rows)
+
+    def upsert_choice_i18n(self, qmap: dict, cmap: dict, tr_items: list, locale: str) -> int:
+        rows = []
+        for it in tr_items:
+            key = (it.get("session", ""), it["no"])
+            if key not in qmap:
+                continue
+            for label, body in (it.get("choices") or {}).items():
+                cid = cmap.get((qmap[key], label))
+                # ⚠️ 选项对不上就跳过，⛔ 不猜 —— 译文的 label 与库里不一致
+                # 说明素材变过，那是要人看的事，不该在这里静默补一行
+                if cid and body:
+                    rows.append((cid, locale, body))
+        self._exec("""INSERT INTO choice_i18n (choice_id, locale, body, source)
+                      VALUES (%s,%s,%s,'ai')
+                      ON DUPLICATE KEY UPDATE body=VALUES(body)""", rows)
+        return len(rows)
+
+    def upsert_translated_explanations(self, qmap: dict, tr_items: list, locale: str) -> int:
+        """译文里的解析 → explanation(locale)。explanation 表本来就是多语言的，直接加一行。"""
+        rows = [(qmap[(it.get("session", ""), it["no"])], "ai", locale, it["explanation"])
+                for it in tr_items
+                if (it.get("session", ""), it["no"]) in qmap and it.get("explanation")]
+        self._exec("""INSERT INTO explanation (question_id, source, locale, body)
+                      VALUES (%s,%s,%s,%s)
+                      ON DUPLICATE KEY UPDATE body=VALUES(body)""", rows)
+        return len(rows)
+
     # 管道拥有的主张来源。user_note 之类由用户在应用里写入的来源不在此列 —— 重导不得动它们。
     PIPELINE_SOURCES = ("bank_label", "community_vote", "ai_verdict")
 
@@ -415,6 +470,27 @@ def main() -> None:
     # 解析的语言 ≠ 题库的语言：SAP-C02 题面是英文，但富化会话按学习者语言写中文解析。
     # 由 spec 声明 explanation_locale，缺省才退回题库 locale（SAA 中文题库两者相同）。
     n_ex = ld.upsert_explanations(qmap, qs, spec.get("explanation_locale") or doc["bank"].get("locale", "zh"))
+    # ---- 译文：translated.<locale>.json（translate.py merge 的产物）----
+    #
+    # ⚠️ 与上面 display_text() 那条【烧死译文】的老路是两回事，两者暂时并存：
+    #   老路：译文覆盖 question.stem，原文从库里消失（SAP-C02 的英文就是这么丢的）
+    #   新路：译文另存 question_i18n，stem 永远是原文 ⇒ 同一道题能供多种语言
+    # 老路要拆，但那会把 SAP-C02 的展示语言从 zh 改成 en，是对既有题库的行为变更，
+    # 单独一步做（已登记 tracker P8）。⛔ 别在这个改动里顺手改掉。
+    n_i18n = {}
+    for tr_path in sorted(bank_dir(args.bank).glob("translated.*.json")):
+        tr_doc = json.loads(tr_path.read_text(encoding="utf-8"))
+        tr_locale, tr_items = tr_doc["locale"], tr_doc.get("items", [])
+        if tr_locale == display_locale:
+            print(f"⚠ 跳过 {tr_path.name}：它的语言与题面展示语言相同（{tr_locale}），"
+                  f"存进 i18n 表没有意义")
+            continue
+        cmap = ld.choice_ids(qmap)
+        a = ld.upsert_question_i18n(qmap, tr_items, tr_locale)
+        b = ld.upsert_choice_i18n(qmap, cmap, tr_items, tr_locale)
+        c = ld.upsert_translated_explanations(qmap, tr_items, tr_locale)
+        n_i18n[tr_locale] = (a, b, c, tr_doc.get("complete", True))
+
     tmap = ld.upsert_tags(bank_id, qs, spec)
     topic_field = spec.get("tag_types", {}).get("topic", {}).get("enrichment_field", "topics")
     n_qt = ld.link_question_tags(bank_id, qmap, qs, tmap, topic_field)
@@ -423,6 +499,9 @@ def main() -> None:
     n_enriched = sum(1 for q in qs if q.get("enrichment"))
     print(f"✓ 题库      {doc['bank']['slug']}  (bank_id={bank_id})")
     print(f"✓ 题目      {len(qs)}   其中已富化 {n_enriched}")
+    for loc, (a, b, c, complete) in sorted(n_i18n.items()):
+        flag = "" if complete else "   ⚠ 部分译文（complete=false）"
+        print(f"✓ 译文 {loc}    题干 {a} · 选项 {b} · 解析 {c}{flag}")
     print(f"✓ 选项      {n_ch}")
     print(f"✓ 答案主张  {n_cl}")
     print(f"✓ 解析      {n_ex}")
