@@ -277,7 +277,24 @@ def check_item(it: dict, q: dict, glo: dict) -> list[str]:
     # not_terms 与 terms 一起按长度排 —— 假命中串（「并发出」3 字）必须排在
     # 被它包住的词条（「并发」2 字）之前，才能先把那段原文吃掉。
     ordered = sorted([*glo["terms"], *glo["not_terms"]], key=len, reverse=True)
-    unconsumed = joined_src
+    # ⚠️⚠️ 术语匹配用【折叠掉空白】的原文，keep 那一侧⛔ 绝不能折叠。
+    #
+    # 素材是 PDF 转出来的，换行会在字中间留下空格：
+    #     「配置 Amazon 简单队列服 务（Amazon SQS）」   ← 服/务 之间
+    # ⇒ 复合词「简单队列服务」匹配不上 ⇒ 最长匹配没吃掉这段 ⇒ 短词「队列」接管
+    # ⇒ 要求译文含キュー，而正确日译就是 Amazon Simple Queue Service，不含也不该含。
+    #
+    # ⭐ 同一个空格，落在【普通词条】上是漏报（闸门不响，兜底还在），
+    #   落在【复合词条】上是误报（长词没吃掉，短词接管）—— 复合词的全部作用就是压住短词。
+    #   ⚠️ 但它失效的方向是让闸门【变严】不是变松，所以一定会撞在译者身上，不会静默通过。
+    # 实测：折叠后多命中 104 处，其中复合词 3 处是有害的那种。
+    #
+    # ⛔ keep 用的必须是【未折叠】的原文：52 个含空格的服务名里，
+    #   折叠后有 28 个会匹配不上（Data Lifecycle Manager → DataLifecycleManager）。
+    #   ⇒ 折叠若做在 joined_src 上，等于悄悄关掉一半服务名的保护。
+    # ⛔ 译文侧也不折叠：约定译词本身含空格（Simple Queue Service / Load Balancer），
+    #   而译文是人写的，不会有 PDF 换行伪影。
+    unconsumed = re.sub(r"\s+", "", joined_src)
     for src_term in ordered:
         if src_term in unconsumed:
             accepted = glo["terms"].get(src_term)
