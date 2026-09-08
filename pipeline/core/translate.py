@@ -159,6 +159,15 @@ def load_glossary(bank: str, locale: str) -> dict:
     # ⛔ 防滥用：not_terms 不得用来把一个【真词条】关掉。
     # 没有这道锁的话，「负载均衡器」被搬进 not_terms 就等于静默删掉一条闸，
     # 而 diff 上看起来只是「加了一行」。
+    # ⛔ 词条键不得含空白 —— 它会【静默失效】，这是最坏的一种失败：
+    #    check 拿【折叠掉空白后】的原文匹配（见 check_item 里 _whitespace 那段），
+    #    所以键里带空格的词条永远匹配不上，而且不报任何错，看着像在工作。
+    # ⚠️ 「预置 IOPS」要写成「预置IOPS」。这条锁是 2026-09-08 「解析」会话
+    #    加第一个含拉丁字母的键时发现的 —— 它自己绕过去了，但下一个人不会知道。
+    # ⭐ keep 不受此限：它匹配的是【未折叠】的原文，服务名里的空格是必须保留的。
+    if spaced := sorted(k for k in [*terms, *not_terms] if re.search(r"\s", k)):
+        sys.exit(f"✗ {rel(p)}: 词条键含空白 {spaced} —— ⛔ 它永远匹配不上（匹配前原文已折叠空白），"
+                 f"\n  且不会报错，看着像在工作。把键里的空格去掉即可（「预置 IOPS」→「预置IOPS」）。")
     if clash := sorted(set(not_terms) & set(terms)):
         sys.exit(f"✗ {rel(p)}: {clash} 同时出现在 terms 和 not_terms —— "
                  f"⛔ not_terms 是「这几个字不是词」，不是关闭词条的开关。"
