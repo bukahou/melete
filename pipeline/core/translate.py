@@ -116,7 +116,32 @@ def load_glossary(bank: str, locale: str) -> dict:
     # 值归一成列表：写成字符串是「只有一种正确写法」的简写
     terms = {k: ([v] if isinstance(v, str) else list(v))
              for k, v in g.get("terms", {}).items() if not k.startswith("_")}
-    return {"terms": terms, "keep": list(g.get("keep", []))}
+
+    # not_terms：**这几个字连在一起不是一个词**。
+    #
+    # 中文没有词边界 ⇒ 假命中是结构性的，不是偶发。
+    # 例：「监控应用程序并发出警报」里的「并发」是「并」+「发出」（= 并且发出），
+    # 不是 concurrency ——正确译文里【不该也不可能】出现「同時実行」。
+    # 全库「并发」20 处：真 17 · 假 3 ⇒ ⛔ 词条不能删（删了放走 17 处真漂移），
+    # 也不能靠给「并发出」配译法解决（「并发送一份报告」与「并发送到 AWS」日文是不同动词，
+    # 一个词条要靠不断追加写法才够 —— 正是规则 1 判死刑的形态）。
+    #
+    # ⭐ 与被驳回的「本题豁免」的区别，就是这条机制存在的理由：
+    #   豁免说的是「**这道题**放我过去」；not_terms 说的是「**这两个字**不是词」。
+    #   后者是一句关于语言的可复查断言，对全部 41 片一次生效。
+    not_terms = [t for t in g.get("not_terms", []) if isinstance(t, str) and t]
+
+    # ⛔ 防滥用：not_terms 不得用来把一个【真词条】关掉。
+    # 没有这道锁的话，「负载均衡器」被搬进 not_terms 就等于静默删掉一条闸，
+    # 而 diff 上看起来只是「加了一行」。
+    if clash := sorted(set(not_terms) & set(terms)):
+        sys.exit(f"✗ {rel(p)}: {clash} 同时出现在 terms 和 not_terms —— "
+                 f"⛔ not_terms 是「这几个字不是词」，不是关闭词条的开关。"
+                 f"\n  真要停用某个词条，就把它从 terms 里删掉，让 diff 看得见。")
+    for t in not_terms:
+        if not any(k in t and k != t for k in terms):
+            print(f"⚠ not_terms 的「{t}」不包含任何词条，是个空操作 —— 多半写错了")
+    return {"terms": terms, "keep": list(g.get("keep", [])), "not_terms": not_terms}
 
 
 def shard_dir(bank: str, locale: str) -> Path:
@@ -224,10 +249,17 @@ def check_item(it: dict, q: dict, glo: dict) -> list[str]:
     # 而旧逻辑要求它出现 ⇒ 要过闸只能把 Zone 错译成 Region，
     # ⛔ 又是「为了过闸而写错内容」。本题库有 35 道题会撞上。
     # ⇒ 这是通用缺陷，不是「单区域」一个词的事：任何「X区域」「X主题」类复合词都会重犯。
+    # not_terms 与 terms 一起按长度排 —— 假命中串（「并发出」3 字）必须排在
+    # 被它包住的词条（「并发」2 字）之前，才能先把那段原文吃掉。
+    ordered = sorted([*glo["terms"], *glo["not_terms"]], key=len, reverse=True)
     unconsumed = joined_src
-    for src_term in sorted(glo["terms"], key=len, reverse=True):
+    for src_term in ordered:
         if src_term in unconsumed:
-            accepted = glo["terms"][src_term]
+            accepted = glo["terms"].get(src_term)
+            if accepted is None:
+                # not_terms：吃掉这段，⛔ 不对译文提任何要求
+                unconsumed = unconsumed.replace(src_term, "\x00" * len(src_term))
+                continue
             if not any(d in joined_dst for d in accepted):
                 errs.append(f"原文有「{src_term}」，译文里找不到约定译词"
                             + "（" + " / ".join(f"「{d}」" for d in accepted) + "）")
