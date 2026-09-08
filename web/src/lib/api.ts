@@ -20,7 +20,7 @@ export type {
   Progress, TagStat, Resume, FocusCursor, DrillContext, Overview, StudySession,
   SessionInfo, PasswordChanged,
 } from "./claims";
-export { SOURCE_LABEL, voteDistribution, hasDisagreement, DRILL_MODES, parseDrillMode } from "./claims";
+export { voteDistribution, hasDisagreement, DRILL_MODES, parseDrillMode } from "./claims";
 
 import type {
   Bank, BankDetail, Tag, QuestionDetail, QuestionPage, AttemptResult, DrillMode,
@@ -31,6 +31,7 @@ import type {
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasRenewMark, logAuth, readAccessToken, safeReturnPath } from "./session";
+import { resolveLocale } from "@/i18n/resolve";
 
 const BASE = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
 
@@ -41,6 +42,23 @@ const BASE = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
 async function authHeaders(): Promise<Record<string, string>> {
   const t = await readAccessToken();
   return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
+/**
+ * 出站请求带上界面语言 —— 题目正文、选项跟着界面走。
+ *
+ * ⭐ 用 Accept-Language 而不是给每个函数加 locale 参数：一处加，全部端点受益，
+ * ⛔ 而且不会出现「某个端点忘了传」这种只在特定页面显形的漏。
+ *
+ * ⚠️ 它同时进入 Next 的 fetch 缓存键（缓存键含 headers）——
+ * 这正是需要的：中文与日文的响应⛔不得互相复用。
+ */
+async function localeHeaders(): Promise<Record<string, string>> {
+  return { "Accept-Language": await resolveLocale() };
+}
+
+async function requestHeaders(): Promise<Record<string, string>> {
+  return { ...(await authHeaders()), ...(await localeHeaders()) };
 }
 
 export class ApiError extends Error {
@@ -74,7 +92,7 @@ async function recoverFrom401(path: string): Promise<never> {
 async function get<T>(path: string, revalidate = 60, personalized = false): Promise<T> {
   // 个人化数据绝不进共享缓存；且带 Authorization 的请求本就不该被缓存复用
   const cache = personalized ? { cache: "no-store" as const } : { next: { revalidate } };
-  const res = await fetch(`${BASE}${path}`, { ...cache, headers: await authHeaders() });
+  const res = await fetch(`${BASE}${path}`, { ...cache, headers: await requestHeaders() });
   if (res.status === 401) await recoverFrom401(path);
   if (!res.ok) {
     throw new ApiError(res.status, `GET ${path} → ${res.status}`);

@@ -6,6 +6,7 @@ import { ClaimsPanel } from "@/components/ClaimsPanel";
 import { DrillCard } from "@/components/DrillCard";
 import { Markdown } from "@/components/Markdown";
 import { TagChip } from "@/components/TagChip";
+import { getLocale, getTranslations } from "next-intl/server";
 
 type Search = {
   i?: string;
@@ -16,12 +17,18 @@ type Search = {
   tag?: string | string[];
 };
 
-const MODE_TITLE: Record<DrillMode, string> = {
-  due: "今日复习",
-  wrong: "错题本",
-  unsure: "不清楚的",
-  unseen: "没做过的",
-};
+/**
+ * pickExplanations 挑该语言的解析。
+ *
+ * explanation 表天生带 locale，同一道题可以有多语言解析。
+ * ⚠️ 全部渲染会让日语用户同时看到中文和日文两份 —— 不是「更全」，是噪音。
+ * 该语言有就只给该语言；一份都没有就把现有的都给出来（⛔ 宁可语言不对，
+ * 也不该把仅有的解析藏起来），上方的「暂无译文」提示已经说明了状况。
+ */
+function pickExplanations<T extends { locale: string }>(all: T[], locale: string): T[] {
+  const hit = all.filter((e) => e.locale === locale);
+  return hit.length > 0 ? hit : all;
+}
 
 /**
  * 刷题页。每题一次页面导航（URL 携带位置）：可分享、可后退、刷新不丢进度，且天然 SSR。
@@ -35,6 +42,11 @@ export default async function DrillPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
+  const [t, modeTitle, locale] = await Promise.all([
+    getTranslations("drill"),
+    getTranslations("modeTitle"),
+    getLocale(),
+  ]);
 
   const index = Math.max(0, Number(sp.i ?? 0) || 0);
   const done = Math.max(0, Number(sp.done ?? 0) || 0);
@@ -76,17 +88,20 @@ export default async function DrillPage({
     const empty =
       mode === "due"
         ? page.total === 0
-          ? "今天的复习做完了"
-          : "这一批复习做完了"
+          ? t("doneToday")
+          : t("doneBatch")
         : page.total === 0
-          ? "当前筛选条件下没有题目"
-          : "已经是最后一题了";
+          ? t("noMatch")
+          : t("lastOne");
     return (
       <div className="space-y-5 pt-10 text-center">
         <p className="display text-xl text-muted">{empty}</p>
         {mode === "due" && page.total === 0 && (
           <p className="text-sm text-muted">
-            没有到期的题。要往前推进，去做<Link href={`/banks/${slug}/drill?mode=unseen`} className="underline underline-offset-4" style={{ color: "var(--color-src-community)" }}>没做过的</Link>。
+            {t("noDueHint")}
+            <Link href={`/banks/${slug}/drill?mode=unseen`} className="underline underline-offset-4" style={{ color: "var(--color-src-community)" }}>
+              {t("noDueLink")}
+            </Link>
           </p>
         )}
         <Link
@@ -95,7 +110,7 @@ export default async function DrillPage({
           style={{ color: "var(--color-src-community)" }}
         >
           <ArrowLeft size={15} />
-          返回题库
+          {t("backToBank")}
         </Link>
       </div>
     );
@@ -117,6 +132,9 @@ export default async function DrillPage({
 
   const q = await getQuestion(page.items[0].id);
   const reference = q.reference ?? null;
+  // ⭐ 请求的语言没有译文时【明说】，⛔ 不静默把原文当译文端上来。
+  // 请求的就是源语言时不提示 —— 那本来就不是「缺译文」。
+  const untranslated = q.sourceLocale != null && q.sourceLocale !== locale && !q.localized;
 
   // 出处：用户是从哪个入口进来做这题的。mode 优先；多标签时记第一个（入口只会传一个）。
   // unseen 与不带条件的 all 视同「顺序刷」，其余都是专项。
@@ -143,7 +161,7 @@ export default async function DrillPage({
         </span>
         {mode && (
           <span className="rounded-sm border border-line px-1.5 py-0.5 text-[0.65rem] text-muted">
-            {MODE_TITLE[mode]}
+            {modeTitle(mode)}
           </span>
         )}
         <span className="display text-lg" style={{ fontFamily: "var(--font-mono-x)" }}>
@@ -152,7 +170,7 @@ export default async function DrillPage({
         {q.contested && (
           <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: "var(--color-warn)" }}>
             <AlertTriangle size={12} />
-            答案有分歧
+            {t("contested")}
           </span>
         )}
         {/* ⛔ 这里曾经有一个「详情页」链接，已删。
@@ -182,15 +200,22 @@ export default async function DrillPage({
         />
       </div>
 
+      {untranslated && (
+        <p className="rounded-md border border-line bg-raise px-4 py-2.5 text-xs text-muted"
+           style={{ boxShadow: "inset 3px 0 0 var(--color-src-bank)" }}>
+          {t("sourceFallback")}
+        </p>
+      )}
+
       {/* ⛔ key 不能省：不加它 React 会复用同一个 DrillCard 实例，
           上一题的 picked / revealed / saveState 全都留到下一题 ——
           表现就是「下一题默认选中了上一题的选项」。2026-09-05 实测。 */}
       <DrillCard key={q.id} questionId={q.id} stem={q.stem} choices={q.choices} pickCount={q.pickCount} reference={reference} context={context} nav={nav}>
         <ClaimsPanel claims={q.claims} />
-        {q.explanations.map((e) => (
+        {pickExplanations(q.explanations, locale).map((e) => (
           <section key={`${e.source}-${e.locale}`}>
             <h3 className="section-rule">
-              <span className="eyebrow">解析</span>
+              <span className="eyebrow">{t("explanation")}</span>
             </h3>
             <div className="mt-5 rounded-md border border-line bg-raise p-6 sm:p-8">
               <Markdown>{e.body}</Markdown>
@@ -198,9 +223,7 @@ export default async function DrillPage({
           </section>
         ))}
         {q.explanations.length === 0 && (
-          <p className="text-xs leading-relaxed text-muted">
-            这道题还没有 AI 解析。上方各方主张仍可对照参考。
-          </p>
+          <p className="text-xs leading-relaxed text-muted">{t("noExplanation")}</p>
         )}
         {q.tags.length > 0 && (
           <div className="flex flex-wrap gap-2">

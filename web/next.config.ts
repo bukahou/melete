@@ -1,4 +1,8 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
+
+// 指向自定义位置的 request 配置（默认约定是 ./i18n/request.ts，本仓放在 src/i18n 下）
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const nextConfig: NextConfig = {
   // 刻意【不声明 env】—— next.config 的 env 会把变量内联进客户端 bundle。
@@ -7,4 +11,4 @@ const nextConfig: NextConfig = {
   output: "standalone", // 容器镜像用：只打包运行时真正需要的文件
 };
 
-export default nextConfig;
+export default withNextIntl(nextConfig);

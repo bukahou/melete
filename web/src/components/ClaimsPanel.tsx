@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
-import { SOURCE_LABEL, hasDisagreement, voteDistribution, type AnswerClaim } from "@/lib/claims";
+import { useTranslations } from "next-intl";
+import { hasDisagreement, voteDistribution, type AnswerClaim } from "@/lib/claims";
 
 /**
  * 答案主张并列面板 —— 本项目的核心 UI。
@@ -40,8 +41,10 @@ function VoteBars({ claim }: { claim: AnswerClaim }) {
 }
 
 export function ClaimsPanel({ claims }: { claims: AnswerClaim[] }) {
+  const t = useTranslations("claims");
+  const source = useTranslations("source");
   if (claims.length === 0) {
-    return <p className="text-sm text-muted">这道题还没有任何答案主张。</p>;
+    return <p className="text-sm text-muted">{t("empty")}</p>;
   }
   const disputed = hasDisagreement(claims);
   const rationales = claims.filter((c) => c.rationale);
@@ -49,11 +52,11 @@ export function ClaimsPanel({ claims }: { claims: AnswerClaim[] }) {
   return (
     <section>
       <h3 className="section-rule">
-        <span className="eyebrow">答案主张</span>
+        <span className="eyebrow">{t("title")}</span>
         {disputed && (
           <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: "var(--color-warn)" }}>
             <AlertTriangle size={12} />
-            各方不一致
+            {t("disagree")}
           </span>
         )}
       </h3>
@@ -68,7 +71,7 @@ export function ClaimsPanel({ claims }: { claims: AnswerClaim[] }) {
               style={{ borderTop: `3px solid ${color}` }}
             >
               <div className="flex items-baseline justify-between gap-2">
-                <span className="text-xs font-medium text-muted">{SOURCE_LABEL[claim.source]}</span>
+                <span className="text-xs font-medium text-muted">{source(claim.source)}</span>
                 {claim.confidence != null && (
                   <span className="tabular-nums text-xs text-muted">{claim.confidence}%</span>
                 )}
@@ -92,7 +95,7 @@ export function ClaimsPanel({ claims }: { claims: AnswerClaim[] }) {
           style={{ borderLeftColor: SOURCE_COLOR[claim.source] }}
         >
           <p className="text-xs font-medium" style={{ color: SOURCE_COLOR[claim.source] }}>
-            {SOURCE_LABEL[claim.source]}的理由
+            {t("rationaleOf", { source: source(claim.source) })}
           </p>
           <p className="mt-2 text-[0.9rem] leading-[1.9]">{claim.rationale}</p>
         </blockquote>

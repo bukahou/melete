@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Check, X } from "lucide-react";
-import { SOURCE_LABEL, type Choice, type DrillContext, type Reference, type ScheduleResult } from "@/lib/claims";
+import { useTranslations } from "next-intl";
+import type { Choice, DrillContext, Reference, ScheduleResult } from "@/lib/claims";
 import { QuestionBody } from "./QuestionBody";
 
 /**
@@ -24,22 +25,24 @@ import { QuestionBody } from "./QuestionBody";
  *       点自评 → PATCH /api/attempts/{id} → 排卡片、返回「下次何时再见」。
  */
 
-const RATINGS: Array<{ value: number; label: string; hint: string; color: string }> = [
-  { value: 1, label: "不会", hint: "Again", color: "var(--color-warn)" },
-  { value: 2, label: "模糊", hint: "Hard", color: "var(--color-src-bank)" },
-  { value: 3, label: "掌握", hint: "Good", color: "var(--color-ok)" },
-  { value: 4, label: "轻松", hint: "Easy", color: "var(--color-src-community)" },
+// ⚠️ label 走 messages 的 `rating.<value>`；hint 是 FSRS 的**术语**（Again/Hard/Good/Easy），
+// ⛔ 不翻译 —— 它是与文献、与其它 SRS 工具对齐的标识，翻掉就对不上了。
+const RATINGS: Array<{ value: number; hint: string; color: string }> = [
+  { value: 1, hint: "Again", color: "var(--color-warn)" },
+  { value: 2, hint: "Hard", color: "var(--color-src-bank)" },
+  { value: 3, hint: "Good", color: "var(--color-ok)" },
+  { value: 4, hint: "Easy", color: "var(--color-src-community)" },
 ];
 
 /** nextLine 把「下次什么时候再见」说成人话。 */
-function nextLine(s: ScheduleResult): string {
+function nextLine(s: ScheduleResult, t: ReturnType<typeof useTranslations<"drill">>): string {
   const ms = new Date(s.due).getTime() - Date.now();
-  if (ms <= 0) return "已记录。这题还没稳，稍后会再出现。";
+  if (ms <= 0) return t("nextNow");
   const mins = Math.round(ms / 60_000);
-  if (mins < 60) return `已记录。约 ${mins} 分钟后再见到它。`;
+  if (mins < 60) return t("nextMinutes", { n: mins });
   const hours = Math.round(mins / 60);
-  if (hours < 24) return `已记录。约 ${hours} 小时后再见到它。`;
-  return `已记录。约 ${Math.round(hours / 24)} 天后再见到它。`;
+  if (hours < 24) return t("nextHours", { n: hours });
+  return t("nextDays", { n: Math.round(hours / 24) });
 }
 
 export function DrillCard({
@@ -73,6 +76,10 @@ export function DrillCard({
   nav: { prevHref?: string; skipHref?: string; nextHref?: string; shrinking: boolean };
   children: React.ReactNode;
 }) {
+  const t = useTranslations("drill");
+  // ⚠️ 叫 ratingLabel 而不是 rating —— 下面 rate(rating: number) 的形参会遮蔽同名变量
+  const ratingLabel = useTranslations("rating");
+  const source = useTranslations("source");
   const [picked, setPicked] = useState<string[]>([]);
   const [rated, setRated] = useState<number | null>(null);
   const [schedule, setSchedule] = useState<ScheduleResult | null>(null);
@@ -190,7 +197,7 @@ export function DrillCard({
       {!revealed ? (
         pickCount === 1 ? (
           // 单选：没有需要点的东西，只提示
-          <p className="text-sm text-muted">选一个答案</p>
+          <p className="text-sm text-muted">{t("pickOne")}</p>
         ) : (
           // 多选：留一次确认，在此之前可以随意改选
           <button
@@ -200,7 +207,7 @@ export function DrillCard({
             className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium transition-opacity disabled:opacity-35"
             style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
           >
-            {ready ? `提交这 ${pickCount} 项` : `请选 ${pickCount} 项（已选 ${picked.length}）`}
+            {ready ? t("submitN", { n: pickCount }) : t("needN", { n: pickCount, picked: picked.length })}
           </button>
         )
       ) : (
@@ -212,8 +219,7 @@ export function DrillCard({
           {!reference && (
             <div className="rounded-md border border-line bg-raise p-4 text-sm text-muted"
                  style={{ boxShadow: "inset 3px 0 0 var(--color-muted)" }}>
-              这道题没有任何答案来源，<b className="text-ink">无法判定对错</b> ——
-              素材里就缺，不是你选错了。自评仍会记录，但它不参与正确率统计。
+              {t.rich("noReference", { b: (c) => <b className="text-ink">{c}</b> })}
             </div>
           )}
           {reference && (
@@ -231,13 +237,15 @@ export function DrillCard({
                 {correct ? <Check size={14} /> : <X size={14} />}
               </span>
               <span>
-                你选了 <b className="font-mono">{chosen}</b>
+                {t("youPicked")} <b className="font-mono">{chosen}</b>
                 {!correct && (
                   <>
-                    ，参考答案 <b className="font-mono">{reference.answer}</b>
+                    {t("referenceIs")} <b className="font-mono">{reference.answer}</b>
                   </>
                 )}
-                <span className="ml-2 text-xs text-muted">以「{SOURCE_LABEL[reference.source]}」为准</span>
+                <span className="ml-2 text-xs text-muted">
+                  {t("basedOn", { source: source(reference.source) })}
+                </span>
               </span>
             </div>
           )}
@@ -246,16 +254,16 @@ export function DrillCard({
           <div className="rounded-md border border-line bg-raise p-4">
             <p className="text-xs text-muted">
               {saveState === "expired"
-                ? "登录已过期 —— 这一题没有记录下来。"
+                ? t("saveExpired")
                 : saveState === "failed"
-                  ? "这一题没能记录下来（网络或服务异常）。"
+                  ? t("saveFailed")
                   : saveState === "saving"
-                    ? "正在记录…"
+                    ? t("saving")
                     : schedule
-                      ? nextLine(schedule)
+                      ? nextLine(schedule, t)
                       : rateState === "failed"
-                        ? "作答已记录；自评没提交上，可以再点一次。"
-                        : "✓ 已记录。想让它进入复习计划的话，评一下掌握程度（可选）"}
+                        ? t("rateFailed")
+                        : t("savedAskRate")}
             </p>
             {saveState === "expired" && (
               <div
@@ -263,12 +271,12 @@ export function DrillCard({
                 style={{ borderColor: "var(--color-warn)",
                          background: "color-mix(in oklab, var(--color-warn) 8%, transparent)" }}
               >
-                <div className="font-semibold text-ink">重新登录后这一题需要再做一次</div>
+                <div className="font-semibold text-ink">{t("reloginTitle")}</div>
                 <p className="mt-1 text-muted">
-                  ⚠️ 继续往下刷也不会被记录。
+                  {t("reloginHint")}
                   <Link href="/auth/login" className="ml-1 underline underline-offset-4"
                         style={{ color: "var(--color-src-community)" }}>
-                    去登录
+                    {t("goLogin")}
                   </Link>
                 </p>
               </div>
@@ -281,7 +289,10 @@ export function DrillCard({
                 style={{ borderColor: "var(--color-warn)", background: "color-mix(in oklab, var(--color-warn) 8%, transparent)" }}
               >
                 <div className="font-semibold text-ink">
-                  你按了「{RATINGS[schedule.rating - 1]?.label}」，按「{RATINGS[schedule.effectiveRating - 1]?.label}」安排复习
+                  {t("downgraded", {
+                    picked: ratingLabel(String(schedule.rating)),
+                    effective: ratingLabel(String(schedule.effectiveRating)),
+                  })}
                 </div>
                 <ul className="mt-1 space-y-0.5 text-muted">
                   {schedule.reasons.map((r) => (
@@ -309,7 +320,7 @@ export function DrillCard({
                     }}
                   >
                     <span className="block text-sm font-medium" style={active ? { color: r.color } : undefined}>
-                      {r.label}
+                      {ratingLabel(String(r.value))}
                     </span>
                     <span className="mt-0.5 block font-mono text-[0.62rem] uppercase tracking-wider text-muted">
                       {r.hint}
@@ -337,6 +348,7 @@ function DrillNav({
   nav: { prevHref?: string; skipHref?: string; nextHref?: string; shrinking: boolean };
   answered: boolean;
 }) {
+  const t = useTranslations("drill");
   // ⭐ 2026-09-08：`answered` 现在的含义是【这次作答已落库】（揭晓即发生），
   //   ⛔ 不再是「已自评」。所以揭晓之后前进就是正常的下一题，
   //   「跳过（不记录）」只适用于**没答就走**的情况。
@@ -357,7 +369,7 @@ function DrillNav({
       {nav.prevHref ? (
         <Link href={nav.prevHref} className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink">
           <ArrowLeft size={15} />
-          上一题
+          {t("prev")}
         </Link>
       ) : (
         <span />
@@ -367,9 +379,9 @@ function DrillNav({
           <Link
             href={forward}
             className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink"
-            title="不做自评就前进，这道题不会进入复习计划"
+            title={t("skipTitle")}
           >
-            跳过（不记录）
+            {t("skip")}
             <ArrowRight size={14} />
           </Link>
         ) : (
@@ -378,7 +390,7 @@ function DrillNav({
             className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium"
             style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
           >
-            下一题
+            {t("next")}
             <ArrowRight size={15} />
           </Link>
         )

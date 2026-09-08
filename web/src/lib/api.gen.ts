@@ -877,6 +877,12 @@ export interface components {
             /** @example A */
             label: string;
             body: string;
+            /**
+             * @description body 是否为请求语言的译文。**false 表示回退到了源语言原文**，
+             *     界面必须把这件事显示出来，⛔ 不静默回退。
+             *     选项与题干各自独立（可能只补了题干），所以各带各的标记。
+             */
+            localized?: boolean;
         };
         /**
          * @description 一条带来源的答案主张。同一道题可以有多条，**故意不做合并**。
@@ -920,9 +926,21 @@ export interface components {
             contested: boolean;
             /** @description 是否已完成 AI 富化 */
             enriched: boolean;
+            /**
+             * @description stem 是否为请求语言（Accept-Language 协商结果）的译文。
+             *     **false 表示回退到了源语言原文** —— 与 `sourceLocale` 比对后决定是否标注
+             *     「本题暂无该语言版本」。请求源语言本身时同样是 false（那本就不是译文）。
+             */
+            localized?: boolean;
         };
         QuestionDetail: components["schemas"]["QuestionSummary"] & {
             bankSlug: string;
+            /**
+             * @description 题库正文的源语言。⭐ 带上它，界面才能把「没有译文」与
+             *     「请求的就是源语言」区分开 —— 只看 localized 两者都是 false。
+             * @example zh
+             */
+            sourceLocale?: string;
             reference?: components["schemas"]["Reference"];
             /** @description 题目本身有缺陷时的说明（题库脏点），正常不出现 */
             dataIssue?: string;
