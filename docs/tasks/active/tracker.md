@@ -422,6 +422,15 @@ atlhyper 将来会继承（模板已修，风险消除）**。
       `origin ∈ {original, translation, source}` 记录哪一份是考试原文。
       ⚠️ 届时重导一次即可，不会因为今天这样做而多付代价。
 
+- [ ] 🔴 **合 main 前的闸：prod TiDB 缺 `question_i18n` / `choice_i18n`**（2026-09-08）
+      代码里 `Accept-Language` 命中白名单就会 `LEFT JOIN` 这两张表 —— 几乎是所有真人浏览器。
+      TiDB 没有这两张表 ⇒ **题目列表与详情 500，中文用户也打不开**，不只是日文不可用。
+      ⚠️ 但**现在不要去建**：表结构还没定型（欠 tracker 早就写下的
+      `origin ∈ {original, translation, source}`，术语表跑下来可能还要 provenance 列），
+      现在建八成要第二次 DDL；而且下面那条 COLLATE 的账还没还，
+      在有已知缺陷的地基上再加两张表只会让账更难还。
+      ⇒ **dev（raspi）已建好，实验在那儿做**；合 main 那一刻连同 COLLATE 一起处理。
+
 - [ ] 🔴 **`db/schema.sql` 没钉死 `COLLATE`**，排序规则跟着服务器默认值走：
       开发库 MySQL 8.0 是 `utf8mb4_0900_ai_ci`，**TiDB 默认是 `utf8mb4_bin`（逐字节比）**。
       同一份 schema 换个库，`uk_account_username` 的折叠规则就变了 ——
