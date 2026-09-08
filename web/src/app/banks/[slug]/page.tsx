@@ -17,7 +17,9 @@ import {
 import { tagName, tagTypeLabel, tagWeight } from "@/lib/claims";
 import { rateColor } from "@/components/RateBar";
 import { Band, Stat, Wide } from "@/components/Band";
-import { MODE_LABEL, timeAgo } from "@/lib/format";
+import { timeAgo } from "@/lib/format";
+import { getLocale, getTranslations } from "next-intl/server";
+import { modeLabel } from "@/i18n/modeLabel";
 
 export const revalidate = 0;
 
@@ -79,6 +81,13 @@ export default async function BankPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
+  const [t, mode, common, home, locale] = await Promise.all([
+    getTranslations("bank"),
+    getTranslations("mode"),
+    getTranslations("common"),
+    getTranslations("home"),
+    getLocale(),
+  ]);
   let bank: BankDetail;
   try {
     bank = await getBank(slug);
@@ -110,8 +119,8 @@ export default async function BankPage({
   const topics = weakestFirst(mergeTagRows(topicTags, topicStats, meta), (a, b) => (b.tag.questionCount ?? 0) - (a.tag.questionCount ?? 0));
   const showAll = sp.all === "1";
   const topicRows = showAll ? topics : topics.slice(0, 10);
-  const topicLabel = tagTypeLabel(meta, "topic");
-  const domainLabel = tagTypeLabel(meta, "domain");
+  const topicLabel = tagTypeLabel(meta, "topic", locale);
+  const domainLabel = tagTypeLabel(meta, "domain", locale);
   const passLine = meta.passScore && meta.maxScore ? Math.round((meta.passScore / meta.maxScore) * 100) : null;
   const weights = domainTags
     .map((t) => ({ t, w: tagWeight(meta, t) }))
@@ -121,23 +130,26 @@ export default async function BankPage({
   const tiles = [
     // ⚠️「该复习的」排在最前：它是有时效的 —— 错过复习窗口补不回来，
     // 而「做错的 / 没做过的」永远在那里等着。顺序本身就是一句建议。
-    { key: "due", label: MODE_LABEL.due, n: progress.dueCount, hint: "记忆快要衰减，先做这些", dot: "var(--color-cta)", href: `/banks/${slug}/drill?mode=due` },
-    { key: "wrong", label: MODE_LABEL.wrong, n: progress.wrongCount, hint: "最近一次做错", dot: "var(--color-warn)", href: `/banks/${slug}/drill?mode=wrong` },
-    { key: "unsure", label: MODE_LABEL.unsure, n: progress.unsureCount, hint: "自评「模糊」或「不会」", dot: "var(--color-src-bank)", href: `/banks/${slug}/drill?mode=unsure` },
-    { key: "unseen", label: MODE_LABEL.unseen, n: unseen, hint: "按题号顺序", dot: "var(--color-muted)", href: `/banks/${slug}/drill?mode=unseen` },
-    { key: "contested", label: MODE_LABEL.contested, n: bank.stats.contestedCount, hint: "题库与社区答案不一致", dot: "var(--color-src-community)", href: `/banks/${slug}/drill?contested=true` },
+    { key: "due", label: mode("due"), n: progress.dueCount, hint: t("hintDue"), dot: "var(--color-cta)", href: `/banks/${slug}/drill?mode=due` },
+    { key: "wrong", label: mode("wrong"), n: progress.wrongCount, hint: t("hintWrong"), dot: "var(--color-warn)", href: `/banks/${slug}/drill?mode=wrong` },
+    { key: "unsure", label: mode("unsure"), n: progress.unsureCount, hint: t("hintUnsure"), dot: "var(--color-src-bank)", href: `/banks/${slug}/drill?mode=unsure` },
+    { key: "unseen", label: mode("unseen"), n: unseen, hint: t("hintUnseen"), dot: "var(--color-muted)", href: `/banks/${slug}/drill?mode=unseen` },
+    { key: "contested", label: mode("contested"), n: bank.stats.contestedCount, hint: t("hintContested"), dot: "var(--color-src-community)", href: `/banks/${slug}/drill?contested=true` },
   ];
 
   return (
     <Wide>
       <Band
-        crumbs={[{ href: "/", label: "首页" }, { label: code }]}
+        crumbs={[{ href: "/", label: common("home") }, { label: code }]}
         title={shortName}
         sub={
           <>
-            <b className="font-semibold text-ink">{code}</b> · {total} 题
-            {meta.passScore != null && meta.maxScore != null && <> · 及格 {meta.passScore}/{meta.maxScore}</>}
-            {" · "}答案有分歧 {bank.stats.contestedCount}
+            <b className="font-semibold text-ink">{code}</b> · {common("questions", { n: total })}
+            {meta.passScore != null && meta.maxScore != null && (
+              <> · {home("pass", { score: meta.passScore, max: meta.maxScore })}</>
+            )}
+            {" · "}
+            {home("contested", { n: bank.stats.contestedCount })}
             {weights.length > 0 && (
               <span className="ml-2 inline-flex gap-1.5 align-middle">
                 {weights.map(({ t, w }) => (
@@ -154,24 +166,26 @@ export default async function BankPage({
             {level && <span className="chip chip-level">{level}</span>}
             <span className="chip">{bank.locale}</span>
             <Link href="/" className="inline-flex items-center gap-1.5 rounded-md border border-line bg-raise px-3 py-1 text-[0.8rem] transition-colors hover:border-muted">
-              切换题库 ▾
+              {t("switchBank")} ▾
             </Link>
           </div>
         }
       >
-        <Stat value={progress.seenCount} unit={`/ ${total}`} label="做过" />
-        <Stat value={rate ?? "—"} unit={rate != null ? "%" : undefined} label="正确率" color={rate != null ? rateColor(rate) : undefined} />
-        <Stat value={overview.streakDays} unit="天" label="连续" />
+        <Stat value={progress.seenCount} unit={`/ ${total}`} label={t("statSeen")} />
+        <Stat value={rate ?? common("unknown")} unit={rate != null ? "%" : undefined} label={t("statRate")} color={rate != null ? rateColor(rate) : undefined} />
+        <Stat value={overview.streakDays} unit={home("unitDay")} label={t("statStreak")} />
       </Band>
 
       <div className="grid grid-cols-12 items-start gap-6">
         {/* ---- 继续学习：两条轨道 ---- */}
-        <Panel title="继续学习" side="两条轨道各自记位，互不干扰" className="col-span-12 lg:col-span-8">
+        <Panel title={t("continueTitle")} side={t("continueHint")} className="col-span-12 lg:col-span-8">
           <div className="grid md:grid-cols-2">
             <div className="grid min-h-[212px] grid-rows-[auto_1fr_auto] gap-3 p-6">
               <div className="flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.1em] text-muted">
-                <span className="dot bg-ink" />顺序进度
-                <time className="ml-auto font-mono normal-case tracking-normal">{seq.lastAt ? `上次 ${timeAgo(seq.lastAt)}` : "尚未开始"}</time>
+                <span className="dot bg-ink" />{t("sequential")}
+                <time className="ml-auto font-mono normal-case tracking-normal">
+                  {seq.lastAt ? t("lastAt", { when: timeAgo(seq.lastAt, locale) }) : t("notStarted")}
+                </time>
               </div>
               <div>
                 {seq.questionId != null ? (
@@ -181,8 +195,8 @@ export default async function BankPage({
                   </>
                 ) : (
                   <>
-                    <div className="display text-[1.6rem] leading-tight text-muted">已全部做过一遍</div>
-                    <p className="mt-2 text-[0.88rem] text-muted">接下来从右边的错题与不确定的题里巩固。</p>
+                    <div className="display text-[1.6rem] leading-tight text-muted">{t("allSeen")}</div>
+                    <p className="mt-2 text-[0.88rem] text-muted">{t("allSeenHint")}</p>
                   </>
                 )}
               </div>
@@ -194,7 +208,9 @@ export default async function BankPage({
                 {seq.questionId != null && (
                   <Link href={`/banks/${slug}/drill?mode=unseen`} className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-[0.9rem] font-semibold" style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}>
                     <Play size={12} />
-                    {seq.doneCount === 0 ? `开始 #${seq.externalNo}` : `继续 #${seq.externalNo}`}
+                    {seq.doneCount === 0
+                      ? t("start", { no: seq.externalNo ?? 1 })
+                      : t("continue", { no: seq.externalNo ?? 1 })}
                   </Link>
                 )}
               </div>
@@ -202,18 +218,20 @@ export default async function BankPage({
 
             <div className="grid min-h-[212px] grid-rows-[auto_1fr_auto] gap-3 border-t border-line p-6 md:border-l md:border-t-0">
               <div className="flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.1em] text-muted">
-                <span className="dot" style={{ background: "var(--color-src-bank)" }} />上次专项
-                {focus && <time className="ml-auto font-mono normal-case tracking-normal">{timeAgo(focus.lastAt)}</time>}
+                <span className="dot" style={{ background: "var(--color-src-bank)" }} />{t("lastFocus")}
+                {focus && <time className="ml-auto font-mono normal-case tracking-normal">{timeAgo(focus.lastAt, locale)}</time>}
               </div>
               {focus ? (
                 <>
                   <div>
                     <div className="display text-[2.1rem] leading-[1.1]">
-                      {focus.tag ? tagName(focus.tag) : MODE_LABEL[focus.context.mode] ?? focus.label}
-                      {focus.tag && <small className="ml-2 text-base text-muted">· {tagTypeLabel(meta, focus.tag.type)}</small>}
+                      {focus.tag ? tagName(focus.tag, locale) : modeLabel(mode, focus.context.mode, focus.label)}
+                      {focus.tag && <small className="ml-2 text-base text-muted">· {tagTypeLabel(meta, focus.tag.type, locale)}</small>}
                     </div>
                     <p className="mt-2 text-[0.88rem] leading-[1.7] text-muted">
-                      {focus.done != null ? `${focus.total} 题中做了 ${focus.done}。` : `当前 ${focus.total} 题。`}
+                      {focus.done != null
+                        ? t("focusProgress", { total: focus.total, done: focus.done })
+                        : t("focusCurrent", { total: focus.total })}
                     </p>
                   </div>
                   <div className="flex items-center gap-4">
@@ -222,17 +240,17 @@ export default async function BankPage({
                     </div>
                     <span className="w-14 text-right font-mono text-[0.76rem] text-muted tabular-nums">{focus.done != null ? `${focus.done}/${focus.total}` : focus.total}</span>
                     <Link href={focusHref(slug, focus)} className="inline-flex items-center gap-2 rounded-md border border-ink px-5 py-2.5 text-[0.9rem] font-semibold">
-                      <Play size={12} />继续
+                      <Play size={12} />{t("goOn")}
                     </Link>
                   </div>
                 </>
               ) : (
                 <>
                   <div>
-                    <div className="display text-[1.6rem] leading-tight text-muted">还没有专项</div>
-                    <p className="mt-2 text-[0.88rem] leading-[1.7] text-muted">从下方任何一项点进去开始专项，这里会记住你上次刷的是什么。</p>
+                    <div className="display text-[1.6rem] leading-tight text-muted">{t("noFocus")}</div>
+                    <p className="mt-2 text-[0.88rem] leading-[1.7] text-muted">{t("noFocusHint")}</p>
                   </div>
-                  <span className="text-[0.8rem] text-muted">↓ 选一个专项</span>
+                  <span className="text-[0.8rem] text-muted">{t("pickFocus")}</span>
                 </>
               )}
             </div>
@@ -240,7 +258,7 @@ export default async function BankPage({
         </Panel>
 
         {/* ---- 按我的状态 ---- */}
-        <Panel title="按我的状态" side="数字 = 有多少在等我" className="col-span-12 lg:col-span-4">
+        <Panel title={t("statusTitle")} side={t("statusHint")} className="col-span-12 lg:col-span-4">
           <div className="grid grid-cols-2">
             {tiles.map((t, i) => (
               <Link
@@ -258,7 +276,7 @@ export default async function BankPage({
         </Panel>
 
         {/* ---- 考纲轴 ---- */}
-        <Panel title={domainLabel} side={passLine != null ? <>四条都过 <b className="font-semibold text-ink">{passLine}%</b> 才算稳</> : undefined} className="col-span-12 lg:col-span-4">
+        <Panel title={domainLabel} side={passLine != null ? t("passAll", { line: passLine }) : undefined} className="col-span-12 lg:col-span-4">
           <div>
             {domains.map((r) => (
               <Link
@@ -269,19 +287,22 @@ export default async function BankPage({
                 <span className="font-mono text-[0.72rem] text-muted">{r.tag.value.replace(/^domain-/, "D")}</span>
                 <span>
                   <span className="text-[0.95rem] font-semibold">
-                    {tagName(r.tag)}
+                    {tagName(r.tag, locale)}
                     {r.weight != null && <span className="ml-1.5 font-mono text-[0.7rem] font-normal text-muted">{r.weight}%</span>}
                   </span>
-                  <span className="block text-[0.76rem] text-muted">{r.tag.questionCount} 题 · {r.done > 0 ? <>做过 <span className="tabular-nums">{r.done}</span></> : "还没碰"}</span>
+                  <span className="block text-[0.76rem] text-muted">
+                    {common("questions", { n: r.tag.questionCount ?? 0 })} ·{" "}
+                    {r.done > 0 ? <>{t("tagDone")} <span className="tabular-nums">{r.done}</span></> : t("tagged")}
+                  </span>
                   <span className="mt-2 block h-1 overflow-hidden rounded-sm bg-line">
                     {r.rate != null && <span className="block h-full rounded-sm" style={{ width: `${r.rate}%`, background: rateColor(r.rate) }} />}
                   </span>
                 </span>
-                <span className={`display min-w-[3.4rem] text-right text-[1.45rem] tabular-nums ${r.rate == null ? "text-muted" : ""}`}>{r.rate != null ? `${Math.round(r.rate)}%` : "—"}</span>
+                <span className={`display min-w-[3.4rem] text-right text-[1.45rem] tabular-nums ${r.rate == null ? "text-muted" : ""}`}>{r.rate != null ? `${Math.round(r.rate)}%` : common("unknown")}</span>
               </Link>
             ))}
           </div>
-          <p className="border-t border-line px-6 py-3 text-[0.74rem] leading-relaxed text-muted">灰色百分比 = 官方考纲权重。正确率低的排前面。</p>
+          <p className="border-t border-line px-6 py-3 text-[0.74rem] leading-relaxed text-muted">{t("domainNote")}</p>
         </Panel>
 
         {/* ---- 知识对象轴：表格 ---- */}
@@ -289,8 +310,12 @@ export default async function BankPage({
           title={topicLabel}
           side={
             <>
-              {topicTags.length} 个 · 正确率低的排前面 ·{" "}
-              {showAll ? <Link href={`/banks/${slug}`} className="text-src-community">收起</Link> : <Link href={`/banks/${slug}?all=1`} className="text-src-community">全部 →</Link>}
+              {t("topicSide", { n: topicTags.length })}
+              {showAll ? (
+                <Link href={`/banks/${slug}`} className="text-src-community">{t("collapse")}</Link>
+              ) : (
+                <Link href={`/banks/${slug}?all=1`} className="text-src-community">{t("showAll")}</Link>
+              )}
             </>
           }
           className="col-span-12 lg:col-span-8"
@@ -300,15 +325,15 @@ export default async function BankPage({
               <thead>
                 <tr className="border-b border-line text-left text-[0.68rem] uppercase tracking-[0.12em] text-muted">
                   <th className="px-6 py-2.5 font-medium">{topicLabel}</th>
-                  <th className="px-6 py-2.5 text-right font-medium">题量</th>
-                  <th className="px-6 py-2.5 text-right font-medium">做过</th>
-                  <th className="w-[40%] px-6 py-2.5 font-medium">正确率</th>
+                  <th className="px-6 py-2.5 text-right font-medium">{t("colCount")}</th>
+                  <th className="px-6 py-2.5 text-right font-medium">{t("colDone")}</th>
+                  <th className="w-[40%] px-6 py-2.5 font-medium">{t("colRate")}</th>
                 </tr>
               </thead>
               <tbody>
                 {topicRows.map((r) => (
                   <tr key={r.tag.id} className="border-b border-line-2 transition-colors last:border-b-0 hover:bg-surface">
-                    <td className="px-6 py-3 font-semibold"><Link href={`/banks/${slug}/drill?tag=${r.tag.id}`} className="block">{tagName(r.tag)}</Link></td>
+                    <td className="px-6 py-3 font-semibold"><Link href={`/banks/${slug}/drill?tag=${r.tag.id}`} className="block">{tagName(r.tag, locale)}</Link></td>
                     <td className="px-6 py-3 text-right font-mono text-[0.8rem] text-muted tabular-nums">{r.tag.questionCount}</td>
                     <td className="px-6 py-3 text-right font-mono text-[0.8rem] text-muted tabular-nums">{r.done}</td>
                     <td className="px-6 py-3">
@@ -317,7 +342,7 @@ export default async function BankPage({
                           {r.rate != null && <span className="block h-full rounded-sm" style={{ width: `${r.rate}%`, background: rateColor(r.rate) }} />}
                         </div>
                         <span className="text-right font-mono text-[0.8rem] tabular-nums" style={{ color: r.rate == null ? "var(--color-muted)" : rateColor(r.rate), fontWeight: r.rate != null && r.rate < 55 ? 600 : 400 }}>
-                          {r.rate != null ? `${Math.round(r.rate)}%` : "—"}
+                          {r.rate != null ? `${Math.round(r.rate)}%` : common("unknown")}
                         </span>
                       </div>
                     </td>
@@ -326,7 +351,7 @@ export default async function BankPage({
                 {!showAll && topics.length > 10 && (
                   <tr>
                     <td colSpan={4} className="px-6 py-3 text-center text-[0.82rem]">
-                      <Link href={`/banks/${slug}?all=1`} className="text-src-community">再看 {topics.length - 10} 个 →</Link>
+                      <Link href={`/banks/${slug}?all=1`} className="text-src-community">{t("showMore", { n: topics.length - 10 })}</Link>
                     </td>
                   </tr>
                 )}

@@ -461,6 +461,11 @@ type BankStats struct {
 type Choice struct {
 	Body  string `json:"body"`
 	Label string `json:"label"`
+
+	// Localized body 是否为请求语言的译文。**false 表示回退到了源语言原文**，
+	// 界面必须把这件事显示出来，⛔ 不静默回退。
+	// 选项与题干各自独立（可能只补了题干），所以各带各的标记。
+	Localized *bool `json:"localized,omitempty"`
 }
 
 // Credentials defines model for Credentials.
@@ -600,15 +605,24 @@ type QuestionDetail struct {
 	ExternalNo int                `json:"externalNo"`
 	Id         int64              `json:"id"`
 	Kind       QuestionDetailKind `json:"kind"`
-	PickCount  int                `json:"pickCount"`
+
+	// Localized stem 是否为请求语言（Accept-Language 协商结果）的译文。
+	// **false 表示回退到了源语言原文** —— 与 `sourceLocale` 比对后决定是否标注
+	// 「本题暂无该语言版本」。请求源语言本身时同样是 false（那本就不是译文）。
+	Localized *bool `json:"localized,omitempty"`
+	PickCount int   `json:"pickCount"`
 
 	// Reference 判对错用的参考答案。优先级 ai_verdict > community_vote > bank_label ——
 	// AI 是唯一看过全部信息并给出理由的来源；题库标注是四个来源里
 	// 最不该被无条件信任的那个（38% 与社区投票不一致）。
 	// 仅用于给出反馈信号，界面仍并列展示全部主张。
 	Reference *Reference `json:"reference,omitempty"`
-	Stem      string     `json:"stem"`
-	Tags      []Tag      `json:"tags"`
+
+	// SourceLocale 题库正文的源语言。⭐ 带上它，界面才能把「没有译文」与
+	// 「请求的就是源语言」区分开 —— 只看 localized 两者都是 false。
+	SourceLocale *string `json:"sourceLocale,omitempty"`
+	Stem         string  `json:"stem"`
+	Tags         []Tag   `json:"tags"`
 
 	// Warnings P0 解析阶段的告警，不静默丢弃
 	Warnings *[]string `json:"warnings,omitempty"`
@@ -637,8 +651,13 @@ type QuestionSummary struct {
 	ExternalNo int                 `json:"externalNo"`
 	Id         int64               `json:"id"`
 	Kind       QuestionSummaryKind `json:"kind"`
-	PickCount  int                 `json:"pickCount"`
-	Stem       string              `json:"stem"`
+
+	// Localized stem 是否为请求语言（Accept-Language 协商结果）的译文。
+	// **false 表示回退到了源语言原文** —— 与 `sourceLocale` 比对后决定是否标注
+	// 「本题暂无该语言版本」。请求源语言本身时同样是 false（那本就不是译文）。
+	Localized *bool  `json:"localized,omitempty"`
+	PickCount int    `json:"pickCount"`
+	Stem      string `json:"stem"`
 }
 
 // QuestionSummaryKind defines model for QuestionSummary.Kind.

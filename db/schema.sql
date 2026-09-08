@@ -85,6 +85,40 @@ CREATE TABLE IF NOT EXISTS explanation (
   KEY idx_expl_q (question_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 题干与选项的译文（2026-09-08）。
+--
+-- ⭐ question.stem / choice.body 保持为【源语言】，译文只进这两张表。
+-- 此前语言是在导入时烧死的（load.py 用 translation.stem 顶替 stem），
+-- 于是同一道题无法同时提供两种语言 —— SAP-C02 的英文原文因此在库里已不存在。
+--
+-- 形状照抄上面的 explanation（它早就是 (question_id, source, locale) 的多语言表）。
+-- ⛔ 不用 JSON 列存译文：加一种语言不该改表，且「复杂 JSON 查询放应用层」是本项目的 TiDB 纪律。
+--
+-- 取某 locale 时：先查这里，没有就回退源语言，并把「这是回退」告诉界面 ——
+-- ⛔ 不静默回退，与「答案主张并列展示」同一条哲学：把状况摆出来。
+CREATE TABLE IF NOT EXISTS question_i18n (
+  question_id BIGINT      NOT NULL,
+  locale      VARCHAR(16) NOT NULL,
+  stem        TEXT        NOT NULL,
+  -- 与 explanation.source 同一套取值（ai | editor | user）——
+  -- ⭐ 留着它是为了将来「AI 译文被人工订正过」时能区分，而不是事后加列。
+  source      VARCHAR(32) NOT NULL DEFAULT 'ai',
+  created_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (question_id, locale)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS choice_i18n (
+  choice_id  BIGINT      NOT NULL,
+  locale     VARCHAR(16) NOT NULL,
+  body       TEXT        NOT NULL,
+  source     VARCHAR(32) NOT NULL DEFAULT 'ai',
+  created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (choice_id, locale),
+  KEY idx_choice_i18n_locale (locale)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 通用 (type, value) 结构，不硬编码 AWS。
 -- bank_id = 0 表示全局标签（concept 类，跨题库共享并链到知识条目）
 --

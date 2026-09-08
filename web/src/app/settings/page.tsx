@@ -1,11 +1,16 @@
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
-import { KeyRound, Monitor, Mail, ShieldAlert } from "lucide-react";
+import { KeyRound, Languages, Monitor, Mail, ShieldAlert } from "lucide-react";
 import { getSessions, type SessionInfo } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
+import { getLocale, getTranslations } from "next-intl/server";
+import { LOCALES, LOCALE_LABEL } from "@/i18n/locales";
 
 export const revalidate = 0;
-export const metadata = { title: "账号设置" };
+
+export async function generateMetadata() {
+  return { title: (await getTranslations("settings"))("title") };
+}
 
 /**
  * 账号设置 —— 阶段 5 那六个后端端点的前端入口。
@@ -58,25 +63,29 @@ function Submit({ children, tone = "cta" }: { children: React.ReactNode; tone?: 
   );
 }
 
-const NOTICE: Record<string, { text: string; tone: "ok" | "warn" }> = {
-  "pw-ok": { text: "密码已修改。其它设备已被登出。", tone: "ok" },
-  "pw-old": { text: "当前密码不正确。", tone: "warn" },
-  "pw-weak": { text: "新密码不符合要求（至少 8 位）。", tone: "warn" },
-  "pw-breached": { text: "密码已修改 —— 但它出现在已知泄露集合中，建议尽快换一个。", tone: "warn" },
-  "sess-ok": { text: "已登出其它设备。", tone: "ok" },
-  "mail-sent": { text: "验证码已发往新邮箱。", tone: "ok" },
-  "mail-ok": { text: "邮箱已更新，并已通知原邮箱。", tone: "ok" },
-  "mail-bad": { text: "验证码无效或已过期。", tone: "warn" },
-  "mail-taken": { text: "该邮箱已被占用。", tone: "warn" },
-  "rate": { text: "操作过于频繁，请稍后再试。", tone: "warn" },
-  "fail": { text: "操作失败，请重试。", tone: "warn" },
+// ⚠️ 只映射【码 → 消息键 + 语气】，文案本身在 messages 里。
+// ⛔ 仍然不回显任何来自 URL 的文字（与登录页同一条纪律）——
+// 白名单换成 key 白名单，性质没变。
+const NOTICE: Record<string, { key: string; tone: "ok" | "warn" }> = {
+  "pw-ok": { key: "noticePwOk", tone: "ok" },
+  "pw-old": { key: "noticePwOld", tone: "warn" },
+  "pw-weak": { key: "noticePwWeak", tone: "warn" },
+  "pw-breached": { key: "noticePwBreached", tone: "warn" },
+  "sess-ok": { key: "noticeSessOk", tone: "ok" },
+  "mail-sent": { key: "noticeMailSent", tone: "ok" },
+  "mail-ok": { key: "noticeMailOk", tone: "ok" },
+  "mail-bad": { key: "noticeMailBad", tone: "warn" },
+  "mail-taken": { key: "noticeMailTaken", tone: "warn" },
+  "lang-ok": { key: "noticeLangOk", tone: "ok" },
+  "rate": { key: "noticeRate", tone: "warn" },
+  "fail": { key: "noticeFail", tone: "warn" },
 };
 
 export default async function SettingsPage({
   searchParams,
 }: { searchParams: Promise<{ n?: string; c?: string }> }) {
   const sp = await searchParams;
-  // ⛔ 只按白名单映射文案，不回显任何来自 URL 的文字（与登录页同一条纪律）。
+  const [t, locale] = await Promise.all([getTranslations("settings"), getLocale()]);
   const notice = sp.n ? NOTICE[sp.n] : undefined;
 
   let sessions: SessionInfo[] = [];
@@ -95,8 +104,8 @@ export default async function SettingsPage({
   return (
     <div className="mx-auto max-w-2xl space-y-6 pt-4">
       <header>
-        <p className="eyebrow">账号设置</p>
-        <h1 className="display mt-3 text-2xl">密码 · 登录设备 · 邮箱</h1>
+        <p className="eyebrow">{t("title")}</p>
+        <h1 className="display mt-3 text-2xl">{t("heading")}</h1>
       </header>
 
       {notice && (
@@ -107,86 +116,100 @@ export default async function SettingsPage({
             background: `color-mix(in oklab, var(--color-${notice.tone}) 8%, transparent)`,
           }}
         >
-          {notice.text}
+          {t(notice.key)}
           {sp.c && sp.n === "pw-breached" && (
-            <span className="ml-1 text-muted">（在已知泄露集合中出现 {sp.c} 次）</span>
+            <span className="ml-1 text-muted">{t("breachCount", { n: sp.c })}</span>
           )}
         </div>
       )}
 
-      <Section icon={<KeyRound size={15} />} title="密码" hint="改密后其它设备会被登出">
+      <Section icon={<KeyRound size={15} />} title={t("pwTitle")} hint={t("pwHint")}>
         <form method="POST" action="/settings/password" className="space-y-3">
           {/* ⭐ 留空 = 首次设置密码（纯 Akasha 账号）。
               ⚠️ 「要不要验旧密码」由账号有没有密码决定，⛔ 不由这里填不填决定 —— 后端判。 */}
           <Field name="old" type="password" autoComplete="current-password"
-                 placeholder="当前密码（从未设过密码则留空）" />
+                 placeholder={t("pwOld")} />
           <Field name="new" type="password" required autoComplete="new-password"
-                 placeholder="新密码（至少 8 位）" />
-          <Submit>保存密码</Submit>
+                 placeholder={t("pwNew")} />
+          <Submit>{t("pwSubmit")}</Submit>
         </form>
         <p className="mt-3 text-xs leading-relaxed text-muted">
-          ⚠️ 新密码会与已知泄露口令库比对。命中<b className="text-ink">不会阻止你</b>，
-          只会告诉你它出现过多少次 —— 判断留给你。
+          {t.rich("pwNote", { b: (c) => <b className="text-ink">{c}</b> })}
         </p>
       </Section>
 
-      <Section icon={<Monitor size={15} />} title="登录设备"
-               hint={sessionsFailed ? "暂时取不到" : `${sessions.length} 台`}>
+      <Section icon={<Monitor size={15} />} title={t("devTitle")}
+               hint={sessionsFailed ? t("devUnavailable") : t("devCount", { n: sessions.length })}>
         {sessionsFailed ? (
-          <p className="text-sm text-muted">列表暂时取不到，其余功能不受影响。</p>
+          <p className="text-sm text-muted">{t("devFailed")}</p>
         ) : (
           <>
             <ul className="space-y-2 text-sm">
               {sessions.map((s) => (
                 <li key={s.id} className="flex items-baseline gap-3">
                   <span className={s.current ? "font-medium text-ink" : "text-muted"}>
-                    {s.deviceInfo?.slice(0, 60) || "未知设备"}
+                    {s.deviceInfo?.slice(0, 60) || t("devUnknown")}
                   </span>
                   {s.current && (
                     <span className="rounded-sm border border-line px-1.5 text-[0.68rem] text-muted">
-                      当前
+                      {t("devCurrent")}
                     </span>
                   )}
                   <time className="ml-auto font-mono text-[0.74rem] text-muted">
-                    {timeAgo(s.lastActiveAt)}
+                    {timeAgo(s.lastActiveAt, locale)}
                   </time>
                 </li>
               ))}
             </ul>
             {sessions.length > 1 && (
               <form method="POST" action="/settings/sessions" className="mt-5">
-                <Submit tone="warn">登出其它设备</Submit>
+                <Submit tone="warn">{t("devLogoutOthers")}</Submit>
               </form>
             )}
           </>
         )}
-        <p className="mt-3 text-xs leading-relaxed text-muted">
-          ⚠️ 这里不显示任何令牌 —— 那是撤销凭据，摆在界面上等于让能看到屏幕的人拿走会话。
-        </p>
+        <p className="mt-3 text-xs leading-relaxed text-muted">{t("devNote")}</p>
       </Section>
 
-      <Section icon={<Mail size={15} />} title="邮箱" hint="找回密码要用它">
+      <Section icon={<Mail size={15} />} title={t("mailTitle")} hint={t("mailHint")}>
         <form method="POST" action="/settings/email" className="space-y-3">
           <input type="hidden" name="step" value="send" />
-          <Field name="email" type="email" required placeholder="新邮箱地址" />
-          <Submit>发送验证码</Submit>
+          <Field name="email" type="email" required placeholder={t("mailNew")} />
+          <Submit>{t("mailSend")}</Submit>
         </form>
         <form method="POST" action="/settings/email" className="mt-4 space-y-3">
           <input type="hidden" name="step" value="confirm" />
-          <Field name="code" required inputMode="numeric" placeholder="收到的 6 位验证码" />
-          <Submit>确认更换</Submit>
+          <Field name="code" required inputMode="numeric" placeholder={t("mailCode")} />
+          <Submit>{t("mailConfirm")}</Submit>
         </form>
         <p className="mt-3 flex gap-2 text-xs leading-relaxed text-muted">
           <ShieldAlert size={14} className="mt-0.5 shrink-0" />
-          <span>
-            换成功后会给<b className="text-ink">原邮箱</b>发一封通知 ——
-            那不是礼貌，是万一账号被人接管时<b className="text-ink">唯一会让你察觉的信号</b>。
-          </span>
+          <span>{t.rich("mailNote", { b: (c) => <b className="text-ink">{c}</b> })}</span>
         </p>
       </Section>
 
+      {/* ⭐ 语言也放这里一份 —— 顶栏的切换器是「随手换」，这里是「账号的设置在哪」。
+          两处写同一个 cookie，⛔ 不是两套状态。 */}
+      <Section icon={<Languages size={15} />} title={t("langTitle")} hint={t("langHint")}>
+        <form method="POST" action="/settings/language-form" className="space-y-3">
+          <select
+            name="locale"
+            defaultValue={locale}
+            className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm outline-none transition-colors focus:border-muted"
+          >
+            {LOCALES.map((l) => (
+              <option key={l} value={l}>
+                {LOCALE_LABEL[l]}
+              </option>
+            ))}
+          </select>
+          <Submit>{t("langSubmit")}</Submit>
+        </form>
+        <p className="mt-3 text-xs leading-relaxed text-muted">{t("langNote")}</p>
+      </Section>
+
       <p className="text-xs text-muted">
-        <Link href="/me" className="underline underline-offset-4">← 回到我的学习</Link>
+        <Link href="/me" className="underline underline-offset-4">{t("backToMe")}</Link>
       </p>
     </div>
   );

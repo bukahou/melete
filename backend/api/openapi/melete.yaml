@@ -1066,6 +1066,12 @@ components:
       properties:
         label: { type: string, example: "A" }
         body:  { type: string }
+        localized:
+          type: boolean
+          description: |
+            body 是否为请求语言的译文。**false 表示回退到了源语言原文**，
+            界面必须把这件事显示出来，⛔ 不静默回退。
+            选项与题干各自独立（可能只补了题干），所以各带各的标记。
 
     AnswerClaim:
       type: object
@@ -1114,6 +1120,12 @@ components:
         pickCount:  { type: integer }
         contested:  { type: boolean, description: 题库标注与社区投票是否不一致 }
         enriched:   { type: boolean, description: 是否已完成 AI 富化 }
+        localized:
+          type: boolean
+          description: |
+            stem 是否为请求语言（Accept-Language 协商结果）的译文。
+            **false 表示回退到了源语言原文** —— 与 `sourceLocale` 比对后决定是否标注
+            「本题暂无该语言版本」。请求源语言本身时同样是 false（那本就不是译文）。
 
     QuestionDetail:
       allOf:
@@ -1122,6 +1134,12 @@ components:
           required: [bankSlug, choices, claims, explanations, tags]
           properties:
             bankSlug:  { type: string }
+            sourceLocale:
+              type: string
+              description: |
+                题库正文的源语言。⭐ 带上它，界面才能把「没有译文」与
+                「请求的就是源语言」区分开 —— 只看 localized 两者都是 false。
+              example: zh
             reference: { $ref: "#/components/schemas/Reference" }
             dataIssue:
               type: string

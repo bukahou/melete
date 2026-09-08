@@ -14,6 +14,7 @@ import (
 	"github.com/bukahou/melete/backend/internal/auth"
 	"github.com/bukahou/melete/backend/internal/bank"
 	"github.com/bukahou/melete/backend/internal/httpauth"
+	"github.com/bukahou/melete/backend/internal/httplocale"
 	"github.com/bukahou/melete/backend/internal/question"
 	"github.com/bukahou/melete/backend/internal/study"
 	"github.com/bukahou/melete/backend/internal/token"
@@ -131,6 +132,12 @@ func (s *Server) ListQuestions(ctx context.Context, req api.ListQuestionsRequest
 	if id, ok := httpauth.AccountID(ctx); ok {
 		f.AccountID = userid.UserID(id)
 	}
+	// ⭐ 请求的语言就是题库源语言时不查 i18n 表 —— 那张表里本来就没有源语言的行，
+	// 查了必然全部 COALESCE 回退。省的不是那一次 join，是「localized 恒为 false」
+	// 这个会让界面到处标注「暂无译文」的假信号。
+	if l := httplocale.RequestLocale(ctx); l != "" && l != b.Locale {
+		f.Locale = l
+	}
 
 	page, err := s.questions.ListQuestions(ctx, b.ID, f)
 	if errors.Is(err, question.ErrModeNeedsAccount) {
@@ -149,7 +156,9 @@ func (s *Server) ListQuestions(ctx context.Context, req api.ListQuestionsRequest
 }
 
 func (s *Server) GetQuestion(ctx context.Context, req api.GetQuestionRequestObject) (api.GetQuestionResponseObject, error) {
-	d, err := s.questions.GetQuestion(ctx, req.Id)
+	// 这里【不】比对题库源语言：拿到 bank 要多一次查询，而多余的 join 是
+	// 主键等值查找，比那次查询更便宜。回退语义两边一致，界面据 localized 判断。
+	d, err := s.questions.GetQuestion(ctx, req.Id, httplocale.RequestLocale(ctx))
 	if errors.Is(err, question.ErrNotFound) {
 		return api.GetQuestion404JSONResponse{NotFoundJSONResponse: notFound("题目不存在")}, nil
 	}

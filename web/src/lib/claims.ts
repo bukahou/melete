@@ -44,13 +44,9 @@ export type DrillContext = components["schemas"]["DrillContext"];
 export type Overview = components["schemas"]["Overview"];
 export type StudySession = components["schemas"]["StudySession"];
 
-/** 答案主张的来源标签。顺序与后端返回一致：题库 → 社区 → AI → 用户。 */
-export const SOURCE_LABEL: Record<AnswerClaim["source"], string> = {
-  bank_label: "题库标注",
-  community_vote: "社区投票",
-  ai_verdict: "AI 裁决",
-  user_note: "我的判断",
-};
+// ⚠️ 来源标签（题库标注 / 社区投票 …）已移入 messages 的 `source.*`。
+// ⛔ 别在这里放中文常量表 —— 本模块是同构的，客户端组件也 import 它，
+// 而 useTranslations 在两侧都能用，没有必要再造一份。
 
 /** 从社区投票的 meta 里取出票数分布。 */
 export function voteDistribution(claim: AnswerClaim): Array<[string, number]> {
@@ -76,13 +72,19 @@ export type TagType = Tag["type"];
  * 名字由题库 meta 给；这里只兜底 —— meta 缺失时用角色的通用名，
  * 绝不出现「服务」「AWS」这类题库词。换题库时页面代码零改动。
  */
+// ⚠️ 这张表【不】进 messages，是有意的：它与 tag.i18n / meta.tagTypes[].label
+// 属于同一类东西 —— 按 locale 取值的**数据**，而不是界面文案。
+// 放进 messages 会让「meta 没给名字」这条回退路径横跨两个体系，查起来更难。
 const ROLE_FALLBACK: Record<TagType, Record<string, string>> = {
-  domain: { zh: "考纲", en: "Domain" },
-  topic: { zh: "主题", en: "Topic" },
-  concept: { zh: "概念", en: "Concept" },
+  domain: { zh: "考纲", ja: "出題分野", en: "Domain" },
+  topic: { zh: "主题", ja: "トピック", en: "Topic" },
+  concept: { zh: "概念", ja: "概念", en: "Concept" },
 };
 
-export function tagTypeLabel(meta: BankMeta | undefined, type: TagType, locale = "zh"): string {
+// ⚠️ locale 【没有】默认值，是有意的：默认成 "zh" 会让漏传的调用点静默显示中文，
+// 而那正是 i18n 最难查的一类 bug（页面大半是日文，某一处永远是中文）。
+// 现在漏传 = 编译失败 —— 与 DRILL_MODES「漏改一处会编译失败」同一条纪律。
+export function tagTypeLabel(meta: BankMeta | undefined, type: TagType, locale: string): string {
   const l = meta?.tagTypes?.[type]?.label;
   return l?.[locale] ?? l?.en ?? ROLE_FALLBACK[type][locale] ?? ROLE_FALLBACK[type].en;
 }
@@ -94,6 +96,6 @@ export function tagWeight(meta: BankMeta | undefined, tag: { type: TagType; valu
 }
 
 /** 标签显示名：优先本地化名（考纲域有 zh/en），否则用 value（服务名本来就是英文短名）。 */
-export function tagName(tag: { value: string; i18n?: Record<string, string> | null }, locale = "zh"): string {
+export function tagName(tag: { value: string; i18n?: Record<string, string> | null }, locale: string): string {
   return tag.i18n?.[locale] ?? tag.i18n?.en ?? tag.value;
 }

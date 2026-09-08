@@ -16,7 +16,8 @@ var ErrNotFound = errors.New("question not found")
 // Repository 是题目数据的读取契约。
 type Repository interface {
 	ListQuestions(ctx context.Context, bankID int64, f ListFilter) (*Page, error)
-	FindQuestionByID(ctx context.Context, id int64) (*Detail, error)
+	// FindQuestionByID 的 locale 空串 = 只要源语言，⛔ 不查 i18n 表。
+	FindQuestionByID(ctx context.Context, id int64, locale string) (*Detail, error)
 	// LoadReference 只取参考答案（study 域判对错用的窄路径，避免拉全量详情）。
 	LoadReference(ctx context.Context, questionID int64) (*Reference, error)
 	// LoadTextLength 只取题面字数（题干 + 全部选项）。
@@ -116,19 +117,33 @@ func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f Lis
 		return nil, fmt.Errorf("统计题目数: %w", err)
 	}
 
-	listQuery := `SELECT q.id, q.external_no, q.stem, q.kind, q.pick_count,
-		` + contestedExpr + ` AS contested, ` + enrichedExpr + ` AS enriched
-		FROM question q` + join + where
+	// ⭐ 译文：LEFT JOIN + COALESCE，没有该语言就回退源语言，并用 localized 标记出来。
+	//
+	// ⚠️⚠️ 这个 JOIN 的 `?` 出现在 where 的占位符【之前】—— 占位符按出现顺序绑定，
+	//   所以 locale 必须排在 args 最前面。这正是本函数下面那条注释警告过的同一个陷阱：
+	//   顺序错了不报错，只会把参数喂给错误的位置（静默返回错数据）。
+	i18nJoin, localeArgs := "", []any{}
+	stemExpr, localizedExpr := "q.stem", "FALSE"
+	if f.Locale != "" {
+		i18nJoin = " LEFT JOIN question_i18n qi ON qi.question_id = q.id AND qi.locale = ?"
+		localeArgs = []any{f.Locale}
+		stemExpr, localizedExpr = "COALESCE(qi.stem, q.stem)", "(qi.stem IS NOT NULL)"
+	}
+
+	listQuery := `SELECT q.id, q.external_no, ` + stemExpr + ` AS stem, q.kind, q.pick_count,
+		` + contestedExpr + ` AS contested, ` + enrichedExpr + ` AS enriched,
+		` + localizedExpr + ` AS localized
+		FROM question q` + i18nJoin + join + where
 	if having != "" {
 		listQuery += " GROUP BY q.id" + having
 	}
 	// 排序：复习队列按到期时间，其余按原题号（让「第 N 题」在界面上可预期）。
 	// ⚠️ 排序参数必须插在 LIMIT/OFFSET 【之前】—— 占位符是按出现顺序绑定的，
 	// 顺序错了不会报错，只会把 user_id 当成 LIMIT。
-	listArgs := args
+	listArgs := append(append([]any{}, localeArgs...), args...)
 	if f.Mode == "due" {
 		listQuery += " ORDER BY " + dueOrderExpr + " ASC"
-		listArgs = append(append([]any{}, args...), f.AccountID)
+		listArgs = append(listArgs, f.AccountID)
 	} else {
 		listQuery += " ORDER BY q.external_no"
 	}
@@ -144,19 +159,30 @@ func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f Lis
 // FindQuestionByID 拉取单题的全部关联数据。
 // 分多条查询而非一条大 join —— 一对多的笛卡尔积在应用层拼装更清晰，
 // 也避免了 stem / explanation 这类大字段被重复传输。
-func (r *mysqlRepository) FindQuestionByID(ctx context.Context, id int64) (*Detail, error) {
+func (r *mysqlRepository) FindQuestionByID(ctx context.Context, id int64, locale string) (*Detail, error) {
 	var row struct {
 		Summary
-		BankSlug  string         `db:"bank_slug"`
-		DataIssue *string        `db:"data_issue"`
-		Raw       sql.NullString `db:"raw"`
+		BankSlug     string         `db:"bank_slug"`
+		SourceLocale string         `db:"source_locale"`
+		DataIssue    *string        `db:"data_issue"`
+		Raw          sql.NullString `db:"raw"`
+	}
+	// 同 ListQuestions：LEFT JOIN 译文、COALESCE 回退、localized 标记。
+	// ⚠️ locale 的占位符在 WHERE 之前，args 顺序必须跟着。
+	i18nJoin, stemExpr, localizedExpr := "", "q.stem", "FALSE"
+	args := []any{id}
+	if locale != "" {
+		i18nJoin = " LEFT JOIN question_i18n qi ON qi.question_id = q.id AND qi.locale = ?"
+		stemExpr, localizedExpr = "COALESCE(qi.stem, q.stem)", "(qi.stem IS NOT NULL)"
+		args = []any{locale, id}
 	}
 	err := r.db.GetContext(ctx, &row, `
-		SELECT q.id, q.external_no, q.stem, q.kind, q.pick_count, q.data_issue, q.raw,
-		       b.slug AS bank_slug,
-		       `+contestedExpr+` AS contested, `+enrichedExpr+` AS enriched
-		FROM question q JOIN bank b ON b.id = q.bank_id
-		WHERE q.id = ?`, id)
+		SELECT q.id, q.external_no, `+stemExpr+` AS stem, q.kind, q.pick_count, q.data_issue, q.raw,
+		       b.slug AS bank_slug, b.locale AS source_locale,
+		       `+contestedExpr+` AS contested, `+enrichedExpr+` AS enriched,
+		       `+localizedExpr+` AS localized
+		FROM question q JOIN bank b ON b.id = q.bank_id`+i18nJoin+`
+		WHERE q.id = ?`, args...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -165,12 +191,13 @@ func (r *mysqlRepository) FindQuestionByID(ctx context.Context, id int64) (*Deta
 	}
 
 	d := &Detail{
-		Summary:   row.Summary,
-		BankSlug:  row.BankSlug,
-		DataIssue: row.DataIssue,
-		Warnings:  parseWarnings(row.Raw),
+		Summary:      row.Summary,
+		BankSlug:     row.BankSlug,
+		SourceLocale: row.SourceLocale,
+		DataIssue:    row.DataIssue,
+		Warnings:     parseWarnings(row.Raw),
 	}
-	if d.Choices, err = r.loadChoices(ctx, id); err != nil {
+	if d.Choices, err = r.loadChoices(ctx, id, locale); err != nil {
 		return nil, err
 	}
 	if d.Claims, err = r.loadClaims(ctx, id); err != nil {
@@ -222,11 +249,20 @@ func (r *mysqlRepository) LoadTextLength(ctx context.Context, questionID int64) 
 	return n, nil
 }
 
-func (r *mysqlRepository) loadChoices(ctx context.Context, id int64) ([]Choice, error) {
+func (r *mysqlRepository) loadChoices(ctx context.Context, id int64, locale string) ([]Choice, error) {
 	out := []Choice{}
-	err := r.db.SelectContext(ctx, &out,
-		`SELECT label, body FROM choice WHERE question_id = ? ORDER BY label`, id)
-	if err != nil {
+	// 选项的译文与题干各自独立（可能只补了题干），所以各带各的 localized。
+	query := `SELECT c.label, c.body, FALSE AS localized
+	          FROM choice c WHERE c.question_id = ? ORDER BY c.label`
+	args := []any{id}
+	if locale != "" {
+		query = `SELECT c.label, COALESCE(ci.body, c.body) AS body, (ci.body IS NOT NULL) AS localized
+		         FROM choice c
+		         LEFT JOIN choice_i18n ci ON ci.choice_id = c.id AND ci.locale = ?
+		         WHERE c.question_id = ? ORDER BY c.label`
+		args = []any{locale, id}
+	}
+	if err := r.db.SelectContext(ctx, &out, query, args...); err != nil {
 		return nil, fmt.Errorf("查询题目 %d 的选项: %w", id, err)
 	}
 	return out, nil

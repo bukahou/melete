@@ -15,7 +15,9 @@ import {
 import { tagName, tagTypeLabel } from "@/lib/claims";
 import { rateColor } from "@/components/RateBar";
 import { Band, Stat, Wide } from "@/components/Band";
-import { MODE_LABEL, timeAgo } from "@/lib/format";
+import { timeAgo } from "@/lib/format";
+import { getLocale, getTranslations } from "next-intl/server";
+import { modeLabel } from "@/i18n/modeLabel";
 
 export const revalidate = 0;
 
@@ -28,6 +30,13 @@ export const revalidate = 0;
 
 type BankCard = { bank: BankDetail; progress: Progress; resume: Resume };
 
+/** 文案与格式化都依赖语言，⛔ 不用模块级常量 —— 那会在请求之间被复用。 */
+type Intl18n = {
+  t: Awaited<ReturnType<typeof getTranslations<"home">>>;
+  mode: Awaited<ReturnType<typeof getTranslations<"mode">>>;
+  locale: string;
+};
+
 function levelOf(meta: BankDetail["meta"], name: string): string | undefined {
   // 等级章：meta 有就用；否则从名字里认（Associate / Professional / Level 1…）
   const m = meta as { level?: string };
@@ -36,7 +45,8 @@ function levelOf(meta: BankDetail["meta"], name: string): string | undefined {
   return hit?.[1];
 }
 
-function Card({ bank, progress, resume }: BankCard) {
+function Card({ bank, progress, resume, i18n }: BankCard & { i18n: Intl18n }) {
+  const { t, mode, locale } = i18n;
   const slug = bank.slug;
   const meta = bank.meta;
   const total = bank.stats.questionCount;
@@ -60,11 +70,11 @@ function Card({ bank, progress, resume }: BankCard) {
           <h2 className="display text-[1.45rem] leading-[1.25]">{bank.name.replace(/\s*\((?:SAA|SAP|[A-Z]{2,4})-[A-Z0-9]+\)\s*$/, "")}</h2>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[0.82rem] text-muted">
             <span><b className="font-semibold text-ink">{slug.toUpperCase().replace(/^AWS-/, "")}</b></span>
-            <span><b className="font-semibold text-ink tabular-nums">{total}</b> 题</span>
+            <span className="tabular-nums">{t("questionCount", { n: total })}</span>
             {meta.passScore != null && meta.maxScore != null && (
-              <span>及格 <b className="font-semibold text-ink tabular-nums">{meta.passScore}</b>/{meta.maxScore}</span>
+              <span className="tabular-nums">{t("pass", { score: meta.passScore, max: meta.maxScore })}</span>
             )}
-            <span>答案有分歧 <b className="font-semibold text-ink tabular-nums">{bank.stats.contestedCount}</b></span>
+            <span className="tabular-nums">{t("contested", { n: bank.stats.contestedCount })}</span>
           </div>
         </div>
         <div className="text-right">
@@ -73,7 +83,7 @@ function Card({ bank, progress, resume }: BankCard) {
             <small className="text-[1.05rem] text-muted"> / {total}</small>
           </div>
           <div className="mt-1.5 text-[0.74rem] text-muted">
-            {fresh ? "还没开始" : <>做过 · 正确率 <b className="font-semibold" style={{ color: rateColor(rate ?? 0) }}>{rate}%</b></>}
+            {fresh ? t("notStarted") : <>{t("doneRate")} <b className="font-semibold" style={{ color: rateColor(rate ?? 0) }}>{rate}%</b></>}
           </div>
         </div>
       </div>
@@ -87,42 +97,49 @@ function Card({ bank, progress, resume }: BankCard) {
       <div className="grid border-y border-line bg-surface/60 md:grid-cols-2">
         <div className="grid min-w-0 gap-1.5 px-7 py-4">
           <div className="flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.1em] text-muted">
-            <span className="dot bg-ink" />顺序进度
-            {seq.lastAt && <time className="ml-auto font-mono normal-case tracking-normal">{timeAgo(seq.lastAt)}</time>}
+            <span className="dot bg-ink" />{t("sequential")}
+            {seq.lastAt && <time className="ml-auto font-mono normal-case tracking-normal">{timeAgo(seq.lastAt, locale)}</time>}
           </div>
           {seq.questionId != null ? (
             <>
               <div className={`display text-[1.25rem] leading-tight tabular-nums ${fresh ? "text-muted" : ""}`}>
-                {fresh ? "从第 1 题开始" : <>#{seq.externalNo} <small className="font-sans text-[0.85rem] font-normal text-muted">/ {total}</small></>}
+                {fresh ? t("startFromFirst") : <>#{seq.externalNo} <small className="font-sans text-[0.85rem] font-normal text-muted">/ {total}</small></>}
               </div>
-              <div className="truncate text-[0.8rem] text-muted">{fresh ? `${total} 题按题号顺序` : seq.stem}</div>
+              <div className="truncate text-[0.8rem] text-muted">{fresh ? t("inOrder", { total }) : seq.stem}</div>
             </>
           ) : (
             <>
-              <div className="display text-[1.05rem] text-muted">已全部做过一遍</div>
-              <div className="truncate text-[0.8rem] text-muted">从错题与不确定的题里巩固</div>
+              <div className="display text-[1.05rem] text-muted">{t("allSeen")}</div>
+              <div className="truncate text-[0.8rem] text-muted">{t("consolidate")}</div>
             </>
           )}
         </div>
         <div className="grid min-w-0 gap-1.5 border-t border-line px-7 py-4 md:border-l md:border-t-0">
           <div className="flex items-center gap-2 text-[0.72rem] uppercase tracking-[0.1em] text-muted">
-            <span className="dot" style={{ background: "var(--color-src-bank)" }} />上次专项
-            {focus && <time className="ml-auto font-mono normal-case tracking-normal">{timeAgo(focus.lastAt)}</time>}
+            <span className="dot" style={{ background: "var(--color-src-bank)" }} />{t("lastFocus")}
+            {focus && <time className="ml-auto font-mono normal-case tracking-normal">{timeAgo(focus.lastAt, locale)}</time>}
           </div>
           {focus ? (
             <>
               <div className="display text-[1.25rem] leading-tight">
-                {focus.tag ? tagName(focus.tag) : MODE_LABEL[focus.context.mode] ?? focus.label}
-                {focus.tag && <small className="font-sans text-[0.85rem] font-normal text-muted"> · {tagTypeLabel(meta, focus.tag.type)}</small>}
+                {focus.tag ? tagName(focus.tag, locale) : modeLabel(mode, focus.context.mode, focus.label)}
+                {focus.tag && <small className="font-sans text-[0.85rem] font-normal text-muted"> · {tagTypeLabel(meta, focus.tag.type, locale)}</small>}
               </div>
               <div className="truncate text-[0.8rem] text-muted">
-                {focus.done != null ? `${focus.total} 题中做了 ${focus.done}` : `当前 ${focus.total} 题`}
+                {focus.done != null
+                  ? t("focusProgress", { total: focus.total, done: focus.done })
+                  : t("focusCurrent", { total: focus.total })}
               </div>
             </>
           ) : (
             <>
-              <div className="display text-[1.05rem] text-muted">还没有</div>
-              <div className="truncate text-[0.8rem] text-muted">进学习台，从{tagTypeLabel(meta, "domain")}或{tagTypeLabel(meta, "topic")}里选一个</div>
+              <div className="display text-[1.05rem] text-muted">{t("noFocus")}</div>
+              <div className="truncate text-[0.8rem] text-muted">
+                {t("noFocusHint", {
+                  domain: tagTypeLabel(meta, "domain", locale),
+                  topic: tagTypeLabel(meta, "topic", locale),
+                })}
+              </div>
             </>
           )}
         </div>
@@ -136,7 +153,7 @@ function Card({ bank, progress, resume }: BankCard) {
           {due > 0 && (
             <Link href={`/banks/${slug}/drill?mode=due`} className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-[0.9rem] font-semibold" style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}>
               <RotateCcw size={13} />
-              复习 {due} 题
+              {t("review", { n: due })}
             </Link>
           )}
           {seq.questionId != null && (
@@ -146,25 +163,27 @@ function Card({ bank, progress, resume }: BankCard) {
               style={due > 0 ? undefined : { background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
             >
               <Play size={12} />
-              {fresh ? `开始 #${seq.externalNo}` : `继续 #${seq.externalNo}`}
+              {fresh ? t("start", { no: seq.externalNo ?? 1 }) : t("continue", { no: seq.externalNo ?? 1 })}
             </Link>
           )}
           {focus && due === 0 && (
             <Link href={focusHref(slug, focus.context)} className="inline-flex items-center gap-2 rounded-md border border-ink px-5 py-2.5 text-[0.9rem] font-semibold">
-              继续 {focus.tag ? tagName(focus.tag) : MODE_LABEL[focus.context.mode]}
+              {t("continueLabel", {
+                label: focus.tag ? tagName(focus.tag, locale) : modeLabel(mode, focus.context.mode, focus.label),
+              })}
             </Link>
           )}
         </div>
         <div className="flex justify-center gap-5 text-[0.8rem] text-muted">
-          <span>做错<b className="display ml-1 text-base text-ink">{progress.wrongCount}</b></span>
-          <span>不确定<b className="display ml-1 text-base text-ink">{progress.unsureCount}</b></span>
-          <span>没做过<b className="display ml-1 text-base text-ink">{unseen}</b></span>
+          <span>{t("statWrong")}<b className="display ml-1 text-base text-ink">{progress.wrongCount}</b></span>
+          <span>{t("statUnsure")}<b className="display ml-1 text-base text-ink">{progress.unsureCount}</b></span>
+          <span>{t("statUnseen")}<b className="display ml-1 text-base text-ink">{unseen}</b></span>
           {/* ⚠️ 到期与「没做过」是两个不相交的集合：没做过的题没有卡片，不算到期。
               合成一个数字会让「今天要复习 300 题」失去意义 —— 那是间隔重复最劝退的失败模式。 */}
-          <span>该复习<b className="display ml-1 text-base" style={{ color: due > 0 ? "var(--color-warn)" : undefined }}>{due}</b></span>
+          <span>{t("statDue")}<b className="display ml-1 text-base" style={{ color: due > 0 ? "var(--color-warn)" : undefined }}>{due}</b></span>
         </div>
         <Link href={`/banks/${slug}`} className="inline-flex items-center gap-1 text-[0.88rem] text-src-community">
-          进入学习台 <ArrowRight size={14} />
+          {t("enterDesk")} <ArrowRight size={14} />
         </Link>
       </div>
     </article>
@@ -181,15 +200,27 @@ function sessionHref(s: StudySession): string {
   return focusHref(s.bankSlug, s.context);
 }
 
-function sessionLabel(s: StudySession): string {
-  if (s.tag) return `${s.tag.type === "domain" ? "考纲" : "专项"} · ${tagName(s.tag)}`;
-  if ((s.context.mode === "unseen" || s.context.mode === "all") && s.firstNo != null) {
-    return s.lastNo != null && s.lastNo !== s.firstNo ? `顺序 · #${s.firstNo}–#${s.lastNo}` : `顺序 · #${s.firstNo}`;
+function sessionLabel(s: StudySession, i18n: Intl18n): string {
+  const { t, mode, locale } = i18n;
+  if (s.tag) {
+    const role = s.tag.type === "domain" ? t("sessionSyllabus") : t("sessionFocus");
+    return `${role} · ${tagName(s.tag, locale)}`;
   }
-  return MODE_LABEL[s.context.mode] ?? s.label;
+  if ((s.context.mode === "unseen" || s.context.mode === "all") && s.firstNo != null) {
+    return s.lastNo != null && s.lastNo !== s.firstNo
+      ? t("sessionRange", { from: s.firstNo, to: s.lastNo })
+      : t("sessionSingle", { from: s.firstNo });
+  }
+  return modeLabel(mode, s.context.mode, s.label);
 }
 
 export default async function HomePage() {
+  const [t, mode, locale] = await Promise.all([
+    getTranslations("home"),
+    getTranslations("mode"),
+    getLocale(),
+  ]);
+  const i18n: Intl18n = { t, mode, locale };
   const banks = await listBanks();
   const [overview, recent, ...cards] = await Promise.all([
     getMyOverview(),
@@ -202,26 +233,26 @@ export default async function HomePage() {
 
   return (
     <Wide>
-      <Band title="题库" sub="选一个进去。卡上写着你在里面走到哪了。">
-        <Stat value={overview.todayCount} unit="题" label="今天" />
-        <Stat value={overview.streakDays} unit="天" label="连续" />
-        <Stat value={overview.seenTotal} unit="题" label="累计" />
+      <Band title={t("bandTitle")} sub={t("bandSub")}>
+        <Stat value={overview.todayCount} unit={t("unitQuestion")} label={t("today")} />
+        <Stat value={overview.streakDays} unit={t("unitDay")} label={t("streak")} />
+        <Stat value={overview.seenTotal} unit={t("unitQuestion")} label={t("total")} />
       </Band>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {cards.map((c) => (
-          <Card key={c.bank.slug} {...c} />
+          <Card key={c.bank.slug} {...c} i18n={i18n} />
         ))}
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[8fr_4fr]">
         <section className="rounded-lg border border-line bg-raise">
           <div className="flex items-baseline gap-4 border-b border-line px-6 py-4">
-            <span className="eyebrow">最近</span>
-            <span className="ml-auto text-[0.78rem] text-muted">同一入口的连续作答算一次 · 点击回到那个入口</span>
+            <span className="eyebrow">{t("recent")}</span>
+            <span className="ml-auto text-[0.78rem] text-muted">{t("recentHint")}</span>
           </div>
           {recent.length === 0 ? (
-            <p className="px-6 py-8 text-sm text-muted">还没有作答记录。从上面任意一张卡开始。</p>
+            <p className="px-6 py-8 text-sm text-muted">{t("recentEmpty")}</p>
           ) : (
             recent.map((s, i) => (
               <Link
@@ -229,30 +260,28 @@ export default async function HomePage() {
                 href={sessionHref(s)}
                 className="grid grid-cols-[6rem_1fr_auto_4.5rem] items-baseline gap-5 border-b border-line-2 px-6 py-3.5 text-[0.9rem] transition-colors last:border-b-0 hover:bg-surface"
               >
-                <span className="font-mono text-[0.76rem] text-muted">{timeAgo(s.endedAt)}</span>
+                <span className="font-mono text-[0.76rem] text-muted">{timeAgo(s.endedAt, locale)}</span>
                 <span>
                   <b className="mr-2 font-semibold">{s.bankSlug.toUpperCase().replace(/^AWS-/, "")}</b>
-                  <span className="text-muted">{sessionLabel(s)}</span>
+                  <span className="text-muted">{sessionLabel(s, i18n)}</span>
                 </span>
                 <span className="display text-[1.05rem] tabular-nums">
                   <span style={{ color: "var(--color-ok)" }}>{s.correct}</span>
                   <small className="font-sans text-[0.8rem] font-normal text-muted"> / {s.count}</small>
                 </span>
-                <span className="text-right text-[0.82rem] text-src-community">继续 →</span>
+                <span className="text-right text-[0.82rem] text-src-community">{t("recentContinue")}</span>
               </Link>
             ))
           )}
         </section>
         <section className="rounded-lg border border-line bg-raise">
           <div className="flex items-baseline gap-4 border-b border-line px-6 py-4">
-            <span className="eyebrow">今日到期</span>
+            <span className="eyebrow">{t("dueToday")}</span>
             <span className="ml-auto rounded-sm border border-dashed border-line px-1.5 text-[0.62rem] uppercase tracking-[0.1em] text-muted">P3 · FSRS</span>
           </div>
           <div className="grid gap-2.5 px-6 py-6">
             <div className="display text-[3rem] leading-none text-line">—</div>
-            <p className="text-[0.82rem] leading-relaxed text-muted">
-              记忆调度上线后，这里是跨题库「今天该复习多少题」—— 首页唯一「必须做」的入口。现在先留位。
-            </p>
+            <p className="text-[0.82rem] leading-relaxed text-muted">{t("duePlaceholder")}</p>
           </div>
         </section>
       </div>
