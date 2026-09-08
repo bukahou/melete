@@ -316,11 +316,29 @@ def check_item(it: dict, q: dict, glo: dict) -> list[str]:
                             + "（" + " / ".join(f"「{d}」" for d in accepted) + "）")
             # 吃掉：更短的子串不再对这一段提要求
             unconsumed = unconsumed.replace(src_term, "\x00" * len(src_term))
-    # keep：服务名等必须原样保留，⛔ 不许意译也不许改写成假名
+    # keep：服务名等必须原样保留，⛔ 不许意译也不许改写成假名。
+    #
+    # ⚠️ 拉丁字母的服务名必须按【词边界】匹配，⛔ 不能裸子串 ——
+    # 解析正文里全是 IAM 策略名与 API 名（`AmazonS3ReadOnlyAccess` / `GetCostForecast`
+    # / `Launch Configuration`），裸子串会把 S3 / Forecast / Config 全都「找到」。
+    # 后果不是多一次检查，是【要求译文含一个本题根本没提的服务名】：
+    # 实测加上解析后有 **48/1019** 道题会因此被误拦（只看题面时仅 5 道，
+    # 所以题面这一趟 500 题一次都没撞上 —— 它是【只在第二趟才爆】的那类）。
+    # ⭐ 源文与译文两侧用同一条规则，否则会一边宽一边严。
     for term in glo["keep"]:
-        if term in joined_src and term not in joined_dst:
+        if _standalone(term, joined_src) and not _standalone(term, joined_dst):
             errs.append(f"「{term}」是必须原样保留的名字，译文里没有")
     return errs
+
+
+def _standalone(term: str, text: str) -> bool:
+    """term 是否作为【独立记号】出现，而不是嵌在更长的单词里。
+
+    非拉丁词（中文/假名）没有词边界概念，退回裸子串。
+    """
+    if not re.fullmatch(r"[A-Za-z0-9 ._-]+", term):
+        return term in text
+    return re.search(rf"(?<![A-Za-z0-9]){re.escape(term)}(?![A-Za-z0-9])", text) is not None
 
 
 def check_shard(path: Path, qmap: dict, glo: dict) -> list[str]:
