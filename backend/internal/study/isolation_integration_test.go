@@ -123,7 +123,7 @@ func TestCrossAccountIsolationIntegration(t *testing.T) {
 func mustRecord(t *testing.T, ctx context.Context, svc Service, who userid.UserID, q int64, chosen string) {
 	t.Helper()
 	if _, err := svc.RecordAttempt(ctx, Attempt{
-		AccountID: who, QuestionID: q, Chosen: chosen, Rating: 3,
+		AccountID: who, QuestionID: q, Chosen: chosen, Rating: ratingPtr(3),
 	}); err != nil {
 		t.Fatalf("记录作答: %v", err)
 	}
