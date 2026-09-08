@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { oidc, setAuthCookies, type TokenPair } from "@/lib/auth";
+import { oidc } from "@/lib/auth";
+import { commitSession, logAuth, safeReturnPath, type TokenPair } from "@/lib/session";
 
 const API = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
 
@@ -14,8 +15,8 @@ const API = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const ticket = url.searchParams.get("ticket");
-  const next = url.searchParams.get("next") ?? "/";
-  const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  // 同源路径校验统一走 session-core（这里此前是手写的一版，少了 "/\" 和控制字符两条）
+  const safeNext = safeReturnPath(url.searchParams.get("next"));
 
   if (!ticket) {
     return NextResponse.redirect(new URL("/auth/login?oidc_error=state", oidc.origin));
@@ -34,6 +35,7 @@ export async function GET(req: Request) {
 
   const pair = (await res.json()) as TokenPair;
   const out = NextResponse.redirect(new URL(safeNext, oidc.origin), 303);
-  setAuthCookies(out, pair);
+  commitSession(out, pair);
+  logAuth("login.oidc", {});
   return out;
 }

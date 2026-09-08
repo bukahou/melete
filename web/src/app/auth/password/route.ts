@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { oidc, setAuthCookies, type TokenPair } from "@/lib/auth";
+import { oidc } from "@/lib/auth";
+import { commitSession, logAuth, type TokenPair } from "@/lib/session";
 
 const API = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
 
@@ -39,6 +40,7 @@ export async function POST(req: Request) {
 
   const pair = (await res.json()) as TokenPair;
   const out = NextResponse.redirect(new URL(returnTo, oidc.origin), 303);
-  setAuthCookies(out, pair);
+  commitSession(out, pair);
+  logAuth("login.password", {});
   return out;
 }

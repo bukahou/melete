@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { clearAuthCookies, oidc, refreshToken } from "@/lib/auth";
+import { oidc } from "@/lib/auth";
+import { clearSession, logAuth, readRefreshToken } from "@/lib/session";
 
 const API = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
 
 /** 登出：先让 API 吊销该会话（refresh 落库，可撤回），再去 Akasha 结束中枢会话。 */
 export async function GET() {
-  const rt = await refreshToken();
+  const rt = await readRefreshToken();
   if (rt) {
     // 吊销失败不该阻断登出 —— 本地 cookie 清掉，用户体感已登出
     await fetch(`${API}/auth/logout`, {
@@ -22,6 +23,7 @@ export async function GET() {
   }).toString();
 
   const res = NextResponse.redirect(end);
-  clearAuthCookies(res);
+  clearSession(res);
+  logAuth("logout", { hadRefresh: Boolean(rt) });
   return res;
 }

@@ -28,7 +28,9 @@ import type {
   SessionInfo, PasswordChanged,
 } from "./claims";
 
-import { accessToken } from "./auth";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { hasRenewMark, logAuth, readAccessToken, safeReturnPath } from "./session";
 
 const BASE = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
 
@@ -37,7 +39,7 @@ const BASE = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
  * web 不参与身份声明，因此也无从冒充他人。
  */
 async function authHeaders(): Promise<Record<string, string>> {
-  const t = await accessToken();
+  const t = await readAccessToken();
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
@@ -47,10 +49,33 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * 反应式续期 —— geass 客户端拦截器「401 → refresh → 重试」的服务端等价物。
+ *
+ * proxy 是预判（读 exp 提前刷）；这里是兜底：时钟偏差、API 密钥轮换、会话被吊销……
+ * 任何 proxy 猜错的情况，API 的 401 都在这里被接住，⛔ 不再变成 500 错误页
+ * （2026-09-08 digest 2012285127 正是这条路缺失的表现）。
+ *
+ * 只用于 Server Component 的渲染路径（get 系列）。Route Handler 返回状态码，⛔ 别在那里调。
+ * `redirect()` 靠抛出 NEXT_REDIRECT 生效 —— 调用方⛔不得 try/catch 包住 get()。
+ */
+async function recoverFrom401(path: string): Promise<never> {
+  const back = safeReturnPath((await headers()).get("x-pathname"));
+  if (await hasRenewMark()) {
+    // 刚 renew 过（30s 内）仍 401 ⇒ 换到新 token 也不被接受（账号停用 / 密钥轮换…）
+    // ⇒ 熔断：登出，别在 renew ↔ 401 之间转圈
+    logAuth("api.401.loop", { path, back });
+    redirect("/auth/logout");
+  }
+  logAuth("api.401", { path, back });
+  redirect(`/auth/renew?return=${encodeURIComponent(back)}`);
+}
+
 async function get<T>(path: string, revalidate = 60, personalized = false): Promise<T> {
   // 个人化数据绝不进共享缓存；且带 Authorization 的请求本就不该被缓存复用
   const cache = personalized ? { cache: "no-store" as const } : { next: { revalidate } };
   const res = await fetch(`${BASE}${path}`, { ...cache, headers: await authHeaders() });
+  if (res.status === 401) await recoverFrom401(path);
   if (!res.ok) {
     throw new ApiError(res.status, `GET ${path} → ${res.status}`);
   }

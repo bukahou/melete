@@ -184,6 +184,14 @@ jobs:
       #
       # ⭐ 类型安全网仍在：next build 会做 TypeScript 类型检查，
       #   类型错误照样让本 job 变红。
+
+      # 会话层的纯逻辑测试（vitest，2026-09-08 起）：
+      # 过期判定 / proxy 决策表 / return 参数的开放重定向闸。
+      # 这一层此前零测试 —— cookie 寿命与刷新时机脱节 5 分钟就是这么漏掉的。
+      - name: Test
+        working-directory: web
+        run: npm test
+
       - name: Build
         working-directory: web
         run: npm run build
