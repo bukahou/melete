@@ -161,7 +161,7 @@ attempt       id, account_id, question_id, chosen, correct, duration_ms, rating(
 | 前端 | Next.js 16 + React 19 + Tailwind 4 | 沿用 atlantis 的栈，组件/i18n/块渲染器可直接复用 |
 | 后端 | Go + Echo/chi + GORM | 与 geass-v3 一致 |
 | API 契约 | Spec-first OpenAPI | 与 geass-v3 一致 |
-| 数据库 | **开发 = 开发机 MySQL 8.0.46 / 生产 = TiDB Cloud** | 见下方迁移策略 |
+| 数据库 | **开发 = 集群内 TiDB `devdb` / 生产 = TiDB Cloud**（两边同为 TiDB v8.5.3） | 见下方迁移策略。⚠️ 2026-10-07 起 dev 从 raspidb（MySQL）迁到 devdb；raspidb 观察期保留作回滚目标 |
 | 认证 | Akasha OIDC | 见判断 4 |
 | 部署 | 集群 SSR + Cilium Gateway API HTTPRoute | 复制 geass-v3-web 模式 |
 | AI 离线 | Claude Batches API（5 折） | 1011 道一次跑完，约 $5–15 |
@@ -188,7 +188,15 @@ PDF → questions.json → enriched.json → [导入] → DB
 3. **批量写入分批提交**（TiDB 单事务默认 100 MB 上限）
 4. **复杂 JSON 查询放应用层**，别写进 SQL
 
-⚠️ **P2 之前必须拿 TiDB 建一次表跑一次导入**，确认 schema 两边都吃得下。
+⭐ 2026-10-07 起 **dev 本身就是 TiDB**（集群内 `devdb`，与生产同为 v8.5.3），
+「拿 TiDB 建一次表试试」这件事不再需要单独做 —— 在 devdb 上跑通的 DDL 就是在 Cloud 上会发生的事。
+
+**devdb 的两个账号，⛔ 别混**：
+- `app`（`MELETE_DB_DSN`）：读写，**无 DDL**。应用与导入（`load.py`）用它
+- `admin`（`tidb.env`）：建表 / 加列等 DDL 用它
+
+**观察期（raspidb 归档前）**：Claude 自己的写入（迁移 DDL、导入）**同时写 raspidb**（`MELETE_RASPIDB_DSN`），
+写完逐表核对行数一致 —— 保证回滚目标是新的。应用产生的作答只进 devdb，那部分 raspidb 本来就会落后。
 
 ---
 

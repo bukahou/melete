@@ -499,13 +499,24 @@ atlhyper 将来会继承（模板已修，风险消除）**。
 - [ ] 🔴 **合 main 前的闸：prod TiDB 缺 `question_i18n` / `choice_i18n`**（2026-09-08）
       代码里 `Accept-Language` 命中白名单就会 `LEFT JOIN` 这两张表 —— 几乎是所有真人浏览器。
       TiDB 没有这两张表 ⇒ **题目列表与详情 500，中文用户也打不开**，不只是日文不可用。
-      ⚠️ 但**现在不要去建**：表结构还没定型（欠 tracker 早就写下的
-      `origin ∈ {original, translation, source}`，术语表跑下来可能还要 provenance 列），
-      现在建八成要第二次 DDL；而且下面那条 COLLATE 的账还没还，
-      在有已知缺陷的地基上再加两张表只会让账更难还。
-      ⇒ **dev（raspi）已建好，实验在那儿做**；合 main 那一刻连同 COLLATE 一起处理。
+      ⚠️ 但**现在不要去建**：表结构还没定型（欠 `origin ∈ {original, translation, source}`），
+      现在建八成要第二次 DDL。
+      ⇒ **dev（devdb）已建好，实验在那儿做**。
+      ⭐ 2026-10-08 更新：dev 已迁到集群内 TiDB（与生产同版本），**同一份 DDL 可在 devdb 上完全等价地预演**；
+      原先「连同 COLLATE 一起处理」那半已不成立，见下一条。
 
-- [ ] 🔴 **`db/schema.sql` 没钉死 `COLLATE`**，排序规则跟着服务器默认值走：
+- [x] ~~🔴 **`db/schema.sql` 没钉死 `COLLATE`**~~ → **2026-10-08 降级：风险在生产上实测不成立**，剩一项卫生
+      ```
+                    Alice=alice(general_ci)  (bin 对照)   users        login_failures
+      devdb               1                     0       general_ci   general_ci
+      TiDB Cloud          1                     0       general_ci   general_ci
+      ```
+      ⇒ 生产的新排序规则框架是开着的，`users` 与 `login_failures` 折叠一致，**大小写绕开退避在生产上不成立**。
+      ⚠️ 下面「TiDB 默认 utf8mb4_bin ⇒ 三个桶」那行当时就标了「推断，未实测」—— 实测推翻了它。
+      剩下的卫生项：**新表在 `schema.sql` 里显式写 `COLLATE`**，别依赖服务器默认值。
+      （以下为 2026-09-06 原文，保留作当时的判断依据）
+
+      原：排序规则跟着服务器默认值走：
       开发库 MySQL 8.0 是 `utf8mb4_0900_ai_ci`，**TiDB 默认是 `utf8mb4_bin`（逐字节比）**。
       同一份 schema 换个库，`uk_account_username` 的折叠规则就变了 ——
       `alice` / `Alice` / `ALICE` 在 TiDB 上会是三个账号。
@@ -610,5 +621,5 @@ atlhyper 将来会继承（模板已修，风险消除）**。
 | 题库答案不可信 | 340 道标注与社区不一致。**若照搬标注答案会背错三分之一** —— 这是 P1 存在的根本理由 |
 | 104 道无投票数据 | 题号 905–1011，只有单一答案来源，AI 裁决无对照 |
 | 仓库可见性 | 代码公开 / 数据私有，边界见根目录 CLAUDE.md。⚠️ 对外演示用 IPA 题库 —— 它是官方公开素材 |
-| 迁 TiDB 的隐形差异 | `COLLATE` 未钉死（见技术债）。⚠️ **本地测不出来** —— 本地两种排序规则都折叠大小写 |
+| 迁 TiDB 的隐形差异 | ~~`COLLATE` 未钉死~~ 2026-10-08 起 dev 也是 TiDB（同版本），**本地测得出来了**；生产折叠规则已实测一致（见技术债） |
 | 「第一套跑干净」不构成证据 | IPA 令和8 那套没有被强调的否定，2016 那套有。**只在部分素材出现的缺陷，抽样通过说明不了什么** |
