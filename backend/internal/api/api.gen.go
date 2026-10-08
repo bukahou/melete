@@ -452,6 +452,11 @@ type BankMeta struct {
 
 	// TagTypes 以标签 type（domain / topic / concept）为键
 	TagTypes *map[string]TagTypeMeta `json:"tagTypes,omitempty"`
+
+	// TopicTree domain › 分组 › topic 的展示树。没有则 topic 平铺。
+	// 题目只挂叶子 topic；分组不是标签，选中分组 = 它下面那几个 topic。
+	// ⚠️ 树描述的是考纲：可能含题库里没有题的 topic（库里也就没有对应的 tag）。
+	TopicTree *[]TopicTreeDomain `json:"topicTree,omitempty"`
 }
 
 // BankStats 题库的内容侧统计（与用户无关）
@@ -859,6 +864,19 @@ type TokenPair struct {
 	// ExpiresIn access token 剩余秒数（非绝对时间，免受客户端时钟偏差影响）
 	ExpiresIn    int    `json:"expiresIn"`
 	RefreshToken string `json:"refreshToken"`
+}
+
+// TopicTreeDomain defines model for TopicTreeDomain.
+type TopicTreeDomain struct {
+	// Domain domain 标签的 value，如 domain-1
+	Domain string `json:"domain"`
+	Groups []struct {
+		// Name 分组显示名（题库自己的语言）
+		Name string `json:"name"`
+
+		// Topics topic 标签的 value
+		Topics []string `json:"topics"`
+	} `json:"groups"`
 }
 
 // BankQuery defines model for BankQuery.

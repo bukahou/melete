@@ -842,6 +842,22 @@ export interface components {
             examQuestions?: number;
             /** @description 顺序练习每组多少题 */
             groupSize?: number;
+            /**
+             * @description domain › 分组 › topic 的展示树。没有则 topic 平铺。
+             *     题目只挂叶子 topic；分组不是标签，选中分组 = 它下面那几个 topic。
+             *     ⚠️ 树描述的是考纲：可能含题库里没有题的 topic（库里也就没有对应的 tag）。
+             */
+            topicTree?: components["schemas"]["TopicTreeDomain"][];
+        };
+        TopicTreeDomain: {
+            /** @description domain 标签的 value，如 domain-1 */
+            domain: string;
+            groups: {
+                /** @description 分组显示名（题库自己的语言） */
+                name: string;
+                /** @description topic 标签的 value */
+                topics: string[];
+            }[];
         };
         TagTypeMeta: {
             /** @description locale → 该标签轴的显示名 */
