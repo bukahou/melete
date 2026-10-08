@@ -77,7 +77,7 @@ func newSentinelServer(t *testing.T, acct *account.Account, hash string) *Server
 	})
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := auth.NewService(guard, sessions, &sentinelRepo{acct: acct}, lookup, "test-secret", log)
-	return NewServer(nil, nil, nil, nil, svc, nil, log)
+	return NewServer(nil, nil, nil, nil, nil, svc, nil, log)
 }
 
 // outcome 把一次调用压成「对外可观察的那个二元组」。

@@ -16,6 +16,7 @@ func toAPIBank(b bank.Bank) api.Bank {
 	return api.Bank{
 		Id: b.ID, Slug: b.Slug, Name: b.Name, Description: b.Description,
 		Locale: b.Locale, Kind: api.BankKind(b.Kind), Meta: parseBankMeta(b.Meta),
+		Visibility: api.BankVisibility(b.Visibility),
 	}
 }
 
@@ -37,6 +38,7 @@ func toAPIBankDetail(b *bank.Bank, s *bank.Stats) api.BankDetail {
 	return api.BankDetail{
 		Id: b.ID, Slug: b.Slug, Name: b.Name, Description: b.Description,
 		Locale: b.Locale, Kind: api.BankDetailKind(b.Kind), Meta: parseBankMeta(b.Meta),
+		Visibility: api.BankDetailVisibility(b.Visibility),
 		Stats: api.BankStats{
 			QuestionCount:  s.QuestionCount,
 			EnrichedCount:  s.EnrichedCount,

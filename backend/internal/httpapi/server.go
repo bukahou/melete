@@ -10,6 +10,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/bukahou/melete/backend/internal/access"
 	"github.com/bukahou/melete/backend/internal/api"
 	"github.com/bukahou/melete/backend/internal/auth"
 	"github.com/bukahou/melete/backend/internal/bank"
@@ -28,6 +29,8 @@ type Server struct {
 	questions question.Service
 	studies   study.Service
 	glossary  glossary.Service
+	// access 决定「谁能看哪个题库、谁能改谁的档位」（P9 #27）。所有题库相关端点第一步都经过它（见 access.go）。
+	access access.Service
 	// ⭐ auth 是登录的唯一入口。⛔ 注意这里【没有】account.Service ——
 	// 阶段 3 起 melete 不再有自己的「校验密码」这件事，那全在模块里。
 	auth *auth.Service
@@ -37,10 +40,10 @@ type Server struct {
 
 func NewServer(
 	banks bank.Service, questions question.Service, studies study.Service, glossarySvc glossary.Service,
-	authSvc *auth.Service, oidc *token.OIDCVerifier, log *slog.Logger,
+	accessSvc access.Service, authSvc *auth.Service, oidc *token.OIDCVerifier, log *slog.Logger,
 ) *Server {
 	return &Server{
-		banks: banks, questions: questions, studies: studies, glossary: glossarySvc,
+		banks: banks, questions: questions, studies: studies, glossary: glossarySvc, access: accessSvc,
 		auth: authSvc, oidc: oidc, log: log,
 	}
 }
@@ -59,19 +62,32 @@ func (s *Server) fail(op string, err error) error {
 }
 
 func (s *Server) ListBanks(ctx context.Context, _ api.ListBanksRequestObject) (api.ListBanksResponseObject, error) {
+	_, scope, err := s.viewer(ctx, "ListBanks")
+	if err != nil {
+		return nil, err
+	}
 	banks, err := s.banks.ListBanks(ctx)
 	if err != nil {
 		return nil, s.fail("ListBanks", err)
 	}
 	out := make(api.ListBanks200JSONResponse, 0, len(banks))
 	for _, b := range banks {
-		out = append(out, toAPIBank(b))
+		if scope.Allows(b.Visibility) {
+			out = append(out, toAPIBank(b))
+		}
 	}
 	return out, nil
 }
 
 func (s *Server) GetBank(ctx context.Context, req api.GetBankRequestObject) (api.GetBankResponseObject, error) {
+	_, scope, err := s.viewer(ctx, "GetBank")
+	if err != nil {
+		return nil, err
+	}
 	b, stats, err := s.banks.GetBankDetail(ctx, req.Slug)
+	if err == nil && !scope.Allows(b.Visibility) {
+		err = bank.ErrNotFound
+	}
 	if errors.Is(err, bank.ErrNotFound) {
 		return api.GetBank404JSONResponse{NotFoundJSONResponse: notFound("题库不存在: " + req.Slug)}, nil
 	}
@@ -82,6 +98,15 @@ func (s *Server) GetBank(ctx context.Context, req api.GetBankRequestObject) (api
 }
 
 func (s *Server) ListBankTags(ctx context.Context, req api.ListBankTagsRequestObject) (api.ListBankTagsResponseObject, error) {
+	_, scope, err := s.viewer(ctx, "ListBankTags")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.visibleBank(ctx, scope, req.Slug); errors.Is(err, bank.ErrNotFound) {
+		return api.ListBankTags404JSONResponse{NotFoundJSONResponse: notFound("题库不存在: " + req.Slug)}, nil
+	} else if err != nil {
+		return nil, s.fail("ListBankTags.bank", err)
+	}
 	tagType := ""
 	if req.Params.Type != nil {
 		tagType = string(*req.Params.Type)
@@ -101,7 +126,11 @@ func (s *Server) ListBankTags(ctx context.Context, req api.ListBankTagsRequestOb
 }
 
 func (s *Server) ListQuestions(ctx context.Context, req api.ListQuestionsRequestObject) (api.ListQuestionsResponseObject, error) {
-	b, _, err := s.banks.GetBankDetail(ctx, req.Slug)
+	_, scope, err := s.viewer(ctx, "ListQuestions")
+	if err != nil {
+		return nil, err
+	}
+	b, err := s.visibleBank(ctx, scope, req.Slug)
 	if errors.Is(err, bank.ErrNotFound) {
 		return api.ListQuestions404JSONResponse{NotFoundJSONResponse: notFound("题库不存在: " + req.Slug)}, nil
 	}
@@ -144,11 +173,11 @@ func (s *Server) ListQuestions(ctx context.Context, req api.ListQuestionsRequest
 
 // SummarizeQuestions 是一个题目集合的本轮小结（P9 #19）。过滤条件与 ListQuestions 同一套。
 func (s *Server) SummarizeQuestions(ctx context.Context, req api.SummarizeQuestionsRequestObject) (api.SummarizeQuestionsResponseObject, error) {
-	accountID, err := s.requireAccount(ctx, "SummarizeQuestions")
+	accountID, scope, err := s.viewer(ctx, "SummarizeQuestions")
 	if err != nil {
 		return nil, err
 	}
-	b, err := s.banks.FindBank(ctx, req.Slug)
+	b, err := s.visibleBank(ctx, scope, req.Slug)
 	if errors.Is(err, bank.ErrNotFound) {
 		return api.SummarizeQuestions404JSONResponse{NotFoundJSONResponse: notFound("题库不存在: " + req.Slug)}, nil
 	}
@@ -170,6 +199,16 @@ func (s *Server) SummarizeQuestions(ctx context.Context, req api.SummarizeQuesti
 }
 
 func (s *Server) GetQuestion(ctx context.Context, req api.GetQuestionRequestObject) (api.GetQuestionResponseObject, error) {
+	accountID, scope, err := s.viewer(ctx, "GetQuestion")
+	if err != nil {
+		return nil, err
+	}
+	// ⚠️ 路径里没有题库名：先按题目编号查它所属题库能不能看，再取题目（P9 #27）
+	if ok, err := s.questionVisible(ctx, scope, req.Id); err != nil {
+		return nil, s.fail("GetQuestion.access", err)
+	} else if !ok {
+		return api.GetQuestion404JSONResponse{NotFoundJSONResponse: notFound("题目不存在")}, nil
+	}
 	// 这里【不】比对题库源语言：拿到 bank 要多一次查询，而多余的 join 是
 	// 主键等值查找，比那次查询更便宜。回退语义两边一致，界面据 localized 判断。
 	d, err := s.questions.GetQuestion(ctx, req.Id, httplocale.RequestLocale(ctx))
@@ -180,22 +219,24 @@ func (s *Server) GetQuestion(ctx context.Context, req api.GetQuestionRequestObje
 		return nil, s.fail("GetQuestion", err)
 	}
 	out := toAPIDetail(d)
-	// 收藏状态是个人的：登录了才查（详情接口本身不要求登录）
-	if id, ok := httpauth.AccountID(ctx); ok {
-		on, err := s.studies.IsBookmarked(ctx, userid.UserID(id), d.ID)
-		if err != nil {
-			return nil, s.fail("GetQuestion.bookmark", err)
-		}
-		out.Bookmarked = &on
+	on, err := s.studies.IsBookmarked(ctx, accountID, d.ID)
+	if err != nil {
+		return nil, s.fail("GetQuestion.bookmark", err)
 	}
+	out.Bookmarked = &on
 	return api.GetQuestion200JSONResponse(out), nil
 }
 
 // AddBookmark / RemoveBookmark：收藏是「答题时不懂、靠猜」的自选标记（P9 #20）。两个方向都幂等。
 func (s *Server) AddBookmark(ctx context.Context, req api.AddBookmarkRequestObject) (api.AddBookmarkResponseObject, error) {
-	accountID, err := s.requireAccount(ctx, "AddBookmark")
+	accountID, scope, err := s.viewer(ctx, "AddBookmark")
 	if err != nil {
 		return nil, err
+	}
+	if ok, err := s.questionVisible(ctx, scope, req.QuestionId); err != nil {
+		return nil, s.fail("AddBookmark.access", err)
+	} else if !ok {
+		return api.AddBookmark404JSONResponse{NotFoundJSONResponse: notFound("题目不存在")}, nil
 	}
 	err = s.studies.SetBookmark(ctx, accountID, req.QuestionId, true)
 	if errors.Is(err, study.ErrQuestionNotFound) {
@@ -208,9 +249,14 @@ func (s *Server) AddBookmark(ctx context.Context, req api.AddBookmarkRequestObje
 }
 
 func (s *Server) RemoveBookmark(ctx context.Context, req api.RemoveBookmarkRequestObject) (api.RemoveBookmarkResponseObject, error) {
-	accountID, err := s.requireAccount(ctx, "RemoveBookmark")
+	accountID, scope, err := s.viewer(ctx, "RemoveBookmark")
 	if err != nil {
 		return nil, err
+	}
+	if ok, err := s.questionVisible(ctx, scope, req.QuestionId); err != nil {
+		return nil, s.fail("RemoveBookmark.access", err)
+	} else if !ok {
+		return api.RemoveBookmark404JSONResponse{NotFoundJSONResponse: notFound("题目不存在")}, nil
 	}
 	if err := s.studies.SetBookmark(ctx, accountID, req.QuestionId, false); err != nil {
 		return nil, s.fail("RemoveBookmark", err)
@@ -285,9 +331,15 @@ func (s *Server) RecordAttempt(ctx context.Context, req api.RecordAttemptRequest
 	// ⭐ 与其它端点一样走 requireAccount —— 它是 HTTP 层到业务层
 	// 唯一的账号 id 转换点。⛔ 这里曾经自己取一次 AccountID，
 	// 于是它是唯一一处绕过那个转换点的地方。
-	accountID, err := s.requireAccount(ctx, "RecordAttempt")
+	accountID, scope, err := s.viewer(ctx, "RecordAttempt")
 	if err != nil {
 		return nil, err
+	}
+	// ⚠️ 先查再写：看不到的题库 ⛔ 不得落一条作答（P9 #27）
+	if ok, err := s.questionVisible(ctx, scope, req.Body.QuestionId); err != nil {
+		return nil, s.fail("RecordAttempt.access", err)
+	} else if !ok {
+		return api.RecordAttempt404JSONResponse{NotFoundJSONResponse: notFound("题目不存在")}, nil
 	}
 	var contextJSON *string
 	if req.Body.Context != nil {
@@ -322,9 +374,14 @@ func (s *Server) RecordAttempt(ctx context.Context, req api.RecordAttemptRequest
 // ⭐ 这是「揭晓即记录」拆出来的第二步：作答已经在 RecordAttempt 落库了，
 // 这里只补 rating 并据此排 FSRS 卡片。⛔ 不再有「不评分就什么都不存」。
 func (s *Server) RateAttempt(ctx context.Context, req api.RateAttemptRequestObject) (api.RateAttemptResponseObject, error) {
-	accountID, err := s.requireAccount(ctx, "RateAttempt")
+	accountID, scope, err := s.viewer(ctx, "RateAttempt")
 	if err != nil {
 		return nil, err
+	}
+	if ok, err := s.attemptVisible(ctx, scope, req.Id); err != nil {
+		return nil, s.fail("RateAttempt.access", err)
+	} else if !ok {
+		return api.RateAttempt404JSONResponse{NotFoundJSONResponse: notFound("作答记录不存在")}, nil
 	}
 	res, err := s.studies.RateAttempt(ctx, accountID, req.Id, req.Body.Rating)
 	if err != nil {
@@ -363,11 +420,14 @@ func (s *Server) requireAccount(ctx context.Context, op string) (userid.UserID, 
 }
 
 func (s *Server) GetMyProgress(ctx context.Context, req api.GetMyProgressRequestObject) (api.GetMyProgressResponseObject, error) {
-	accountID, err := s.requireAccount(ctx, "GetMyProgress")
+	accountID, scope, err := s.viewer(ctx, "GetMyProgress")
 	if err != nil {
 		return nil, err
 	}
-	slug, err := s.currentBank(ctx, accountID, req.Params.Bank)
+	slug, err := s.currentBank(ctx, accountID, scope, req.Params.Bank)
+	if errors.Is(err, bank.ErrNotFound) {
+		return api.GetMyProgress404JSONResponse{NotFoundJSONResponse: notFound("题库不存在")}, nil
+	}
 	if err != nil {
 		return nil, s.fail("GetMyProgress.banks", err)
 	}
@@ -390,11 +450,14 @@ func (s *Server) GetMyProgress(ctx context.Context, req api.GetMyProgressRequest
 }
 
 func (s *Server) GetMyTagStats(ctx context.Context, req api.GetMyTagStatsRequestObject) (api.GetMyTagStatsResponseObject, error) {
-	accountID, err := s.requireAccount(ctx, "GetMyTagStats")
+	accountID, scope, err := s.viewer(ctx, "GetMyTagStats")
 	if err != nil {
 		return nil, err
 	}
-	slug, err := s.currentBank(ctx, accountID, req.Params.Bank)
+	slug, err := s.currentBank(ctx, accountID, scope, req.Params.Bank)
+	if errors.Is(err, bank.ErrNotFound) {
+		return api.GetMyTagStats404JSONResponse{NotFoundJSONResponse: notFound("题库不存在")}, nil
+	}
 	if err != nil {
 		return nil, s.fail("GetMyTagStats.banks", err)
 	}
@@ -423,18 +486,18 @@ func (s *Server) GetMyTagStats(ctx context.Context, req api.GetMyTagStatsRequest
 	return out, nil
 }
 
-// currentBank 决定「当前题库」：显式传了 bank 就用它，否则退回第一个题库。
-// 多题库后「当前」应改为最近活跃的那个 —— 到时只改这一处。
-// currentBank 解析可选的 bank 参数：显式给了就用；缺省 = 这个账号的当前题库
-// （与 GET /me/bank 同一套 chosen → recent 规则）；都没有才退到第一个题库。
-//
-// ⚠️ 这里原来直接取第一个题库 —— 契约上写的就是「缺省 = 当前题库（现阶段为第一个）」，
-// P9 有了真正的当前题库之后兑现它。
-func (s *Server) currentBank(ctx context.Context, accountID userid.UserID, explicit *string) (string, error) {
+// currentBank 解析可选的 bank 参数：显式给了就用（看不到 ⇒ bank.ErrNotFound）；
+// 缺省 = 这个账号的当前题库（与 GET /me/bank 同一套 chosen → recent 规则，只考虑看得到的题库）；
+// 都没有才退到第一个看得到的题库（P9 #27：被降级后落到公开题库）。
+func (s *Server) currentBank(ctx context.Context, accountID userid.UserID, scope access.Scope, explicit *string) (string, error) {
 	if explicit != nil && *explicit != "" {
-		return *explicit, nil
+		b, err := s.visibleBank(ctx, scope, *explicit)
+		if err != nil {
+			return "", err
+		}
+		return b.Slug, nil
 	}
-	cur, err := s.studies.LoadCurrentBank(ctx, accountID)
+	cur, err := s.studies.LoadCurrentBank(ctx, accountID, scope)
 	if err != nil {
 		return "", err
 	}
@@ -445,18 +508,20 @@ func (s *Server) currentBank(ctx context.Context, accountID userid.UserID, expli
 	if err != nil {
 		return "", err
 	}
-	if len(banks) == 0 {
-		return "", errors.New("没有任何题库")
+	for _, b := range banks {
+		if scope.Allows(b.Visibility) {
+			return b.Slug, nil
+		}
 	}
-	return banks[0].Slug, nil
+	return "", bank.ErrNotFound
 }
 
 func (s *Server) GetMyBank(ctx context.Context, _ api.GetMyBankRequestObject) (api.GetMyBankResponseObject, error) {
-	accountID, err := s.requireAccount(ctx, "GetMyBank")
+	accountID, scope, err := s.viewer(ctx, "GetMyBank")
 	if err != nil {
 		return nil, err
 	}
-	cur, err := s.studies.LoadCurrentBank(ctx, accountID)
+	cur, err := s.studies.LoadCurrentBank(ctx, accountID, scope)
 	if err != nil {
 		return nil, s.fail("GetMyBank", err)
 	}
@@ -468,14 +533,14 @@ func (s *Server) GetMyBank(ctx context.Context, _ api.GetMyBankRequestObject) (a
 }
 
 func (s *Server) ChooseMyBank(ctx context.Context, req api.ChooseMyBankRequestObject) (api.ChooseMyBankResponseObject, error) {
-	accountID, err := s.requireAccount(ctx, "ChooseMyBank")
+	accountID, scope, err := s.viewer(ctx, "ChooseMyBank")
 	if err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
 		return api.ChooseMyBank404JSONResponse{NotFoundJSONResponse: notFound("缺少 bankSlug")}, nil
 	}
-	err = s.studies.ChooseCurrentBank(ctx, accountID, req.Body.BankSlug)
+	err = s.studies.ChooseCurrentBank(ctx, accountID, scope, req.Body.BankSlug)
 	if errors.Is(err, study.ErrNotFound) {
 		return api.ChooseMyBank404JSONResponse{NotFoundJSONResponse: notFound("题库不存在: " + req.Body.BankSlug)}, nil
 	}
@@ -486,11 +551,14 @@ func (s *Server) ChooseMyBank(ctx context.Context, req api.ChooseMyBankRequestOb
 }
 
 func (s *Server) GetMyResume(ctx context.Context, req api.GetMyResumeRequestObject) (api.GetMyResumeResponseObject, error) {
-	accountID, err := s.requireAccount(ctx, "GetMyResume")
+	accountID, scope, err := s.viewer(ctx, "GetMyResume")
 	if err != nil {
 		return nil, err
 	}
-	slug, err := s.currentBank(ctx, accountID, req.Params.Bank)
+	slug, err := s.currentBank(ctx, accountID, scope, req.Params.Bank)
+	if errors.Is(err, bank.ErrNotFound) {
+		return api.GetMyResume404JSONResponse{NotFoundJSONResponse: notFound("题库不存在")}, nil
+	}
 	if err != nil {
 		return nil, s.fail("GetMyResume.banks", err)
 	}
@@ -506,11 +574,11 @@ func (s *Server) GetMyResume(ctx context.Context, req api.GetMyResumeRequestObje
 }
 
 func (s *Server) GetMyOverview(ctx context.Context, _ api.GetMyOverviewRequestObject) (api.GetMyOverviewResponseObject, error) {
-	accountID, err := s.requireAccount(ctx, "GetMyOverview")
+	accountID, scope, err := s.viewer(ctx, "GetMyOverview")
 	if err != nil {
 		return nil, err
 	}
-	o, err := s.studies.LoadOverview(ctx, accountID)
+	o, err := s.studies.LoadOverview(ctx, accountID, scope)
 	if err != nil {
 		return nil, s.fail("GetMyOverview", err)
 	}
@@ -518,7 +586,7 @@ func (s *Server) GetMyOverview(ctx context.Context, _ api.GetMyOverviewRequestOb
 }
 
 func (s *Server) GetMyRecent(ctx context.Context, req api.GetMyRecentRequestObject) (api.GetMyRecentResponseObject, error) {
-	accountID, err := s.requireAccount(ctx, "GetMyRecent")
+	accountID, scope, err := s.viewer(ctx, "GetMyRecent")
 	if err != nil {
 		return nil, err
 	}
@@ -526,7 +594,7 @@ func (s *Server) GetMyRecent(ctx context.Context, req api.GetMyRecentRequestObje
 	if req.Params.Limit != nil {
 		limit = *req.Params.Limit
 	}
-	sessions, err := s.studies.LoadRecentSessions(ctx, accountID, limit)
+	sessions, err := s.studies.LoadRecentSessions(ctx, accountID, scope, limit)
 	if err != nil {
 		return nil, s.fail("GetMyRecent", err)
 	}

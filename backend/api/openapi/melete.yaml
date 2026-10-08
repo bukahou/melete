@@ -29,6 +29,8 @@ tags:
     description: 认证（仅供 web 服务端调用 —— 本 API 不对公网暴露）
   - name: study
     description: 学习记录（作答 / 自评 / 个人统计）
+  - name: admin
+    description: 用户档位管理（只有 admin 能用；对其他人一律 404）
 
 paths:
   /auth/password:
@@ -495,6 +497,67 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Progress" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /me/access:
+    get:
+      tags: [study]
+      summary: 我的档位
+      description: |
+        P9 #27：普通（只看公开题库）· 高级（公开 + 全部私有题库）· admin（全部，并能升降级普通 / 高级用户）。
+        界面据此决定显不显示管理入口 —— ⚠️ 那只是方便，真正的门在各接口自己。
+      operationId: getMyAccess
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MyAccess" }
+
+  /admin/users:
+    get:
+      tags: [admin]
+      summary: 用户列表（含档位）
+      description: 按注册时间倒序分页。⛔ 非 admin 一律 404 —— 不暴露「有这个接口」。
+      operationId: listAdminUsers
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUserPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/users/{userId}/tier:
+    put:
+      tags: [admin]
+      summary: 升级 / 降级（普通 ⇄ 高级）
+      description: |
+        幂等。⛔ 只接受 basic / advanced —— 应用里没有授予 admin 的入口（由超级用户直接写库）。
+        目标是 admin（包括自己）⇒ 409：admin 不能操作任何 admin（P9 #29）。
+      operationId: setUserTier
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tier]
+              properties:
+                tier: { type: string, enum: [basic, advanced] }
+      responses:
+        "204": { description: 已设定 }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: 目标是 admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /me/bank:
     get:
@@ -551,6 +614,7 @@ paths:
       operationId: removeBookmark
       responses:
         "204": { description: 已取消 }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /me/tag-stats:
     get:
@@ -578,6 +642,7 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/TagStat" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /me/overview:
     get:
@@ -627,6 +692,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Resume" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /banks:
     get:
@@ -1274,7 +1340,7 @@ components:
 
     Bank:
       type: object
-      required: [id, slug, name, locale, kind, meta]
+      required: [id, slug, name, locale, kind, meta, visibility]
       properties:
         id:          { type: integer, format: int64 }
         slug:        { type: string, example: aws-saa-c03 }
@@ -1283,6 +1349,43 @@ components:
         locale:      { type: string, example: zh }
         kind:        { type: string, enum: [cert, custom] }
         meta:        { $ref: "#/components/schemas/BankMeta" }
+        visibility:
+          type: string
+          enum: [public, private]
+          description: |
+            public = 任何登录用户都能看；private = 只有高级用户与 admin 能看（P9 #27）。
+            普通用户永远只会拿到 public 的题库 —— 看不到的题库在所有接口里都当作不存在。
+
+    Tier:
+      type: string
+      enum: [basic, advanced, admin]
+      description: 普通 · 高级 · admin（P9 #27）
+
+    MyAccess:
+      type: object
+      required: [tier]
+      properties:
+        tier: { $ref: "#/components/schemas/Tier" }
+
+    AdminUser:
+      type: object
+      required: [id, displayName, tier, createdAt]
+      properties:
+        id:          { type: string, description: 账号 id }
+        displayName: { type: string, description: Akasha 带来的显示名（没有则为用户名）。只用于辨认 }
+        email:       { type: string, description: Akasha 带来的邮箱。只用于辨认，⛔ 不用于认证 }
+        tier:        { $ref: "#/components/schemas/Tier" }
+        createdAt:   { type: string, format: date-time }
+        lastLoginAt: { type: string, format: date-time }
+
+    AdminUserPage:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:    { type: array, items: { $ref: "#/components/schemas/AdminUser" } }
+        total:    { type: integer }
+        page:     { type: integer }
+        pageSize: { type: integer }
 
     BankMeta:
       type: object

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bukahou/melete/backend/internal/access"
 	"github.com/bukahou/melete/backend/internal/userid"
 )
 
@@ -30,13 +31,14 @@ type CurrentBank struct {
 // ⭐ recent 只是推出来的，⛔ 不写回 users.current_bank_id —— 选题库是用户的动作，
 // 读接口替他「选」一次，下次他在别的题库作答时首页就不会再跟着走了。
 //
-// ⚠️ chosen 指向的题库若已不存在（下架），视同没选过，继续往下推 ——
-// ⛔ 不返回一个打不开的 slug。
-func (s *service) LoadCurrentBank(ctx context.Context, accountID userid.UserID) (*CurrentBank, error) {
+// ⚠️ chosen 指向的题库若已不存在（下架）或看不到了（被降级，P9 #27），视同没选过，继续往下推 ——
+// ⛔ 不返回一个打不开的 slug。⛔ 也不改写 current_bank_id：再升级回来时自动回到原来选的那个。
+// 每一步都只考虑 scope 看得到的题库。
+func (s *service) LoadCurrentBank(ctx context.Context, accountID userid.UserID, scope access.Scope) (*CurrentBank, error) {
 	var slug string
 	err := s.db.GetContext(ctx, &slug, `
 		SELECT b.slug FROM users u JOIN bank b ON b.id = u.current_bank_id
-		WHERE u.id = ?`, accountID)
+		WHERE u.id = ? AND `+scope.BankFilter("b"), accountID)
 	switch {
 	case err == nil:
 		return &CurrentBank{Slug: slug, Source: CurrentBankChosen}, nil
@@ -50,7 +52,7 @@ func (s *service) LoadCurrentBank(ctx context.Context, accountID userid.UserID) 
 		SELECT b.slug FROM attempt a
 		JOIN question q ON q.id = a.question_id
 		JOIN bank b     ON b.id = q.bank_id
-		WHERE a.user_id = ?
+		WHERE a.user_id = ? AND `+scope.BankFilter("b")+`
 		ORDER BY a.created_at DESC, a.id DESC
 		LIMIT 1`, accountID)
 	switch {
@@ -63,10 +65,10 @@ func (s *service) LoadCurrentBank(ctx context.Context, accountID userid.UserID) 
 	}
 }
 
-// ChooseCurrentBank 把当前题库设为 slug。题库不存在返回 ErrNotFound。
-func (s *service) ChooseCurrentBank(ctx context.Context, accountID userid.UserID, slug string) error {
+// ChooseCurrentBank 把当前题库设为 slug。题库不存在或看不到，都返回 ErrNotFound（看不到 = 不存在）。
+func (s *service) ChooseCurrentBank(ctx context.Context, accountID userid.UserID, scope access.Scope, slug string) error {
 	var bankID int64
-	err := s.db.GetContext(ctx, &bankID, `SELECT id FROM bank WHERE slug = ?`, slug)
+	err := s.db.GetContext(ctx, &bankID, `SELECT b.id FROM bank b WHERE b.slug = ? AND `+scope.BankFilter("b"), slug)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}

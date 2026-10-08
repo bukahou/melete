@@ -55,13 +55,13 @@ class Loader:
     # locale 显式传入而不是从 bank 字典里取：那里存的是【素材的语言】，
     # 而库里这一列是【展示的语言】。SAP-C02 素材是英文、展示是中文译文，
     # 两者不同 —— 分工是 parse.py 记录素材事实，load.py 决定展示形态。
-    def upsert_bank(self, bank: dict, meta: dict, locale: str) -> int:
+    def upsert_bank(self, bank: dict, meta: dict, locale: str, visibility: str) -> int:
         self.cur.execute(
-            """INSERT INTO bank (slug, name, locale, kind, meta) VALUES (%s,%s,%s,%s,%s)
+            """INSERT INTO bank (slug, name, locale, kind, meta, visibility) VALUES (%s,%s,%s,%s,%s,%s)
                ON DUPLICATE KEY UPDATE name=VALUES(name), locale=VALUES(locale),
-                                       kind=VALUES(kind), meta=VALUES(meta)""",
+                                       kind=VALUES(kind), meta=VALUES(meta), visibility=VALUES(visibility)""",
             (bank["slug"], bank["name"], locale,
-             bank.get("kind", "cert"), json.dumps(meta, ensure_ascii=False)))
+             bank.get("kind", "cert"), json.dumps(meta, ensure_ascii=False), visibility))
         self.conn.commit()
         self.cur.execute("SELECT id FROM bank WHERE slug=%s", (bank["slug"],))
         return self.cur.fetchone()[0]
@@ -323,6 +323,18 @@ def topic_families(spec: dict, spec_dir: Path) -> list | None:
     return doc["families"]
 
 
+def bank_visibility(spec: dict) -> str:
+    """
+    题库对谁可见（P9 #27 #30，设计见 docs/design/active/bank-access.md）：
+      public  任何登录用户 · private 只有高级用户与 admin
+    ⭐ 开发阶段定死在 spec 里，⛔ 应用里不能切换。没写 ⇒ private：忘了标时宁可普通用户看不到。
+    """
+    v = spec.get("visibility", "private")
+    if v not in ("public", "private"):
+        sys.exit(f"✗ enrich_spec.json 的 visibility 只能是 public / private，得到 {v!r}")
+    return v
+
+
 def qid(qmap: dict, q: dict) -> int:
     """取一道题在库里的 id。
 
@@ -538,7 +550,7 @@ def main() -> None:
         "topicFamilies": topic_families(spec, spec_path.parent),
         # 卷子（question.session）的显示名：session 是给机器的键（2026r08），人要看「令和8年度」
         "sessionLabels": spec.get("session_labels"),
-    }, display_locale)
+    }, display_locale, bank_visibility(spec))
     qmap = ld.upsert_questions(bank_id, qs)
     n_ch = ld.upsert_choices(qmap, qs)
     n_cl = ld.upsert_claims(qmap, qs)

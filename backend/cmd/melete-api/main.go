@@ -19,6 +19,7 @@ import (
 
 	"github.com/bukahou/gokit/localauth"
 
+	"github.com/bukahou/melete/backend/internal/access"
 	"github.com/bukahou/melete/backend/internal/account"
 	"github.com/bukahou/melete/backend/internal/api"
 	"github.com/bukahou/melete/backend/internal/auth"
@@ -205,7 +206,7 @@ func run() error {
 	authSvc = authSvc.WithEmailFlows(registrationGuard, recoveryGuard, emailChangeGuard)
 
 	oidcVerifier := token.NewOIDCVerifier(cfg.OIDCIssuer, cfg.OIDCClientID)
-	server := httpapi.NewServer(bankSvc, questionSvc, studySvc, glossary.NewService(db), authSvc, oidcVerifier, log)
+	server := httpapi.NewServer(bankSvc, questionSvc, studySvc, glossary.NewService(db), access.NewService(db), authSvc, oidcVerifier, log)
 
 	r := chi.NewRouter()
 	// ⚠️ 刻意【不用】middleware.RealIP：它无条件信任 X-Forwarded-For 的第一个值，
