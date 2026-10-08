@@ -47,13 +47,14 @@ export default async function PickPage({ params }: { params: Promise<{ slug: str
   const tree = new Map((bank.meta.topicTree ?? []).map((d) => [d.domain, d.groups]));
   const rangeOpts = ranges(bank, (from, to) => dash("rangeLabel", { from, to }), locale);
 
-  const box = "flex items-center gap-2.5 rounded-md border border-line px-3 py-2 text-sm has-[:checked]:border-ink has-[:checked]:bg-surface";
+  const box = "flex cursor-pointer items-center gap-2.5 rounded-lg bg-surface px-3 py-2 text-sm has-[:checked]:bg-accent-soft has-[:checked]:font-semibold";
 
   return (
     <PracticeShell home={t("home")} title={dash("drillPick")} sub={t("pickSub", { domain: domainLabel })}>
       <form method="GET" action={`/banks/${slug}/practice/pick/start`} className="space-y-6">
-        <fieldset className="rounded-lg border border-line bg-raise p-5">
-          <legend className="eyebrow px-1">{t("pickStatus")}</legend>
+        <fieldset className="card p-5">
+          <legend className="sr-only">{t("pickStatus")}</legend>
+          <div aria-hidden className="eyebrow mb-3">{t("pickStatus")}</div>
           <div className="grid gap-2 sm:grid-cols-3">
             {STATUSES.map((s) => (
               <label key={s} className={box}>
@@ -65,8 +66,9 @@ export default async function PickPage({ params }: { params: Promise<{ slug: str
           <p className="mt-3 text-xs text-muted">{t("pickBookmarkNote")}</p>
         </fieldset>
 
-        <fieldset className="rounded-lg border border-line bg-raise p-5">
-          <legend className="eyebrow px-1">{t("pickTags", { domain: domainLabel })}</legend>
+        <fieldset className="card p-5">
+          <legend className="sr-only">{t("pickTags", { domain: domainLabel })}</legend>
+          <div aria-hidden className="eyebrow mb-3">{t("pickTags", { domain: domainLabel })}</div>
           <div className="space-y-3">
             {domains.map((d) => {
               const groups = tree.get(d.value) ?? [];
@@ -98,8 +100,9 @@ export default async function PickPage({ params }: { params: Promise<{ slug: str
         </fieldset>
 
         {rangeOpts.length > 1 && (
-          <fieldset className="rounded-lg border border-line bg-raise p-5">
-            <legend className="eyebrow px-1">{t("pickRange")}</legend>
+          <fieldset className="card p-5">
+            <legend className="sr-only">{t("pickRange")}</legend>
+          <div aria-hidden className="eyebrow mb-3">{t("pickRange")}</div>
             <select name="r" defaultValue="" className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm">
               <option value="">{t("pickRangeAll")}</option>
               {rangeOpts.map((o) => (
@@ -109,7 +112,7 @@ export default async function PickPage({ params }: { params: Promise<{ slug: str
           </fieldset>
         )}
 
-        <button type="submit" className="rounded-md px-6 py-2.5 text-sm font-semibold"
+        <button type="submit" className="rounded-xl px-6 py-2.5 text-sm font-semibold"
                 style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}>
           {t("pickGo")}
         </button>

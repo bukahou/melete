@@ -17,7 +17,7 @@ export const revalidate = 0;
  * 没有（AWS）就平铺考纲域。选大分類 = 它下面几个中分類的并集（#17：大分類不是标签）。
  * 进去后按题号全部出（#18）。
  */
-type Row = { ctx: DrillContext; title: string; indent: 0 | 1 | 2; count?: number; tagId?: number };
+type Row = { ctx: DrillContext; title: string; level: 0 | 1 | 2; count?: number; tagId?: number };
 
 function rows(bank: BankDetail, tags: Tag[], locale: string): Row[] {
   const domains = tags.filter((t) => t.type === "domain").sort((a, b) => a.value.localeCompare(b.value));
@@ -25,14 +25,14 @@ function rows(bank: BankDetail, tags: Tag[], locale: string): Row[] {
   const tree = new Map((bank.meta.topicTree ?? []).map((d) => [d.domain, d.groups]));
   const out: Row[] = [];
   for (const d of domains) {
-    out.push({ ctx: { mode: "domain", tagIds: [d.id] }, title: tagName(d, locale), indent: 0, count: d.questionCount, tagId: d.id });
+    out.push({ ctx: { mode: "domain", tagIds: [d.id] }, title: tagName(d, locale), level: 0, count: d.questionCount, tagId: d.id });
     for (const g of tree.get(d.value) ?? []) {
       // ⚠️ 考纲树列的是考纲，可能含题库里没有题的中分類 —— 那样的 topic 库里没有 tag，跳过
       const topics = g.topics.map((v) => topicByValue.get(v)).filter((x): x is Tag => x != null);
       if (topics.length === 0) continue;
-      out.push({ ctx: { mode: "domain", tagIds: topics.map((x) => x.id) }, title: g.name, indent: 1 });
+      out.push({ ctx: { mode: "domain", tagIds: topics.map((x) => x.id) }, title: g.name, level: 1 });
       for (const tp of topics) {
-        out.push({ ctx: { mode: "domain", tagIds: [tp.id] }, title: tagName(tp, locale), indent: 2, count: tp.questionCount, tagId: tp.id });
+        out.push({ ctx: { mode: "domain", tagIds: [tp.id] }, title: tagName(tp, locale), level: 2, count: tp.questionCount, tagId: tp.id });
       }
     }
   }
@@ -63,26 +63,33 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
 
   return (
     <PracticeShell home={t("home")} title={dash("drillDomain", { domain: domainLabel })} sub={t("domainSub", { domain: domainLabel })}>
-      <section className="rounded-lg border border-line bg-raise">
-        {list.map((r, i) => {
-          const st = r.tagId != null ? statById.get(r.tagId) : undefined;
-          const g = groupSums[i];
-          const total = g ? g.total : r.count ?? 0;
-          const answered = g ? g.answered : st?.total ?? 0;
-          const rate = g ? (g.answered ? Math.round((g.correct / g.answered) * 100) : null) : st && st.total > 0 ? Math.round(st.rate) : null;
-          return (
-            <EntryRow
-              key={i}
-              href={drillHref(slug, r.ctx)}
-              title={r.title}
-              indent={r.indent}
-              meta={t("questions", { n: total })}
-              stat={answered > 0 && rate != null ? t("rowRate", { answered, rate }) : undefined}
-              rate={rate}
-            />
-          );
-        })}
-      </section>
+      {/* 一个分野一张卡片：分野之间靠留白分开，⛔ 不靠缩进 */}
+      {list.reduce<Array<Array<[Row, number]>>>((cards, r, i) => {
+        if (r.level === 0 || cards.length === 0) cards.push([]);
+        cards[cards.length - 1].push([r, i]);
+        return cards;
+      }, []).map((card, ci) => (
+        <section key={ci} className="card overflow-hidden py-1.5">
+          {card.map(([r, i]) => {
+            const st = r.tagId != null ? statById.get(r.tagId) : undefined;
+            const g = groupSums[i];
+            const total = g ? g.total : r.count ?? 0;
+            const answered = g ? g.answered : st?.total ?? 0;
+            const rate = g ? (g.answered ? Math.round((g.correct / g.answered) * 100) : null) : st && st.total > 0 ? Math.round(st.rate) : null;
+            return (
+              <EntryRow
+                key={i}
+                href={drillHref(slug, r.ctx)}
+                title={r.title}
+                level={r.level}
+                meta={t("questions", { n: total })}
+                stat={answered > 0 && rate != null ? t("rowRate", { answered, rate }) : undefined}
+                rate={rate}
+              />
+            );
+          })}
+        </section>
+      ))}
     </PracticeShell>
   );
 }

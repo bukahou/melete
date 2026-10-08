@@ -26,7 +26,7 @@ export function Band({
   below?: React.ReactNode;
 }) {
   return (
-    <div className="mb-7 grid items-end gap-8 border-b border-line pb-8 pt-4 lg:grid-cols-[1fr_auto]">
+    <div className="mb-6 grid items-end gap-6 pt-2 lg:grid-cols-[1fr_auto]">
       <div>
         {crumbs && (
           <nav className="mb-3 flex items-center gap-2 text-[0.82rem] text-muted">
@@ -38,7 +38,7 @@ export function Band({
             ))}
           </nav>
         )}
-        <h1 className="display text-[2.1rem] leading-[1.15]">{title}</h1>
+        <h1 className="display text-[1.5rem] leading-[1.25]">{title}</h1>
         {sub && <p className="mt-2 text-[0.9rem] text-muted">{sub}</p>}
         {below}
       </div>
@@ -50,11 +50,11 @@ export function Band({
 export function Stat({ value, unit, label, color }: { value: React.ReactNode; unit?: string; label: string; color?: string }) {
   return (
     <div className="min-w-[8.5rem] border-l border-line px-8 first:border-l-0 first:pl-0 last:pr-0">
-      <div className="display text-[2.3rem] leading-none tabular-nums" style={color ? { color } : undefined}>
+      <div className="text-[1.5rem] font-semibold leading-none tabular-nums" style={color ? { color } : undefined}>
         {value}
         {unit && <small className="ml-0.5 text-[1rem] text-muted">{unit}</small>}
       </div>
-      <div className="mt-2 text-[0.72rem] uppercase tracking-[0.12em] text-muted">{label}</div>
+      <div className="mt-1.5 text-[0.75rem] text-muted">{label}</div>
     </div>
   );
 }

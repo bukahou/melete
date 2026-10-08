@@ -60,8 +60,6 @@
     "historyTitle": "学習履歴",
     "historyAnswered": "解答済み",
     "historyRate": "練習正答率",
-    "historyRateNote": "練習正答率 = 全 {n} 回の解答（やり直しを含む）のうち正解した割合",
-    "historyEmpty": "まだ解答がありません",
     "historyDetail": "{domain}別に見る",
     "passTitle": "合格判定",
     "passSafety": "安全ライン {line}%",
@@ -69,7 +67,6 @@
     "passMastery": "現在の習得率",
     "passMasteryNote": "習得率は各問題の最新の解答だけで計算します",
     "passWaiting": "あと {n} 問解答すると判定します",
-    "passWaitingNote": "本番 1 回分の問題数（{exam} 問）を解答してから判定します。解答数が少ないと正答率は当てになりません",
     "passOk": "合格圏",
     "passGap": "安全ラインまであと {gap} ポイント",
     "passNone": "この問題集には公式の合格ラインがないため、判定しません",
@@ -83,7 +80,6 @@
     "drillRandom": "ランダム",
     "drillRandomHint": "問題集全体からランダムに出題",
     "drillContinue": "続きから",
-    "drillContinueNone": "続きはまだありません",
     "noBankTitle": "まず問題集を選んでください",
     "noBankBody": "ホームには学習中の問題集が表示されます。設定で選んでください。あとからいつでも切り替えられます。",
     "noBankGo": "設定で選ぶ",
@@ -97,7 +93,9 @@
     "status_contested": "回答割れ",
     "randomLabel": "ランダム {n} 問",
     "continueFinished": "このラウンドは完了。結果を見る",
-    "continueAt": "第 {no} / {total} 問"
+    "continueAt": "第 {no} / {total} 問",
+    "startFirst": "学習を始める",
+    "startFirstHint": "最初のグループから番号順に解きます"
   },
   "practice": {
     "home": "ホーム",
@@ -253,7 +251,7 @@
   },
   "settings": {
     "title": "アカウント設定",
-    "heading": "パスワード · ログイン端末 · メール · 言語",
+    "heading": "問題集・アカウント・表示",
     "pwTitle": "パスワード",
     "pwHint": "変更すると他の端末はログアウトされます",
     "pwOld": "現在のパスワード（未設定なら空欄）",
@@ -299,7 +297,14 @@
     "bankUse": "これに切り替え",
     "bankNote": "切り替えても記録は消えません。問題集ごとに解答が保存され、戻ればそのまま続けられます。",
     "bankRecentNote": "まだ選んでいません。現在ホームには最近解答した {name} を表示しています。",
-    "bankFailed": "問題集の一覧を取得できませんでした"
+    "bankFailed": "問題集の一覧を取得できませんでした",
+    "themeTitle": "表示",
+    "themeHint": "ライト / ダーク",
+    "theme_light": "ライト",
+    "theme_dark": "ダーク",
+    "theme_system": "システムに合わせる",
+    "themeSubmit": "保存",
+    "noticeThemeOk": "表示を更新しました"
   },
   "error": {
     "title": "ページでエラーが発生しました",

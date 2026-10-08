@@ -9,6 +9,8 @@ import { LogOut } from "lucide-react";
 import { readAccessToken } from "@/lib/session";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import type { Locale } from "@/i18n/locales";
+import { cookies } from "next/headers";
+import { DEFAULT_THEME, THEME_COOKIE, isTheme } from "@/lib/theme";
 import "./globals.css";
 
 const notoSerif = Noto_Serif_SC({
@@ -36,11 +38,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // 中日共用大量汉字，标错了日文会被用中文字形渲染 —— 这是肉眼可见的错。
   const locale = (await getLocale()) as Locale;
   const t = await getTranslations();
+  const themeCookie = (await cookies()).get(THEME_COOKIE)?.value;
+  const theme = isTheme(themeCookie) ? themeCookie : DEFAULT_THEME;
   return (
-    <html lang={locale} className={notoSerif.variable}>
+    <html lang={locale} data-theme={theme} className={notoSerif.variable}>
       <body className="flex min-h-screen flex-col overflow-x-clip">
         <NextIntlClientProvider>
-        <header className="border-b border-line">
+        <header>
           <div className="mx-auto flex w-full max-w-[1400px] items-baseline gap-6 px-6 py-5">
             <Link href="/" className="group flex items-center gap-2.5">
               {/* 与 atlantis / geass 同形状的作品系列标识，配色取 melete 的题库赭 */}
@@ -80,7 +84,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
         <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-12">{children}</main>
 
-        <footer className="border-t border-line">
+        <footer>
           <div className="mx-auto flex w-full max-w-[1400px] flex-wrap items-baseline gap-x-6 gap-y-1 px-6 py-6 text-xs text-muted">
             <span className="display text-sm">Μελέτη</span>
             <span>{t("brand.muse")}</span>

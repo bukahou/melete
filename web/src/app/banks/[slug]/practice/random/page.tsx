@@ -36,10 +36,10 @@ export default async function RandomPage({ params }: { params: Promise<{ slug: s
           <Link
             key={o.n}
             href={`/banks/${slug}/practice/random/start?n=${o.n}`}
-            className="group grid gap-2 rounded-lg border border-line bg-raise p-6 transition-colors hover:border-ink"
+            className="card group grid gap-2 p-6 transition-shadow hover:shadow-[0_0_0_1.5px_var(--color-accent-ink)]"
           >
-            <Shuffle size={16} className="text-muted group-hover:text-ink" />
-            <span className="display text-[1.5rem] leading-tight">{o.label}</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "var(--color-accent-soft)", color: "var(--color-accent-ink)" }}><Shuffle size={16} /></span>
+            <span className="text-[1.15rem] font-semibold leading-tight">{o.label}</span>
             {o.hint && <span className="text-[0.78rem] text-muted">{o.hint}</span>}
           </Link>
         ))}

@@ -93,7 +93,7 @@ export default async function MePage() {
               <Link
                 key={mode}
                 href={`/banks/${slug}/drill?mode=${mode}`}
-                className="inline-flex items-center gap-2 rounded-md border border-line bg-raise px-4 py-2.5 text-sm transition-colors hover:border-muted"
+                className="inline-flex items-center gap-2 card px-4 py-2.5 text-sm transition-colors hover:border-muted"
               >
                 <Icon size={15} style={{ color }} />
                 {label}

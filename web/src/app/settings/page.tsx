@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
-import { Check, KeyRound, Languages, Library, Monitor, Mail, ShieldAlert } from "lucide-react";
+import { Check, KeyRound, Languages, Library, Monitor, Mail, Palette, ShieldAlert } from "lucide-react";
+import { cookies } from "next/headers";
+import { DEFAULT_THEME, THEMES, THEME_COOKIE, isTheme } from "@/lib/theme";
 import { getMyBank, getSessions, listBanks, type Bank, type CurrentBank, type SessionInfo } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -28,13 +30,13 @@ function Section({ id, icon, title, hint, children }: {
   id?: string; icon: React.ReactNode; title: string; hint?: string; children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="scroll-mt-6 rounded-lg border border-line bg-raise">
-      <div className="flex items-baseline gap-3 border-b border-line px-6 py-4">
+    <section id={id} className="card scroll-mt-6">
+      <div className="flex items-baseline gap-3 px-6 pt-5">
         <span className="translate-y-0.5 text-muted">{icon}</span>
         <span className="eyebrow">{title}</span>
         {hint && <span className="ml-auto text-[0.78rem] text-muted">{hint}</span>}
       </div>
-      <div className="p-6">{children}</div>
+      <div className="px-6 pb-6 pt-4">{children}</div>
     </section>
   );
 }
@@ -43,19 +45,24 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm outline-none transition-colors focus:border-muted"
+      className="w-full rounded-lg border border-transparent bg-surface px-3 py-2 text-sm outline-none transition-colors focus:border-accent-ink"
     />
   );
 }
 
+/**
+ * 设置页的提交按钮。⭐ 2026-10-08 改版：淡底而不是强调色实底 ——
+ * 设置页每一节的「保存」地位相同，都不是这一屏唯一最该点的东西（层级规则 1）；
+ * 旧版五个实底按钮一字排开，又回到了「全是重点 = 没有重点」。
+ */
 function Submit({ children, tone = "cta" }: { children: React.ReactNode; tone?: "cta" | "warn" }) {
   const style = tone === "warn"
     ? { borderColor: "var(--color-warn)", color: "var(--color-warn)" }
-    : { background: "var(--color-cta)", color: "var(--color-cta-fg)" };
+    : { background: "var(--color-accent-soft)", color: "var(--color-accent-ink)" };
   return (
     <button
       type="submit"
-      className={`rounded-md px-4 py-2 text-sm font-medium ${tone === "warn" ? "border" : ""}`}
+      className={`rounded-lg px-4 py-2 text-sm font-semibold ${tone === "warn" ? "border" : ""}`}
       style={style}
     >
       {children}
@@ -77,6 +84,7 @@ const NOTICE: Record<string, { key: string; tone: "ok" | "warn" }> = {
   "mail-bad": { key: "noticeMailBad", tone: "warn" },
   "mail-taken": { key: "noticeMailTaken", tone: "warn" },
   "lang-ok": { key: "noticeLangOk", tone: "ok" },
+  "theme-ok": { key: "noticeThemeOk", tone: "ok" },
   "rate": { key: "noticeRate", tone: "warn" },
   "fail": { key: "noticeFail", tone: "warn" },
 };
@@ -87,6 +95,8 @@ export default async function SettingsPage({
   const sp = await searchParams;
   const [t, locale] = await Promise.all([getTranslations("settings"), getLocale()]);
   const notice = sp.n ? NOTICE[sp.n] : undefined;
+  const themeCookie = (await cookies()).get(THEME_COOKIE)?.value;
+  const theme = isTheme(themeCookie) ? themeCookie : DEFAULT_THEME;
 
   let sessions: SessionInfo[] = [];
   let sessionsFailed = false;
@@ -244,7 +254,7 @@ export default async function SettingsPage({
           <select
             name="locale"
             defaultValue={locale}
-            className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm outline-none transition-colors focus:border-muted"
+            className="w-full rounded-lg border border-transparent bg-surface px-3 py-2 text-sm outline-none transition-colors focus:border-accent-ink"
           >
             {LOCALES.map((l) => (
               <option key={l} value={l}>
@@ -255,6 +265,19 @@ export default async function SettingsPage({
           <Submit>{t("langSubmit")}</Submit>
         </form>
         <p className="mt-3 text-xs leading-relaxed text-muted">{t("langNote")}</p>
+      </Section>
+
+      <Section icon={<Palette size={15} />} title={t("themeTitle")} hint={t("themeHint")}>
+        <form method="POST" action="/settings/theme-form" className="flex flex-wrap items-center gap-2">
+          {THEMES.map((th) => (
+            <label key={th}
+                   className="flex cursor-pointer items-center gap-2 rounded-lg bg-surface px-3.5 py-2 text-sm has-[:checked]:bg-accent-soft has-[:checked]:font-semibold">
+              <input type="radio" name="theme" value={th} defaultChecked={th === theme} className="accent-[var(--color-accent-ink)]" />
+              {t(`theme_${th}`)}
+            </label>
+          ))}
+          <Submit>{t("themeSubmit")}</Submit>
+        </form>
       </Section>
 
       <p className="text-xs text-muted">
