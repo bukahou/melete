@@ -15,6 +15,9 @@ type Summary struct {
 	// 这不是边缘情况：884 道有对照数据的题里占 38%。
 	Contested bool `db:"contested"`
 	Enriched  bool `db:"enriched"`
+	// LastCorrect 是该账号对这题【最近一次】作答的对错；没做过 / 未认证为 nil。
+	// P9 4.3 的题目列表用它打 ✓ / ✕（参照 it-pass 的絞り込み列表）。
+	LastCorrect *bool `db:"last_correct"`
 	// Localized 说明 Stem 是不是请求语言的译文。
 	//
 	// ⭐ false = 没有该语言的译文，上面给的是【源语言】原文。

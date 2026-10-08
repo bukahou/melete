@@ -631,7 +631,7 @@ type DrillContext struct {
 	// NoTo 题号上限（year / pick）
 	NoTo *int `json:"noTo,omitempty"`
 
-	// Seed random 的打乱种子
+	// Seed random / pick 的打乱种子（pick 可选：4.3 列表「打乱顺序」）
 	Seed *int64 `json:"seed,omitempty"`
 
 	// Session 卷子（year / pick）
@@ -811,6 +811,9 @@ type QuestionDetail struct {
 	Id         int64              `json:"id"`
 	Kind       QuestionDetailKind `json:"kind"`
 
+	// LastCorrect 我最近一次作答这题是否答对；没做过（或未登录）时缺省。列表据此打 ✓ / ✕
+	LastCorrect *bool `json:"lastCorrect,omitempty"`
+
 	// Localized stem 是否为请求语言（Accept-Language 协商结果）的译文。
 	// **false 表示回退到了源语言原文** —— 与 `sourceLocale` 比对后决定是否标注
 	// 「本题暂无该语言版本」。请求源语言本身时同样是 false（那本就不是译文）。
@@ -856,6 +859,9 @@ type QuestionSummary struct {
 	ExternalNo int                 `json:"externalNo"`
 	Id         int64               `json:"id"`
 	Kind       QuestionSummaryKind `json:"kind"`
+
+	// LastCorrect 我最近一次作答这题是否答对；没做过（或未登录）时缺省。列表据此打 ✓ / ✕
+	LastCorrect *bool `json:"lastCorrect,omitempty"`
 
 	// Localized stem 是否为请求语言（Accept-Language 协商结果）的译文。
 	// **false 表示回退到了源语言原文** —— 与 `sourceLocale` 比对后决定是否标注

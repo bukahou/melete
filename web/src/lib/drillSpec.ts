@@ -57,7 +57,11 @@ export function contextFromSearch(sp: Search): DrillContext {
     case "pick": {
       const st = one(sp.st);
       const status: Status = (STATUSES as readonly string[]).includes(st ?? "") ? (st as Status) : "all";
-      return { mode: "pick", status, ...(tagIds.length ? { tagIds } : {}), ...range };
+      const seed = Number(one(sp.seed));
+      return {
+        mode: "pick", status, ...(tagIds.length ? { tagIds } : {}), ...range,
+        ...(one(sp.seed) != null && Number.isInteger(seed) && seed >= 0 ? { seed } : {}),
+      };
     }
     case "random": {
       const seed = Number(one(sp.seed));
@@ -131,7 +135,7 @@ export function listParams(c: DrillContext): ListParams {
     case "domain":
       return { anyTag: c.tagIds ?? [] };
     case "pick": {
-      const p: ListParams = { ...range, anyTag: c.tagIds?.length ? c.tagIds : undefined };
+      const p: ListParams = { ...range, anyTag: c.tagIds?.length ? c.tagIds : undefined, seed: c.seed ?? undefined };
       if (c.status === "wrong" || c.status === "unseen") p.mode = c.status;
       if (c.status === "bookmarked") p.bookmarked = true;
       if (c.status === "contested") p.contested = true;
