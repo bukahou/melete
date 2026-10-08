@@ -15,7 +15,6 @@
     "glossary": "用語集",
     "bookmarks": "ブックマーク",
     "soon": "準備中",
-    "glossaryBody": "用語を引いて意味を確認し、「その用語がどの問題で出たか」も見られます。用語集は現在整備中です。",
     "backHome": "ホームへ"
   },
   "brand": {
@@ -90,8 +89,7 @@
     "startFirstHint": "最初のグループから番号順に解きます",
     "passYours": "あなたの合格判定",
     "passMasteryIs": "現在の習得率 {rate}%",
-    "searchPlaceholder": "用語を検索",
-    "searchSoon": "準備中"
+    "searchPlaceholder": "用語を検索（Enter）"
   },
   "history": {
     "home": "ホーム",
@@ -301,5 +299,21 @@
     "on": "ブックマーク済み",
     "off": "ブックマーク",
     "failed": "保存できませんでした。もう一度押してください"
+  },
+  "glossary": {
+    "locale": "ja",
+    "home": "ホーム",
+    "title": "用語集",
+    "summary": "{n} 語 · 問題から抽出、{axis}別",
+    "general": "共通の概念",
+    "searchPlaceholder": "{n} 語から検索（名称・英語名・読み）",
+    "clear": "クリア",
+    "hits": "{n} 件",
+    "noHit": "見つかりません。英語名や略称でもお試しください",
+    "count": "{n} 語",
+    "inQuestions": "{n} 問",
+    "empty": "この問題集にはまだ用語集がありません",
+    "category": "分類",
+    "history": "出題歴"
   }
 }

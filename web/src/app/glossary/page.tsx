@@ -1,8 +1,10 @@
-import { getTranslations } from "next-intl/server";
-import { ComingSoon } from "@/components/ComingSoon";
+import { redirect } from "next/navigation";
+import { getMyBank } from "@/lib/api";
 
-/** 侧栏「用语集」—— 即将开放（P9 第 6 步）。 */
-export default async function GlossaryPage() {
-  const t = await getTranslations("nav");
-  return <ComingSoon title={t("glossary")} body={t("glossaryBody")} soon={t("soon")} back={t("backHome")} />;
+export const revalidate = 0;
+
+/** 侧栏「用语集」→ 当前题库的用语集（同 /history、/bookmarks 的做法）。 */
+export default async function GlossaryRedirectPage() {
+  const cur = await getMyBank();
+  redirect(cur.bankSlug ? `/banks/${cur.bankSlug}/glossary` : "/");
 }

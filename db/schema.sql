@@ -145,6 +145,30 @@ CREATE TABLE IF NOT EXISTS question_tag (
   KEY idx_qt_tag (tag_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 用语集（P9 第 6 步）：一个题库一套术语；term_question = 出题历史。见 migrations/2026-10-08-glossary.sql
+CREATE TABLE IF NOT EXISTS term (
+  id          BIGINT        NOT NULL AUTO_INCREMENT,
+  bank_id     BIGINT        NOT NULL,
+  slug        VARCHAR(191)  NOT NULL,               -- 正式名称（AWS 官方英文名 / IPA 日文标准用语）
+  names       JSON          NOT NULL,               -- {"zh","ja"}（IPA 只有 ja）
+  reading     VARCHAR(191)  NULL,                   -- 读音（IPA 平假名）
+  definition  JSON          NOT NULL,               -- {"zh","ja"} 一两句通用释义
+  category    VARCHAR(128)  NOT NULL DEFAULT '',    -- 分组 = 知识对象轴（AWS 服务 / IPA 中分類）
+  search_text VARCHAR(1024) NOT NULL DEFAULT '',    -- 检索用小写拼接，⛔ 不在 SQL 里拆 JSON
+  created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_term_bank_slug (bank_id, slug),
+  KEY idx_term_bank_category (bank_id, category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+CREATE TABLE IF NOT EXISTS term_question (
+  term_id     BIGINT NOT NULL,
+  question_id BIGINT NOT NULL,
+  PRIMARY KEY (term_id, question_id),
+  KEY idx_tq_question (question_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 CREATE TABLE IF NOT EXISTS article (               -- atlantis 迁入（P5）
   id          BIGINT       NOT NULL AUTO_INCREMENT,
   path        VARCHAR(255) NOT NULL,
