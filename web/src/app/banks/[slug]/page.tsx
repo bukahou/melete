@@ -165,8 +165,9 @@ export default async function BankPage({
           <div className="mt-3.5 flex gap-2">
             {level && <span className="chip chip-level">{level}</span>}
             <span className="chip">{bank.locale}</span>
-            <Link href="/" className="inline-flex items-center gap-1.5 rounded-md border border-line bg-raise px-3 py-1 text-[0.8rem] transition-colors hover:border-muted">
-              {t("switchBank")} ▾
+            {/* P9：换题库只在设置里做（首页不再是选择台） */}
+            <Link href="/settings#bank" className="inline-flex items-center gap-1.5 rounded-md border border-line bg-raise px-3 py-1 text-[0.8rem] transition-colors hover:border-muted">
+              {t("switchBank")}
             </Link>
           </div>
         }

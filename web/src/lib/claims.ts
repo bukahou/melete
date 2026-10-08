@@ -42,6 +42,7 @@ export type Resume = components["schemas"]["Resume"];
 export type FocusCursor = components["schemas"]["FocusCursor"];
 export type DrillContext = components["schemas"]["DrillContext"];
 export type Overview = components["schemas"]["Overview"];
+export type CurrentBank = components["schemas"]["CurrentBank"];
 export type StudySession = components["schemas"]["StudySession"];
 
 // ⚠️ 来源标签（题库标注 / 社区投票 …）已移入 messages 的 `source.*`。

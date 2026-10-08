@@ -18,14 +18,14 @@ export type {
   Bank, BankDetail, Tag, QuestionSummary, QuestionDetail, QuestionPage,
   AnswerClaim, Choice, Reference, AttemptResult, ScheduleResult, DrillMode,
   Progress, TagStat, Resume, FocusCursor, DrillContext, Overview, StudySession,
-  SessionInfo, PasswordChanged,
+  SessionInfo, PasswordChanged, CurrentBank,
 } from "./claims";
 export { voteDistribution, hasDisagreement, DRILL_MODES, parseDrillMode } from "./claims";
 
 import type {
   Bank, BankDetail, Tag, QuestionDetail, QuestionPage, AttemptResult, DrillMode,
   Progress, TagStat, Resume, DrillContext, Overview, StudySession,
-  SessionInfo, PasswordChanged,
+  SessionInfo, PasswordChanged, CurrentBank,
 } from "./claims";
 
 import { headers } from "next/headers";
@@ -147,7 +147,6 @@ export async function recordAttempt(
   return res.json();
 }
 
-/** 服务端调用：给一条已记录的作答补上自评（驱动 FSRS 卡片调度）。 */
 
 
 
@@ -160,6 +159,19 @@ export const getMyTagStats = (type: Tag["type"], minAttempts = 3, bank?: string)
   get<TagStat[]>(`/me/tag-stats?type=${type}&minAttempts=${minAttempts}${bank ? `&bank=${encodeURIComponent(bank)}` : ""}`, 0, true);
 export const getMyOverview = () => get<Overview>("/me/overview", 0, true);
 export const getMyRecent = (limit = 5) => get<StudySession[]>(`/me/recent?limit=${limit}`, 0, true);
+
+/** 当前题库（P9）：chosen 设置里选的 · recent 按最近作答推出 · none 都没有。 */
+export const getMyBank = () => get<CurrentBank>("/me/bank", 0, true);
+
+/** 服务端调用：切换当前题库（设置页表单 → BFF 路由 → 这里）。 */
+export async function chooseMyBank(bankSlug: string): Promise<{ ok: true } | { ok: false; status: number }> {
+  const res = await fetch(`${BASE}/me/bank`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ bankSlug }),
+  });
+  return res.ok ? { ok: true } : { ok: false, status: res.status };
+}
 
 // ---- 账号设置（阶段 5 的端点，2026-09-07 接前端）----
 //

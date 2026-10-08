@@ -331,8 +331,8 @@ export interface paths {
         /**
          * 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
          * @description ⭐ 2026-09-08 起：作答在**揭晓答案那一刻**就记录，⛔ 不再依赖自评。
-         *     rating 不再必填 —— 不评分也留下完整的一条 attempt（对错、用时、出处）。
-         *     自评是可选增强，通过 `PATCH /attempts/{id}` 补上，届时才驱动 FSRS 卡片调度。
+         *     ⭐ 2026-10-08（P9 #16）起：不带 rating 时 FSRS 由服务端**按对错代为打分**
+         *     （对 = Good，错 = Again）并排卡片；代打的分⛔ 不写进 attempt.rating。
          */
         post: operations["recordAttempt"];
         delete?: never;
@@ -355,8 +355,10 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * 给一条已记录的作答补上自评（驱动 FSRS 卡片调度）
-         * @description 只更新自己的 attempt（服务端按会话账号校验归属）。补上 rating 后才排卡片、返回调度结果。
+         * 给一条已记录的作答补上自评（只记录，⛔ 不再推进卡片）
+         * @description 只更新自己的 attempt（服务端按会话账号校验归属）。
+         *     ⚠️ 2026-10-08（P9 #16）起只写 attempt.rating：卡片已在 POST 时按对错排过，
+         *     再推进一次会让同一次作答被调度两遍。界面已不提供自评，本端点为兼容保留。
          */
         patch: operations["rateAttempt"];
         trace?: never;
@@ -371,6 +373,30 @@ export interface paths {
         /** 我的学习进度总览 */
         get: operations["getMyProgress"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/bank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 当前题库（首页显示哪一个）
+         * @description P9 #2 #14：当前题库跟着账号走（换设备 / iOS 看到同一个）。决定顺序：
+         *     `chosen` 用户在设置里选过的 → `recent` 没选过但有作答，取最近作答的题库 →
+         *     `none` 都没有（新用户），此时 bankSlug 缺省，界面引导去设置选。
+         *     ⛔ `recent` 只是推出来的，**不会**被写回成 chosen。
+         */
+        get: operations["getMyBank"];
+        /** 切换当前题库（设置页） */
+        put: operations["chooseMyBank"];
         post?: never;
         delete?: never;
         options?: never;
@@ -564,6 +590,12 @@ export interface components {
             /** @description 总作答次数（含重做） */
             attemptCount: number;
             /**
+             * @description 作答为对的次数（含重做）。练习正确率 = attemptCorrectCount / attemptCount。
+             *     ⚠️ 与「当前掌握率」= correctCount / seenCount（每题只看最近一次）是**两个口径**（P9 #9）：
+             *     前者回答「我练得怎么样」，后者回答「现在去考能不能过」。
+             */
+            attemptCorrectCount: number;
+            /**
              * @description FSRS 复习队列里已到期的题数。
              *     ⚠️ **不含从没做过的题** —— 那些题没有卡片，属于「没做过」入口。
              *     两者混进一个数字，「今天要复习 300 题」就失去意义了，
@@ -572,6 +604,15 @@ export interface components {
             dueCount: number;
             /** Format: date-time */
             lastActiveAt?: string;
+        };
+        CurrentBank: {
+            /** @description source 为 none 时缺省 */
+            bankSlug?: string;
+            /**
+             * @description chosen = 设置里选的 · recent = 没选过，按最近作答推出 · none = 都没有
+             * @enum {string}
+             */
+            source: "chosen" | "recent" | "none";
         };
         TagStat: {
             /** Format: int64 */
@@ -1001,7 +1042,7 @@ export interface components {
         };
     };
     parameters: {
-        /** @description 题库 slug；缺省 = 当前题库（现阶段为第一个题库） */
+        /** @description 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库） */
         BankQuery: string;
         /** @description 题库 slug，如 aws-saa-c03 */
         Slug: string;
@@ -1561,7 +1602,7 @@ export interface operations {
     getMyProgress: {
         parameters: {
             query?: {
-                /** @description 题库 slug；缺省 = 当前题库（现阶段为第一个题库） */
+                /** @description 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库） */
                 bank?: components["parameters"]["BankQuery"];
             };
             header?: never;
@@ -1581,10 +1622,55 @@ export interface operations {
             };
         };
     };
+    getMyBank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentBank"];
+                };
+            };
+        };
+    };
+    chooseMyBank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    bankSlug: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已切换 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
     getMyTagStats: {
         parameters: {
             query: {
-                /** @description 题库 slug；缺省 = 当前题库（现阶段为第一个题库） */
+                /** @description 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库） */
                 bank?: components["parameters"]["BankQuery"];
                 type: "domain" | "topic" | "concept";
                 /** @description 至少做过几道才纳入（样本太小的标签正确率没有意义） */
@@ -1652,7 +1738,7 @@ export interface operations {
     getMyResume: {
         parameters: {
             query?: {
-                /** @description 题库 slug；缺省 = 当前题库（现阶段为第一个题库） */
+                /** @description 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库） */
                 bank?: components["parameters"]["BankQuery"];
             };
             header?: never;

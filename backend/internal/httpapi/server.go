@@ -324,7 +324,7 @@ func (s *Server) GetMyProgress(ctx context.Context, req api.GetMyProgressRequest
 	if err != nil {
 		return nil, err
 	}
-	slug, err := s.currentBank(ctx, req.Params.Bank)
+	slug, err := s.currentBank(ctx, accountID, req.Params.Bank)
 	if err != nil {
 		return nil, s.fail("GetMyProgress.banks", err)
 	}
@@ -336,7 +336,8 @@ func (s *Server) GetMyProgress(ctx context.Context, req api.GetMyProgressRequest
 		BankSlug: p.BankSlug, QuestionCount: p.QuestionCount, SeenCount: p.SeenCount,
 		CorrectCount: p.CorrectCount, WrongCount: p.WrongCount,
 		UnsureCount: p.UnsureCount, AttemptCount: p.AttemptCount,
-		DueCount: p.DueCount,
+		AttemptCorrectCount: p.AttemptCorrectCount,
+		DueCount:            p.DueCount,
 	}
 	if p.LastActiveAt.Valid {
 		t := p.LastActiveAt.Time
@@ -350,7 +351,7 @@ func (s *Server) GetMyTagStats(ctx context.Context, req api.GetMyTagStatsRequest
 	if err != nil {
 		return nil, err
 	}
-	slug, err := s.currentBank(ctx, req.Params.Bank)
+	slug, err := s.currentBank(ctx, accountID, req.Params.Bank)
 	if err != nil {
 		return nil, s.fail("GetMyTagStats.banks", err)
 	}
@@ -381,9 +382,21 @@ func (s *Server) GetMyTagStats(ctx context.Context, req api.GetMyTagStatsRequest
 
 // currentBank 决定「当前题库」：显式传了 bank 就用它，否则退回第一个题库。
 // 多题库后「当前」应改为最近活跃的那个 —— 到时只改这一处。
-func (s *Server) currentBank(ctx context.Context, explicit *string) (string, error) {
+// currentBank 解析可选的 bank 参数：显式给了就用；缺省 = 这个账号的当前题库
+// （与 GET /me/bank 同一套 chosen → recent 规则）；都没有才退到第一个题库。
+//
+// ⚠️ 这里原来直接取第一个题库 —— 契约上写的就是「缺省 = 当前题库（现阶段为第一个）」，
+// P9 有了真正的当前题库之后兑现它。
+func (s *Server) currentBank(ctx context.Context, accountID userid.UserID, explicit *string) (string, error) {
 	if explicit != nil && *explicit != "" {
 		return *explicit, nil
+	}
+	cur, err := s.studies.LoadCurrentBank(ctx, accountID)
+	if err != nil {
+		return "", err
+	}
+	if cur.Source != study.CurrentBankNone {
+		return cur.Slug, nil
 	}
 	banks, err := s.banks.ListBanks(ctx)
 	if err != nil {
@@ -395,12 +408,46 @@ func (s *Server) currentBank(ctx context.Context, explicit *string) (string, err
 	return banks[0].Slug, nil
 }
 
+func (s *Server) GetMyBank(ctx context.Context, _ api.GetMyBankRequestObject) (api.GetMyBankResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "GetMyBank")
+	if err != nil {
+		return nil, err
+	}
+	cur, err := s.studies.LoadCurrentBank(ctx, accountID)
+	if err != nil {
+		return nil, s.fail("GetMyBank", err)
+	}
+	out := api.GetMyBank200JSONResponse{Source: api.CurrentBankSource(cur.Source)}
+	if cur.Source != study.CurrentBankNone {
+		out.BankSlug = &cur.Slug
+	}
+	return out, nil
+}
+
+func (s *Server) ChooseMyBank(ctx context.Context, req api.ChooseMyBankRequestObject) (api.ChooseMyBankResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "ChooseMyBank")
+	if err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return api.ChooseMyBank404JSONResponse{NotFoundJSONResponse: notFound("缺少 bankSlug")}, nil
+	}
+	err = s.studies.ChooseCurrentBank(ctx, accountID, req.Body.BankSlug)
+	if errors.Is(err, study.ErrNotFound) {
+		return api.ChooseMyBank404JSONResponse{NotFoundJSONResponse: notFound("题库不存在: " + req.Body.BankSlug)}, nil
+	}
+	if err != nil {
+		return nil, s.fail("ChooseMyBank", err)
+	}
+	return api.ChooseMyBank204Response{}, nil
+}
+
 func (s *Server) GetMyResume(ctx context.Context, req api.GetMyResumeRequestObject) (api.GetMyResumeResponseObject, error) {
 	accountID, err := s.requireAccount(ctx, "GetMyResume")
 	if err != nil {
 		return nil, err
 	}
-	slug, err := s.currentBank(ctx, req.Params.Bank)
+	slug, err := s.currentBank(ctx, accountID, req.Params.Bank)
 	if err != nil {
 		return nil, s.fail("GetMyResume.banks", err)
 	}

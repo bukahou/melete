@@ -81,6 +81,27 @@ func (e BankDetailKind) Valid() bool {
 	}
 }
 
+// Defines values for CurrentBankSource.
+const (
+	Chosen CurrentBankSource = "chosen"
+	None   CurrentBankSource = "none"
+	Recent CurrentBankSource = "recent"
+)
+
+// Valid indicates whether the value is a known member of the CurrentBankSource enum.
+func (e CurrentBankSource) Valid() bool {
+	switch e {
+	case Chosen:
+		return true
+	case None:
+		return true
+	case Recent:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DrillContextMode.
 const (
 	DrillContextModeAll       DrillContextMode = "all"
@@ -490,6 +511,18 @@ type Credentials struct {
 	Username   string  `json:"username"`
 }
 
+// CurrentBank defines model for CurrentBank.
+type CurrentBank struct {
+	// BankSlug source 为 none 时缺省
+	BankSlug *string `json:"bankSlug,omitempty"`
+
+	// Source chosen = 设置里选的 · recent = 没选过，按最近作答推出 · none = 都没有
+	Source CurrentBankSource `json:"source"`
+}
+
+// CurrentBankSource chosen = 设置里选的 · recent = 没选过，按最近作答推出 · none = 都没有
+type CurrentBankSource string
+
 // DrillContext 一次作答的出处 —— 用户是从哪个入口做的这道题
 type DrillContext struct {
 	Mode DrillContextMode `json:"mode"`
@@ -572,6 +605,11 @@ type PasswordChanged struct {
 
 // Progress defines model for Progress.
 type Progress struct {
+	// AttemptCorrectCount 作答为对的次数（含重做）。练习正确率 = attemptCorrectCount / attemptCount。
+	// ⚠️ 与「当前掌握率」= correctCount / seenCount（每题只看最近一次）是**两个口径**（P9 #9）：
+	// 前者回答「我练得怎么样」，后者回答「现在去考能不能过」。
+	AttemptCorrectCount int `json:"attemptCorrectCount"`
+
 	// AttemptCount 总作答次数（含重做）
 	AttemptCount int    `json:"attemptCount"`
 	BankSlug     string `json:"bankSlug"`
@@ -978,9 +1016,14 @@ type ListBankTagsParams struct {
 // ListBankTagsParamsType defines parameters for ListBankTags.
 type ListBankTagsParamsType string
 
+// ChooseMyBankJSONBody defines parameters for ChooseMyBank.
+type ChooseMyBankJSONBody struct {
+	BankSlug string `json:"bankSlug"`
+}
+
 // GetMyProgressParams defines parameters for GetMyProgress.
 type GetMyProgressParams struct {
-	// Bank 题库 slug；缺省 = 当前题库（现阶段为第一个题库）
+	// Bank 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库）
 	Bank *BankQuery `form:"bank,omitempty" json:"bank,omitempty"`
 }
 
@@ -991,13 +1034,13 @@ type GetMyRecentParams struct {
 
 // GetMyResumeParams defines parameters for GetMyResume.
 type GetMyResumeParams struct {
-	// Bank 题库 slug；缺省 = 当前题库（现阶段为第一个题库）
+	// Bank 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库）
 	Bank *BankQuery `form:"bank,omitempty" json:"bank,omitempty"`
 }
 
 // GetMyTagStatsParams defines parameters for GetMyTagStats.
 type GetMyTagStatsParams struct {
-	// Bank 题库 slug；缺省 = 当前题库（现阶段为第一个题库）
+	// Bank 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库）
 	Bank *BankQuery              `form:"bank,omitempty" json:"bank,omitempty"`
 	Type GetMyTagStatsParamsType `form:"type" json:"type"`
 
@@ -1047,12 +1090,15 @@ type SendRegisterCodeJSONRequestBody SendRegisterCodeJSONBody
 // SsoExchangeJSONRequestBody defines body for SsoExchange for application/json ContentType.
 type SsoExchangeJSONRequestBody = SsoExchange
 
+// ChooseMyBankJSONRequestBody defines body for ChooseMyBank for application/json ContentType.
+type ChooseMyBankJSONRequestBody ChooseMyBankJSONBody
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
 	// (POST /attempts)
 	RecordAttempt(w http.ResponseWriter, r *http.Request)
-	// 给一条已记录的作答补上自评（驱动 FSRS 卡片调度）
+	// 给一条已记录的作答补上自评（只记录，⛔ 不再推进卡片）
 	// (PATCH /attempts/{id})
 	RateAttempt(w http.ResponseWriter, r *http.Request, id int64)
 	// 给新邮箱发验证码（改邮箱第一步）
@@ -1106,6 +1152,12 @@ type ServerInterface interface {
 	// 题库的标签列表（用于筛选与正确率热图）
 	// (GET /banks/{slug}/tags)
 	ListBankTags(w http.ResponseWriter, r *http.Request, slug Slug, params ListBankTagsParams)
+	// 当前题库（首页显示哪一个）
+	// (GET /me/bank)
+	GetMyBank(w http.ResponseWriter, r *http.Request)
+	// 切换当前题库（设置页）
+	// (PUT /me/bank)
+	ChooseMyBank(w http.ResponseWriter, r *http.Request)
 	// 跨题库总览（今天 / 连续天数 / 累计）
 	// (GET /me/overview)
 	GetMyOverview(w http.ResponseWriter, r *http.Request)
@@ -1136,7 +1188,7 @@ func (_ Unimplemented) RecordAttempt(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// 给一条已记录的作答补上自评（驱动 FSRS 卡片调度）
+// 给一条已记录的作答补上自评（只记录，⛔ 不再推进卡片）
 // (PATCH /attempts/{id})
 func (_ Unimplemented) RateAttempt(w http.ResponseWriter, r *http.Request, id int64) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -1241,6 +1293,18 @@ func (_ Unimplemented) ListQuestions(w http.ResponseWriter, r *http.Request, slu
 // 题库的标签列表（用于筛选与正确率热图）
 // (GET /banks/{slug}/tags)
 func (_ Unimplemented) ListBankTags(w http.ResponseWriter, r *http.Request, slug Slug, params ListBankTagsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 当前题库（首页显示哪一个）
+// (GET /me/bank)
+func (_ Unimplemented) GetMyBank(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 切换当前题库（设置页）
+// (PUT /me/bank)
+func (_ Unimplemented) ChooseMyBank(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1766,6 +1830,46 @@ func (siw *ServerInterfaceWrapper) ListBankTags(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// GetMyBank operation middleware
+func (siw *ServerInterfaceWrapper) GetMyBank(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyBank(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChooseMyBank operation middleware
+func (siw *ServerInterfaceWrapper) ChooseMyBank(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChooseMyBank(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMyOverview operation middleware
 func (siw *ServerInterfaceWrapper) GetMyOverview(w http.ResponseWriter, r *http.Request) {
 
@@ -2169,6 +2273,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/banks/{slug}/tags", wrapper.ListBankTags)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/bank", wrapper.GetMyBank)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/me/bank", wrapper.ChooseMyBank)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/overview", wrapper.GetMyOverview)
@@ -2873,6 +2983,57 @@ func (response ListBankTags404JSONResponse) VisitListBankTagsResponse(w http.Res
 	return err
 }
 
+type GetMyBankRequestObject struct {
+}
+
+type GetMyBankResponseObject interface {
+	VisitGetMyBankResponse(w http.ResponseWriter) error
+}
+
+type GetMyBank200JSONResponse CurrentBank
+
+func (response GetMyBank200JSONResponse) VisitGetMyBankResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChooseMyBankRequestObject struct {
+	Body *ChooseMyBankJSONRequestBody
+}
+
+type ChooseMyBankResponseObject interface {
+	VisitChooseMyBankResponse(w http.ResponseWriter) error
+}
+
+type ChooseMyBank204Response struct {
+}
+
+func (response ChooseMyBank204Response) VisitChooseMyBankResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ChooseMyBank404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ChooseMyBank404JSONResponse) VisitChooseMyBankResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMyOverviewRequestObject struct {
 }
 
@@ -3023,7 +3184,7 @@ type StrictServerInterface interface {
 	// 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
 	// (POST /attempts)
 	RecordAttempt(ctx context.Context, request RecordAttemptRequestObject) (RecordAttemptResponseObject, error)
-	// 给一条已记录的作答补上自评（驱动 FSRS 卡片调度）
+	// 给一条已记录的作答补上自评（只记录，⛔ 不再推进卡片）
 	// (PATCH /attempts/{id})
 	RateAttempt(ctx context.Context, request RateAttemptRequestObject) (RateAttemptResponseObject, error)
 	// 给新邮箱发验证码（改邮箱第一步）
@@ -3077,6 +3238,12 @@ type StrictServerInterface interface {
 	// 题库的标签列表（用于筛选与正确率热图）
 	// (GET /banks/{slug}/tags)
 	ListBankTags(ctx context.Context, request ListBankTagsRequestObject) (ListBankTagsResponseObject, error)
+	// 当前题库（首页显示哪一个）
+	// (GET /me/bank)
+	GetMyBank(ctx context.Context, request GetMyBankRequestObject) (GetMyBankResponseObject, error)
+	// 切换当前题库（设置页）
+	// (PUT /me/bank)
+	ChooseMyBank(ctx context.Context, request ChooseMyBankRequestObject) (ChooseMyBankResponseObject, error)
 	// 跨题库总览（今天 / 连续天数 / 累计）
 	// (GET /me/overview)
 	GetMyOverview(ctx context.Context, request GetMyOverviewRequestObject) (GetMyOverviewResponseObject, error)
@@ -3676,6 +3843,61 @@ func (sh *strictHandler) ListBankTags(w http.ResponseWriter, r *http.Request, sl
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListBankTagsResponseObject); ok {
 		if err := validResponse.VisitListBankTagsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyBank operation middleware
+func (sh *strictHandler) GetMyBank(w http.ResponseWriter, r *http.Request) {
+	var request GetMyBankRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyBank(ctx, request.(GetMyBankRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyBank")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyBankResponseObject); ok {
+		if err := validResponse.VisitGetMyBankResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ChooseMyBank operation middleware
+func (sh *strictHandler) ChooseMyBank(w http.ResponseWriter, r *http.Request) {
+	var request ChooseMyBankRequestObject
+
+	var body ChooseMyBankJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ChooseMyBank(ctx, request.(ChooseMyBankRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ChooseMyBank")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ChooseMyBankResponseObject); ok {
+		if err := validResponse.VisitChooseMyBankResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
