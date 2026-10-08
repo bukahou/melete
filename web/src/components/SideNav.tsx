@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Bookmark, BookOpen, House, LineChart, LogOut, Settings, UserRound } from "lucide-react";
+import { Bookmark, BookOpen, House, LineChart, LogOut, Settings } from "lucide-react";
 import logo from "@/app/icon.png";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import type { Locale } from "@/i18n/locales";
@@ -20,18 +20,21 @@ import type { Locale } from "@/i18n/locales";
  */
 export type NavLabels = {
   home: string; history: string; glossary: string; bookmarks: string;
-  mine: string; settings: string; logout: string; soon: string;
+  settings: string; logout: string; soon: string;
 };
 
-const MAIN = [
+type NavItem = { href: string; icon: typeof House; key: keyof NavLabels; soon?: boolean; match: (p: string) => boolean };
+
+// soon = 还没做好、先摆出来的入口（点进去是说明页）。目前全部已上线，类型保留给将来的新入口
+const MAIN: NavItem[] = [
   { href: "/", icon: House, key: "home", match: (p: string) => p === "/" },
   { href: "/history", icon: LineChart, key: "history", match: (p: string) => p.startsWith("/history") || /^\/banks\/[^/]+$/.test(p) },
-  { href: "/glossary", icon: BookOpen, key: "glossary", soon: true, match: (p: string) => p.startsWith("/glossary") },
+  { href: "/glossary", icon: BookOpen, key: "glossary", match: (p: string) => p.startsWith("/glossary") || /\/glossary(\/|$)/.test(p) },
   // 书签 = 当前题库「自选条件 · 收藏」（P9 #20）—— 同一份列表，⛔ 不另做一页
   // ⚠️ 只按路径判断：/bookmarks 会跳到 4.3 列表，那里不高亮「书签」。
   //   想按 ?st=bookmarked 高亮就得在渲染时读 URL 查询串，服务端与浏览器算出的结果不一致（水合警告）
   { href: "/bookmarks", icon: Bookmark, key: "bookmarks", match: (p: string) => p.startsWith("/bookmarks") },
-] as const;
+];
 
 function Item({ href, icon: Icon, label, active, soon, soonLabel, compact }: {
   href: string; icon: typeof House; label: string; active: boolean; soon?: boolean; soonLabel: string; compact?: boolean;
@@ -65,11 +68,10 @@ export function SideNav({ labels, locale, version }: { labels: NavLabels; locale
         <nav className="flex w-full flex-col items-center gap-3">
           {MAIN.map((m) => (
             <Item key={m.href} href={m.href} icon={m.icon} label={labels[m.key]} active={m.match(path)}
-                  soon={"soon" in m && m.soon} soonLabel={labels.soon} />
+                  soon={m.soon} soonLabel={labels.soon} />
           ))}
         </nav>
         <div className="mt-auto flex w-full flex-col items-center gap-3">
-          <Item href="/me" icon={UserRound} label={labels.mine} active={path.startsWith("/me")} soonLabel={labels.soon} />
           <Item href="/settings" icon={Settings} label={labels.settings} active={path.startsWith("/settings")} soonLabel={labels.soon} />
           <div className="max-w-full px-1 text-[0.7rem]"><LanguageSwitcher current={locale} short /></div>
           <a href="/auth/logout" title={labels.logout} className="text-muted transition-colors hover:text-ink">
@@ -80,11 +82,11 @@ export function SideNav({ labels, locale, version }: { labels: NavLabels; locale
         </div>
       </aside>
 
-      {/* 手机：底部标签栏。我的 / 语言 / 登出 收进设置页 */}
+      {/* 手机：底部标签栏。语言 / 登出 收进设置页 */}
       <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-line bg-rail px-1 pb-[env(safe-area-inset-bottom)] md:hidden">
         {MAIN.map((m) => (
           <Item key={m.href} href={m.href} icon={m.icon} label={labels[m.key]} active={m.match(path)}
-                soon={"soon" in m && m.soon} soonLabel={labels.soon} compact />
+                soon={m.soon} soonLabel={labels.soon} compact />
         ))}
         <Item href="/settings" icon={Settings} label={labels.settings} active={path.startsWith("/settings")} soonLabel={labels.soon} compact />
       </nav>

@@ -1,0 +1,345 @@
+{
+ "_doc": "AWS 服务 → 官方服务类别（AWS 控制台 / 官网的分法）。两个 AWS 题库共用；load.py 读入 bank.meta.topicFamilies。新服务没进表 ⇒ 落入「其他」，load.py 会报出来。",
+ "families": [
+  {
+   "name": {
+    "zh": "通用概念",
+    "ja": "共通概念"
+   },
+   "topics": [
+    "General"
+   ]
+  },
+  {
+   "name": {
+    "zh": "计算",
+    "ja": "コンピューティング"
+   },
+   "topics": [
+    "EC2",
+    "EC2 Auto Scaling",
+    "Auto Scaling",
+    "Application Auto Scaling",
+    "EC2 Image Builder",
+    "EC2 Instance Connect",
+    "Elastic IP",
+    "Lambda",
+    "Lambda@Edge",
+    "AWS Batch",
+    "Batch",
+    "Elastic Beanstalk",
+    "Lightsail",
+    "Outposts",
+    "Local Zones",
+    "Compute Optimizer",
+    "SAM",
+    "App Runner",
+    "Launch Wizard"
+   ]
+  },
+  {
+   "name": {
+    "zh": "容器",
+    "ja": "コンテナ"
+   },
+   "topics": [
+    "ECS",
+    "EKS",
+    "EKS Anywhere",
+    "Fargate",
+    "ECR",
+    "App2Container",
+    "App Mesh"
+   ]
+  },
+  {
+   "name": {
+    "zh": "存储",
+    "ja": "ストレージ"
+   },
+   "topics": [
+    "S3",
+    "S3 Glacier",
+    "S3 Storage Lens",
+    "Storage Lens",
+    "Multi-Region Access Points",
+    "EBS",
+    "EFS",
+    "FSx",
+    "Storage Gateway",
+    "AWS Backup",
+    "Backup",
+    "Data Lifecycle Manager",
+    "Elastic Disaster Recovery"
+   ]
+  },
+  {
+   "name": {
+    "zh": "数据库",
+    "ja": "データベース"
+   },
+   "topics": [
+    "RDS",
+    "RDS Proxy",
+    "Aurora",
+    "Aurora Serverless",
+    "DynamoDB",
+    "DAX",
+    "ElastiCache",
+    "MemoryDB",
+    "DocumentDB",
+    "Neptune",
+    "Keyspaces",
+    "QLDB",
+    "Timestream",
+    "Redshift",
+    "Redshift Serverless"
+   ]
+  },
+  {
+   "name": {
+    "zh": "联网和内容分发",
+    "ja": "ネットワーキングとコンテンツ配信"
+   },
+   "topics": [
+    "VPC",
+    "VPC Flow Logs",
+    "VPC Lattice",
+    "Internet Gateway",
+    "NAT",
+    "NAT Gateway",
+    "Transit Gateway",
+    "Direct Connect",
+    "VPN",
+    "Site-to-Site VPN",
+    "Client VPN",
+    "PrivateLink",
+    "Route 53",
+    "Route 53 Resolver",
+    "CloudFront",
+    "Global Accelerator",
+    "ELB",
+    "Elastic Load Balancing",
+    "ALB",
+    "Application Load Balancer",
+    "NLB",
+    "Network Load Balancer",
+    "GWLB",
+    "Gateway Load Balancer",
+    "Network Manager",
+    "API Gateway"
+   ]
+  },
+  {
+   "name": {
+    "zh": "安全性、身份与合规性",
+    "ja": "セキュリティ、アイデンティティ、コンプライアンス"
+   },
+   "topics": [
+    "IAM",
+    "IAM Identity Center",
+    "IAM Roles Anywhere",
+    "SSO",
+    "STS",
+    "Cognito",
+    "Directory Service",
+    "AD Connector",
+    "Managed Microsoft AD",
+    "RAM",
+    "Resource Access Manager",
+    "KMS",
+    "CloudHSM",
+    "ACM",
+    "Certificate Manager",
+    "AWS Private CA",
+    "Private CA",
+    "Secrets Manager",
+    "WAF",
+    "Shield",
+    "Firewall Manager",
+    "Network Firewall",
+    "GuardDuty",
+    "Inspector",
+    "Macie",
+    "Detective",
+    "Security Hub",
+    "Security Lake",
+    "Audit Manager"
+   ]
+  },
+  {
+   "name": {
+    "zh": "管理与监管",
+    "ja": "マネジメントとガバナンス"
+   },
+   "topics": [
+    "CloudWatch",
+    "CloudWatch Logs",
+    "CloudTrail",
+    "CloudTrail Lake",
+    "Config",
+    "CloudFormation",
+    "CloudFormation StackSets",
+    "Organizations",
+    "Control Tower",
+    "Systems Manager",
+    "AppConfig",
+    "Service Catalog",
+    "Service Quotas",
+    "Trusted Advisor",
+    "OpsWorks",
+    "Resource Groups",
+    "Managed Grafana",
+    "X-Ray",
+    "License Manager"
+   ]
+  },
+  {
+   "name": {
+    "zh": "分析",
+    "ja": "分析"
+   },
+   "topics": [
+    "Athena",
+    "Glue",
+    "EMR",
+    "Kinesis",
+    "Kinesis Data Streams",
+    "Kinesis Data Firehose",
+    "Data Firehose",
+    "Kinesis Video Streams",
+    "Managed Service for Apache Flink",
+    "MSK",
+    "OpenSearch",
+    "OpenSearch Service",
+    "QuickSight",
+    "Lake Formation",
+    "Data Pipeline"
+   ]
+  },
+  {
+   "name": {
+    "zh": "应用程序集成",
+    "ja": "アプリケーション統合"
+   },
+   "topics": [
+    "SQS",
+    "SNS",
+    "EventBridge",
+    "Step Functions",
+    "Amazon MQ",
+    "MQ",
+    "AppFlow"
+   ]
+  },
+  {
+   "name": {
+    "zh": "迁移与传输",
+    "ja": "移行と転送"
+   },
+   "topics": [
+    "DMS",
+    "Database Migration Service",
+    "SCT",
+    "Schema Conversion Tool",
+    "DataSync",
+    "Transfer Family",
+    "Snowball",
+    "Snowball Edge",
+    "Snowcone",
+    "Application Migration Service",
+    "Server Migration Service",
+    "Application Discovery Service",
+    "Migration Hub",
+    "Migration Evaluator",
+    "Cloud Adoption Readiness Tool",
+    "VM Import/Export"
+   ]
+  },
+  {
+   "name": {
+    "zh": "开发人员工具",
+    "ja": "デベロッパーツール"
+   },
+   "topics": [
+    "CDK",
+    "CodeArtifact",
+    "CodeBuild",
+    "CodeCommit",
+    "CodeDeploy",
+    "CodePipeline"
+   ]
+  },
+  {
+   "name": {
+    "zh": "机器学习",
+    "ja": "機械学習"
+   },
+   "topics": [
+    "SageMaker",
+    "Rekognition",
+    "Comprehend",
+    "Comprehend Medical",
+    "Textract",
+    "Transcribe",
+    "Translate",
+    "Polly",
+    "Lex",
+    "Forecast",
+    "Contact Lens"
+   ]
+  },
+  {
+   "name": {
+    "zh": "云财务管理",
+    "ja": "クラウド財務管理"
+   },
+   "topics": [
+    "AWS Budgets",
+    "Budgets",
+    "Cost Explorer",
+    "Cost Anomaly Detection",
+    "Cost and Usage Report",
+    "Savings Plans",
+    "Pricing Calculator",
+    "Marketplace"
+   ]
+  },
+  {
+   "name": {
+    "zh": "前端 Web 与移动",
+    "ja": "フロントエンドのウェブとモバイル"
+   },
+   "topics": [
+    "Amplify",
+    "AppSync",
+    "Pinpoint"
+   ]
+  },
+  {
+   "name": {
+    "zh": "业务应用与最终用户计算",
+    "ja": "ビジネスアプリケーションとエンドユーザーコンピューティング"
+   },
+   "topics": [
+    "Amazon Connect",
+    "Connect",
+    "SES",
+    "WorkSpaces",
+    "AppStream 2.0",
+    "WorkLink"
+   ]
+  },
+  {
+   "name": {
+    "zh": "物联网与媒体服务",
+    "ja": "IoT とメディアサービス"
+   },
+   "topics": [
+    "IoT Core",
+    "IoT Device Management",
+    "Elastic Transcoder"
+   ]
+  }
+ ]
+}

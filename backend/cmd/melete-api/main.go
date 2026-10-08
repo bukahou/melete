@@ -24,6 +24,7 @@ import (
 	"github.com/bukahou/melete/backend/internal/auth"
 	"github.com/bukahou/melete/backend/internal/bank"
 	"github.com/bukahou/melete/backend/internal/config"
+	"github.com/bukahou/melete/backend/internal/glossary"
 	"github.com/bukahou/melete/backend/internal/httpapi"
 	"github.com/bukahou/melete/backend/internal/httpauth"
 	"github.com/bukahou/melete/backend/internal/httplocale"
@@ -204,7 +205,7 @@ func run() error {
 	authSvc = authSvc.WithEmailFlows(registrationGuard, recoveryGuard, emailChangeGuard)
 
 	oidcVerifier := token.NewOIDCVerifier(cfg.OIDCIssuer, cfg.OIDCClientID)
-	server := httpapi.NewServer(bankSvc, questionSvc, studySvc, authSvc, oidcVerifier, log)
+	server := httpapi.NewServer(bankSvc, questionSvc, studySvc, glossary.NewService(db), authSvc, oidcVerifier, log)
 
 	r := chi.NewRouter()
 	// ⚠️ 刻意【不用】middleware.RealIP：它无条件信任 X-Forwarded-For 的第一个值，

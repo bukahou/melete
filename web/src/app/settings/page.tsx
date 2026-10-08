@@ -1,6 +1,5 @@
-import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
-import { Check, KeyRound, Languages, Library, LogOut, Monitor, Mail, Palette, ShieldAlert } from "lucide-react";
+import { Check, Languages, Library, LogOut, Monitor, Palette } from "lucide-react";
 import { cookies } from "next/headers";
 import { DEFAULT_THEME, THEMES, THEME_COOKIE, isTheme } from "@/lib/theme";
 import { getMyBank, getSessions, listBanks, type Bank, type CurrentBank, type SessionInfo } from "@/lib/api";
@@ -15,7 +14,13 @@ export async function generateMetadata() {
 }
 
 /**
- * 账号设置 —— 阶段 5 那六个后端端点的前端入口。
+ * 设置：题库 · 登录设备 · 语言 · 主题 · 登出。
+ *
+ * ⭐ 2026-10-08 用户裁定：登录只用第三方（Akasha），自动注册后【不再能改账号信息】——
+ *   改密码、改邮箱两节已撤下（后端端点暂留，待确认 iOS 不用后再删，见 tracker）。
+ *   「登录设备 / 登出其他设备」保留：它不改账号信息，是丢了设备时的安全开关。
+ *
+ * 以下是撤下前的历史说明：账号设置原是阶段 5 那六个后端端点的前端入口。
  *
  * ⚠️ 在此之前它们【后端能用、界面点不到】：
  * 改密、看登录设备、登出其它设备、改邮箱全都只能 curl。
@@ -74,15 +79,7 @@ function Submit({ children, tone = "cta" }: { children: React.ReactNode; tone?: 
 // ⛔ 仍然不回显任何来自 URL 的文字（与登录页同一条纪律）——
 // 白名单换成 key 白名单，性质没变。
 const NOTICE: Record<string, { key: string; tone: "ok" | "warn" }> = {
-  "pw-ok": { key: "noticePwOk", tone: "ok" },
-  "pw-old": { key: "noticePwOld", tone: "warn" },
-  "pw-weak": { key: "noticePwWeak", tone: "warn" },
-  "pw-breached": { key: "noticePwBreached", tone: "warn" },
   "sess-ok": { key: "noticeSessOk", tone: "ok" },
-  "mail-sent": { key: "noticeMailSent", tone: "ok" },
-  "mail-ok": { key: "noticeMailOk", tone: "ok" },
-  "mail-bad": { key: "noticeMailBad", tone: "warn" },
-  "mail-taken": { key: "noticeMailTaken", tone: "warn" },
   "lang-ok": { key: "noticeLangOk", tone: "ok" },
   "theme-ok": { key: "noticeThemeOk", tone: "ok" },
   "rate": { key: "noticeRate", tone: "warn" },
@@ -91,7 +88,7 @@ const NOTICE: Record<string, { key: string; tone: "ok" | "warn" }> = {
 
 export default async function SettingsPage({
   searchParams,
-}: { searchParams: Promise<{ n?: string; c?: string }> }) {
+}: { searchParams: Promise<{ n?: string }> }) {
   const sp = await searchParams;
   const [t, locale] = await Promise.all([getTranslations("settings"), getLocale()]);
   const notice = sp.n ? NOTICE[sp.n] : undefined;
@@ -107,7 +104,7 @@ export default async function SettingsPage({
     //    发起的「去 /auth/renew 续期」会被这个 catch 吞掉，页面带着死 token 静静渲染，
     //    用户只看到「会话列表取不到」，永远续不上期。裸 `catch {}` 正是这种形状。
     unstable_rethrow(e);
-    // ⚠️ 其它失败不该让整页 500 —— 改密与改邮箱仍然可用。
+    // ⚠️ 其它失败不该让整页 500 —— 其余设置仍然可用。
     sessionsFailed = true;
   }
 
@@ -136,9 +133,6 @@ export default async function SettingsPage({
           }}
         >
           {t(notice.key)}
-          {sp.c && sp.n === "pw-breached" && (
-            <span className="ml-1 text-muted">{t("breachCount", { n: sp.c })}</span>
-          )}
         </div>
       )}
 
@@ -182,21 +176,6 @@ export default async function SettingsPage({
         </p>
       </Section>
 
-      <Section icon={<KeyRound size={15} />} title={t("pwTitle")} hint={t("pwHint")}>
-        <form method="POST" action="/settings/password" className="space-y-3">
-          {/* ⭐ 留空 = 首次设置密码（纯 Akasha 账号）。
-              ⚠️ 「要不要验旧密码」由账号有没有密码决定，⛔ 不由这里填不填决定 —— 后端判。 */}
-          <Field name="old" type="password" autoComplete="current-password"
-                 placeholder={t("pwOld")} />
-          <Field name="new" type="password" required autoComplete="new-password"
-                 placeholder={t("pwNew")} />
-          <Submit>{t("pwSubmit")}</Submit>
-        </form>
-        <p className="mt-3 text-xs leading-relaxed text-muted">
-          {t.rich("pwNote", { b: (c) => <b className="text-ink">{c}</b> })}
-        </p>
-      </Section>
-
       <Section icon={<Monitor size={15} />} title={t("devTitle")}
                hint={sessionsFailed ? t("devUnavailable") : t("devCount", { n: sessions.length })}>
         {sessionsFailed ? (
@@ -228,23 +207,6 @@ export default async function SettingsPage({
           </>
         )}
         <p className="mt-3 text-xs leading-relaxed text-muted">{t("devNote")}</p>
-      </Section>
-
-      <Section icon={<Mail size={15} />} title={t("mailTitle")} hint={t("mailHint")}>
-        <form method="POST" action="/settings/email" className="space-y-3">
-          <input type="hidden" name="step" value="send" />
-          <Field name="email" type="email" required placeholder={t("mailNew")} />
-          <Submit>{t("mailSend")}</Submit>
-        </form>
-        <form method="POST" action="/settings/email" className="mt-4 space-y-3">
-          <input type="hidden" name="step" value="confirm" />
-          <Field name="code" required inputMode="numeric" placeholder={t("mailCode")} />
-          <Submit>{t("mailConfirm")}</Submit>
-        </form>
-        <p className="mt-3 flex gap-2 text-xs leading-relaxed text-muted">
-          <ShieldAlert size={14} className="mt-0.5 shrink-0" />
-          <span>{t.rich("mailNote", { b: (c) => <b className="text-ink">{c}</b> })}</span>
-        </p>
       </Section>
 
       {/* ⭐ 语言也放这里一份 —— 顶栏的切换器是「随手换」，这里是「账号的设置在哪」。
@@ -280,9 +242,8 @@ export default async function SettingsPage({
         </form>
       </Section>
 
-      {/* ⭐ 手机上没有左侧栏（底部标签栏放不下「我的 / 登出」），这两个出口必须在这里 */}
+      {/* ⭐ 手机上没有左侧栏（底部标签栏放不下「登出」），这个出口必须在这里 */}
       <p className="flex items-center gap-5 text-xs text-muted">
-        <Link href="/me" className="underline underline-offset-4">{t("backToMe")}</Link>
         <a href="/auth/logout" className="ml-auto inline-flex items-center gap-1 hover:text-ink">
           <LogOut size={13} />{t("logout")}
         </a>
