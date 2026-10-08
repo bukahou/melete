@@ -92,7 +92,8 @@
     "banksTitle": "题库一览",
     "banksHint": "点一下切换",
     "banksCurrent": "学习中",
-    "banksDone": "已答 {done} / {total}"
+    "banksDone": "已答 {done} / {total}",
+    "guestDomain": "领域"
   },
   "history": {
     "home": "首页",
@@ -186,8 +187,10 @@
     "copyright": "题库内容涉及版权，仅限持有账号的学习者访问。",
     "oidcCancelled": "已取消 Akasha 登录",
     "oidcState": "登录会话已过期，请重试",
-    "oidcUpstream": "Akasha 暂时不可用，请稍后重试或用密码登录",
-    "oidcApplication": "登录时出了点问题，请重试"
+    "oidcUpstream": "Akasha 暂时不可用，请稍后重试",
+    "oidcApplication": "登录时出了点问题，请重试",
+    "modalTitle": "登录 / 注册",
+    "autoRegister": "第一次用 Akasha 登录时，会自动为你创建 Melete 账号。"
   },
   "settings": {
     "title": "设置",
