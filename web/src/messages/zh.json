@@ -9,11 +9,19 @@
     "back": "返回",
     "unknown": "—"
   },
+  "nav": {
+    "home": "首页",
+    "history": "学习履历",
+    "glossary": "用语集",
+    "bookmarks": "书签",
+    "soon": "即将开放",
+    "glossaryBody": "按术语查释义，并能看到「这个词在哪些题里考过」。术语表正在整理中。",
+    "bookmarksBody": "刷题时把想回头再看的题收藏起来，在这里集中复习；在「自选条件」里也能只做收藏的题。",
+    "backHome": "回首页"
+  },
   "brand": {
     "tagline": "练习与修习",
-    "muse": "司「练习、修习」的缪斯",
     "creed": "被动阅读不产生学习，主动回忆才产生",
-    "versionTitle": "镜像 tag",
     "metaTitle": "Melete — 练习与修习",
     "metaDescription": "题库驱动的学习平台。题目是第一等公民，答案是一组带来源的主张。"
   },
@@ -54,31 +62,22 @@
     "contested": "答案有分歧 {n}"
   },
   "dash": {
-    "questionCount": "{n} 题",
     "switchBank": "切换题库",
-    "recentNote": "按你最近作答的题库显示，在设置里选定后就固定为它",
     "historyTitle": "学习履历",
     "historyAnswered": "已答",
     "historyRate": "练习正确率",
-    "historyDetail": "按{domain}查看",
     "passTitle": "合格判断",
     "passSafety": "安全线 {line}%",
     "passSafetyNote": "安全线 = 官方及格线换算成正确率（{pass}%）再加 10 个点 = {line}%",
-    "passMastery": "当前掌握率",
-    "passMasteryNote": "掌握率每道题只看最近一次作答",
     "passWaiting": "再答 {n} 题后开始判断",
     "passOk": "合格圈",
     "passGap": "距安全线还差 {gap} 个点",
     "passNone": "这个题库没有官方及格线，不做合格判断",
     "drillTitle": "过去问演练",
     "drillYear": "历年 / 分组",
-    "drillYearHint": "按考卷，或每 {size} 题一组",
     "drillDomain": "按{domain}",
-    "drillDomainHint": "从官方{domain}里选一个练",
     "drillPick": "自选条件",
-    "drillPickHint": "错题 · 未答 · 书签 · 有分歧，可与{domain}叠加",
     "drillRandom": "随机",
-    "drillRandomHint": "从整个题库随机出题",
     "drillContinue": "继续上次",
     "noBankTitle": "先选一个题库",
     "noBankBody": "首页显示的是你正在学的题库。到设置里选一个，之后随时可以再换。",
@@ -94,8 +93,11 @@
     "randomLabel": "随机 {n} 题",
     "continueFinished": "这一轮做完了，看小结",
     "continueAt": "第 {no} / {total} 题",
-    "startFirst": "开始练习",
-    "startFirstHint": "从第一组题开始，按题号做"
+    "startFirstHint": "从第一组题开始，按题号做",
+    "passYours": "你的合格判断",
+    "passMasteryIs": "当前掌握率 {rate}%",
+    "searchPlaceholder": "搜索术语",
+    "searchSoon": "即将开放"
   },
   "practice": {
     "home": "首页",
@@ -304,7 +306,8 @@
     "theme_dark": "深色",
     "theme_system": "跟随系统",
     "themeSubmit": "保存",
-    "noticeThemeOk": "外观已更新"
+    "noticeThemeOk": "外观已更新",
+    "logout": "退出登录"
   },
   "error": {
     "title": "页面出错了",
