@@ -320,6 +320,9 @@
     "other": "その他",
     "leadMore": "詳細と出題歴（{n} 問）",
     "rest": "その他の関連用語 · {n} 語",
-    "restNote": "いずれも出題は 1 問のみ"
+    "restNote": "いずれも出題は 1 問のみ",
+    "showMore": "さらに {n} 問表示",
+    "shownOf": "{total} 問中 {shown} 問を表示",
+    "practice": "この {n} 問を練習する"
   }
 }
