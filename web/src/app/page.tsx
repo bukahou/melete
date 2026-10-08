@@ -5,16 +5,18 @@ import {
   getMyBank,
   getMyProgress,
   getMyResume,
+  listAxisTags,
   type BankDetail,
   type Progress,
   type Resume,
 } from "@/lib/api";
-import { tagName, tagTypeLabel } from "@/lib/claims";
+import { tagTypeLabel } from "@/lib/claims";
+import { drillHref } from "@/lib/drillSpec";
+import { describeContext, type LabelKit } from "@/lib/drillLabel";
 import { rateColor } from "@/components/RateBar";
 import { Band, Wide } from "@/components/Band";
 import { timeAgo } from "@/lib/format";
 import { getLocale, getTranslations } from "next-intl/server";
-import { modeLabel } from "@/i18n/modeLabel";
 
 export const revalidate = 0;
 
@@ -160,73 +162,57 @@ function PassCheck({ t, bank, progress }: { t: T; bank: BankDetail; progress: Pr
   );
 }
 
-function continueHref(slug: string, c: { mode: string; tagId?: number | null }): string {
-  if (c.mode === "tag" && c.tagId != null) return `/banks/${slug}/drill?tag=${c.tagId}`;
-  if (c.mode === "contested") return `/banks/${slug}/drill?contested=true`;
-  return `/banks/${slug}/drill?mode=${c.mode}`;
-}
-
 /**
- * ④ 过去问演练（P9 #10–#13）。
- * 4.1–4.4 的出题条件在第 4 步实装；这里先把入口的位置与说明立起来。
- * 4.5「继续」现在先用已有的两条轨道里【更近的那一条】—— 第 4 步换成单一游标（#13）。
+ * ④ 过去问演练（P9 #10–#13 #18 #19）。
+ * 4.1–4.4 各进一个入口页选范围；4.5「继续」是单一游标：这个题库最近一次作答的入口（#13，后端从 attempt 推出）。
  */
-function Drills({ t, bank, resume, locale, mode }: {
-  t: T; bank: BankDetail; resume: Resume; locale: string;
-  mode: Awaited<ReturnType<typeof getTranslations<"mode">>>;
-}) {
-  const domain = tagTypeLabel(bank.meta, "domain", locale);
+function Drills({ t, bank, resume, kit }: { t: T; bank: BankDetail; resume: Resume; kit: LabelKit }) {
+  const domain = tagTypeLabel(bank.meta, "domain", kit.locale);
+  const base = `/banks/${bank.slug}/practice`;
   const entries = [
-    { key: "year", title: t("drillYear"), hint: t("drillYearHint", { size: bank.meta.groupSize ?? 100 }) },
-    { key: "domain", title: t("drillDomain", { domain }), hint: t("drillDomainHint", { domain }) },
-    { key: "pick", title: t("drillPick"), hint: t("drillPickHint", { domain }) },
-    { key: "random", title: t("drillRandom"), hint: t("drillRandomHint") },
+    { href: `${base}/year`, title: t("drillYear"), hint: t("drillYearHint", { size: bank.meta.groupSize ?? 100 }) },
+    { href: `${base}/domain`, title: t("drillDomain", { domain }), hint: t("drillDomainHint", { domain }) },
+    { href: `${base}/pick`, title: t("drillPick"), hint: t("drillPickHint", { domain }) },
+    { href: `${base}/random`, title: t("drillRandom"), hint: t("drillRandomHint") },
   ];
-
-  const seq = resume.sequential;
-  const focus = resume.focus;
-  const seqAt = seq.lastAt && seq.questionId != null ? Date.parse(seq.lastAt) : -1;
-  const focusAt = focus ? Date.parse(focus.lastAt) : -1;
-  const last =
-    focusAt > seqAt && focus
-      ? {
-          href: continueHref(bank.slug, focus.context),
-          label: focus.tag ? tagName(focus.tag, locale) : modeLabel(mode, focus.context.mode, focus.label),
-          at: focus.lastAt,
-        }
-      : seqAt >= 0
-        ? { href: `/banks/${bank.slug}/drill?mode=unseen`, label: t("continueSeq", { no: seq.externalNo ?? 1 }), at: seq.lastAt! }
-        : null;
+  const cur = resume.cursor;
+  // 做到最后一题 ⇒ 落到 offset=total，刷题页在那里给本轮小结
+  const cont = cur
+    ? { href: drillHref(bank.slug, cur.context, { i: cur.offset }), label: describeContext(cur.context, kit), at: cur.lastAt, finished: cur.finished }
+    : null;
 
   return (
     <Panel title={t("drillTitle")} className="col-span-12">
       <div className="grid sm:grid-cols-2 lg:grid-cols-5">
         {entries.map((e) => (
-          <div
-            key={e.key}
-            className="grid content-start gap-1.5 border-b border-line px-6 py-5 sm:border-r lg:border-b-0"
-            aria-disabled="true"
+          <Link
+            key={e.href}
+            href={e.href}
+            className="group grid content-start gap-1.5 border-b border-line px-6 py-5 transition-colors hover:bg-surface sm:border-r lg:border-b-0"
           >
-            <span className="flex items-center gap-2">
-              <span className="text-[0.98rem] font-semibold text-muted">{e.title}</span>
-              <span className="rounded-sm border border-dashed border-line px-1.5 text-[0.62rem] tracking-[0.06em] text-muted">
-                {t("drillSoon")}
-              </span>
+            <span className="flex items-center gap-2 text-[0.98rem] font-semibold">
+              {e.title}
+              <ArrowRight size={14} className="ml-auto text-muted opacity-0 transition-opacity group-hover:opacity-100" />
             </span>
             <span className="text-[0.76rem] leading-relaxed text-muted">{e.hint}</span>
-          </div>
+          </Link>
         ))}
-        {last ? (
+        {cont ? (
           <Link
-            href={last.href}
+            href={cont.href}
             className="group grid content-start gap-1.5 px-6 py-5 transition-colors hover:bg-surface"
+            style={{ background: "color-mix(in oklab, var(--color-cta) 6%, transparent)" }}
           >
             <span className="flex items-center gap-2 text-[0.98rem] font-semibold">
               <Play size={12} />{t("drillContinue")}
               <ArrowRight size={14} className="ml-auto text-muted opacity-0 transition-opacity group-hover:opacity-100" />
             </span>
-            <span className="truncate text-[0.82rem]">{last.label}</span>
-            <time className="font-mono text-[0.72rem] text-muted">{timeAgo(last.at, locale)}</time>
+            <span className="truncate text-[0.82rem]">{cont.label}</span>
+            <span className="text-[0.72rem] text-muted">
+              {cont.finished ? t("continueFinished") : t("continueAt", { no: (cur?.offset ?? 0) + 1, total: cur?.total ?? 0 })}
+              {" · "}
+              <time className="font-mono">{timeAgo(cont.at, kit.locale)}</time>
+            </span>
           </Link>
         ) : (
           <div className="grid content-start gap-1.5 px-6 py-5">
@@ -266,7 +252,14 @@ export default async function HomePage() {
   if (current.source === "none" || !current.bankSlug) return <NoBank t={t} />;
 
   const slug = current.bankSlug;
-  const [bank, progress, resume] = await Promise.all([getBank(slug), getMyProgress(slug), getMyResume(slug)]);
+  const [bank, progress, resume, tags] = await Promise.all([
+    getBank(slug), getMyProgress(slug), getMyResume(slug), listAxisTags(slug),
+  ]);
+  const kit: LabelKit = {
+    meta: bank.meta, tags, locale,
+    t: (k, v) => t(k as never, v as never),
+    mode: mode as never,
+  };
   const shortName = bank.name.replace(/\s*\((?:[A-Z]{2,4})-[A-Z0-9]+\)\s*$/, "");
   const code = slug.toUpperCase().replace(/^AWS-/, "");
 
@@ -294,7 +287,7 @@ export default async function HomePage() {
       <div className="grid grid-cols-12 items-start gap-6">
         <History t={t} bank={bank} progress={progress} locale={locale} />
         <PassCheck t={t} bank={bank} progress={progress} />
-        <Drills t={t} bank={bank} resume={resume} locale={locale} mode={mode} />
+        <Drills t={t} bank={bank} resume={resume} kit={kit} />
       </div>
     </Wide>
   );
