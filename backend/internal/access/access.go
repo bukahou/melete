@@ -94,6 +94,7 @@ type User struct {
 	ID          userid.UserID
 	DisplayName string
 	Email       string // upstream_email（Akasha 带来的）；没有则为空
+	AvatarURL   string
 	Tier        Tier
 	CreatedAt   time.Time
 	LastLoginAt *time.Time

@@ -288,6 +288,9 @@
     "next": "下一页",
     "noticeOk": "已更新。对方下次打开就会生效",
     "noticeAdmin": "不能修改 admin 账号",
-    "noticeFail": "操作失败，请重试"
+    "noticeFail": "操作失败，请重试",
+    "noEmail": "（没有邮箱）",
+    "lastLogin": "{when}登录",
+    "neverLogin": "还没有登录记录"
   }
 }

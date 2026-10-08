@@ -33,7 +33,9 @@ import (
 	"github.com/bukahou/akasha/pkg/oidcrp"
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bukahou/melete/backend/internal/account"
 	"github.com/bukahou/melete/backend/internal/auth"
+	"github.com/bukahou/melete/backend/internal/token"
 )
 
 // OIDCConfig 后端作为 OIDC client 所需的全部配置。
@@ -160,12 +162,10 @@ func (h *OIDCHandler) withFlow(pick func(*oidcrp.Flow) http.HandlerFunc) http.Ha
 // onAuthenticated Akasha 那边验完了：确立账号、签本站 token、送回客户端。
 func (h *OIDCHandler) onAuthenticated(w http.ResponseWriter, r *http.Request, res oidcrp.Result) (string, error) {
 	id := res.Identity
-	display := id.Name
-	if display == "" {
-		display = id.PreferredUsername
-	}
-	if display == "" {
-		display = "学习者"
+	// ⭐ 邮箱与头像也带下去（2026-10-08 之前只取了展示名）。邮箱是上游的说法，只用于展示，见 account.FederatedProfile
+	profile := account.FederatedProfile{
+		Subject: id.Subject, Display: token.DisplayName(id.Name, id.PreferredUsername),
+		Email: id.Email, AvatarURL: id.Picture,
 	}
 	device := "oidc/web"
 	if isNative(res.Next) {
@@ -178,7 +178,7 @@ func (h *OIDCHandler) onAuthenticated(w http.ResponseWriter, r *http.Request, re
 	// ⚠️ clientIP 传空串：这个回调是浏览器从 Akasha 302 回来的，
 	// 走的链路与普通 API 请求不同。⛔ 与其填一个可能不可信的值，
 	// 不如明确交空 —— 模块收到空串会降级，而不是记录一个错的 IP。
-	pair, err := h.auth.EstablishFederated(r.Context(), id.Subject, display, device, "")
+	pair, err := h.auth.EstablishFederated(r.Context(), profile, device, "")
 	if err != nil {
 		return "", fmt.Errorf("确立账号并发会话: %w", err)
 	}

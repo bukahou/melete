@@ -1374,6 +1374,7 @@ components:
         id:          { type: string, description: 账号 id }
         displayName: { type: string, description: Akasha 带来的显示名（没有则为用户名）。只用于辨认 }
         email:       { type: string, description: Akasha 带来的邮箱。只用于辨认，⛔ 不用于认证 }
+        avatarUrl:   { type: string, description: Akasha 带来的头像地址 }
         tier:        { $ref: "#/components/schemas/Tier" }
         createdAt:   { type: string, format: date-time }
         lastLoginAt: { type: string, format: date-time }

@@ -288,6 +288,9 @@
     "next": "次へ",
     "noticeOk": "更新しました。相手が次に開いたときから反映されます",
     "noticeAdmin": "admin アカウントは変更できません",
-    "noticeFail": "操作に失敗しました。もう一度お試しください"
+    "noticeFail": "操作に失敗しました。もう一度お試しください",
+    "noEmail": "（メールアドレスなし）",
+    "lastLogin": "{when}にログイン",
+    "neverLogin": "ログイン記録なし"
   }
 }

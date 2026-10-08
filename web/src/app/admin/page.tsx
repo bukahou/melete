@@ -22,6 +22,23 @@ const NOTICE: Record<string, { key: string; tone: "ok" | "warn" }> = {
   fail: { key: "noticeFail", tone: "warn" },
 };
 
+/**
+ * 头像：Akasha 带来的地址；没有就用显示名的第一个字。
+ * ⚠️ 用 <img> 而不是 next/image：地址来自上游、域名不固定，⛔ 不为它开图片代理的白名单。
+ * referrerPolicy=no-referrer：⛔ 不把 Melete 的管理页地址泄给头像的托管方。
+ */
+function Avatar({ user }: { user: AdminUser }) {
+  if (user.avatarUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" className="h-9 w-9 shrink-0 rounded-full object-cover" />;
+  }
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-[0.9rem] font-semibold text-accent-ink">
+      {Array.from(user.displayName)[0] ?? "?"}
+    </span>
+  );
+}
+
 function TierPill({ tier, label }: { tier: Tier; label: string }) {
   const style =
     tier === "admin" ? "bg-ink text-raise" :
@@ -99,10 +116,14 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <div className="divide-y divide-line-2 border-t border-line-2">
           {data.items.map((u) => (
             <div key={u.id} className="flex items-center gap-3 px-5 py-3">
+              <Avatar user={u} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[0.92rem]">{u.displayName}</span>
-                <span className="block truncate text-[0.72rem] text-muted">
-                  {u.email ? `${u.email} · ` : ""}{t("joined", { when: timeAgo(u.createdAt, locale) })}
+                <span className="block truncate text-[0.72rem] text-muted">{u.email ?? t("noEmail")}</span>
+                <span className="block truncate text-[0.7rem] text-muted">
+                  {t("joined", { when: timeAgo(u.createdAt, locale) })}
+                  {" · "}
+                  {u.lastLoginAt ? t("lastLogin", { when: timeAgo(u.lastLoginAt, locale) }) : t("neverLogin")}
                 </span>
               </span>
               <TierPill tier={u.tier} label={t(`tier_${u.tier}`)} />

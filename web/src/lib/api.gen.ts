@@ -1121,6 +1121,8 @@ export interface components {
             displayName: string;
             /** @description Akasha 带来的邮箱。只用于辨认，⛔ 不用于认证 */
             email?: string;
+            /** @description Akasha 带来的头像地址 */
+            avatarUrl?: string;
             tier: components["schemas"]["Tier"];
             /** Format: date-time */
             createdAt: string;

@@ -283,12 +283,12 @@ func (s *Server) PasswordLogin(ctx context.Context, req api.PasswordLoginRequest
 // id_token **由本 API 自己验签**，不接受客户端自称的 sub ——
 // web 与 iOS 都只是把 OIDC 流程拿到的凭证交过来，身份由签名说了算。
 func (s *Server) SsoExchange(ctx context.Context, req api.SsoExchangeRequestObject) (api.SsoExchangeResponseObject, error) {
-	sub, display, err := s.oidc.Verify(ctx, req.Body.IdToken)
+	profile, err := s.oidc.Verify(ctx, req.Body.IdToken)
 	if err != nil {
 		s.log.Warn("id_token 验签失败", "err", err)
 		return api.SsoExchange401JSONResponse{Message: "id_token 无效"}, nil
 	}
-	pair, err := s.auth.EstablishFederated(ctx, sub, display, deref(req.Body.DeviceInfo), clientIP(ctx))
+	pair, err := s.auth.EstablishFederated(ctx, profile, deref(req.Body.DeviceInfo), clientIP(ctx))
 	if err != nil {
 		return nil, s.fail("SsoExchange.establish", err)
 	}

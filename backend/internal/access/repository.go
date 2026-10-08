@@ -92,6 +92,7 @@ func (s *service) ListUsers(ctx context.Context, actor userid.UserID, page, page
 		ID          []byte     `db:"id"`
 		DisplayName string     `db:"display_name"`
 		Email       string     `db:"email"`
+		AvatarURL   string     `db:"avatar_url"`
 		CreatedAt   time.Time  `db:"created_at"`
 		LastLoginAt *time.Time `db:"last_login_at"`
 	}
@@ -99,7 +100,7 @@ func (s *service) ListUsers(ctx context.Context, actor userid.UserID, page, page
 	// ⚠️ 按 created_at 排而不是 id：id 是 UUIDv7 虽然时间有序，但「注册时间」才是界面上的语义。
 	if err := s.db.SelectContext(ctx, &rows, `
 		SELECT id, COALESCE(display_name, username) AS display_name,
-		       COALESCE(upstream_email, '') AS email, created_at, last_login_at
+		       COALESCE(upstream_email, '') AS email, COALESCE(avatar_url, '') AS avatar_url, created_at, last_login_at
 		FROM users WHERE deleted_at IS NULL
 		ORDER BY created_at DESC, id DESC
 		LIMIT ? OFFSET ?`, pageSize, (page-1)*pageSize); err != nil {
@@ -113,7 +114,7 @@ func (s *service) ListUsers(ctx context.Context, actor userid.UserID, page, page
 			return nil, 0, fmt.Errorf("解码用户 id: %w", err)
 		}
 		ids = append(ids, userid.UserID(id))
-		out = append(out, User{ID: userid.UserID(id), DisplayName: r.DisplayName, Email: r.Email,
+		out = append(out, User{ID: userid.UserID(id), DisplayName: r.DisplayName, Email: r.Email, AvatarURL: r.AvatarURL,
 			Tier: TierBasic, CreatedAt: r.CreatedAt, LastLoginAt: r.LastLoginAt})
 	}
 	if len(ids) == 0 {

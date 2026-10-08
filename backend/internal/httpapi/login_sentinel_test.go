@@ -41,7 +41,9 @@ func (r *sentinelRepo) FindByUsername(context.Context, string) (*account.Account
 func (r *sentinelRepo) FindByID(context.Context, string) (*account.Account, error) {
 	return nil, account.ErrNotFound
 }
-func (r *sentinelRepo) EstablishFederated(context.Context, string, string, string) (*account.Account, error) {
+func (r *sentinelRepo) TouchLogin(context.Context, string) error { return nil }
+
+func (r *sentinelRepo) EstablishFederated(context.Context, string, account.FederatedProfile) (*account.Account, error) {
 	return nil, account.ErrNotFound
 }
 

@@ -488,6 +488,8 @@ func (e GetMyTagStatsParamsType) Valid() bool {
 
 // AdminUser defines model for AdminUser.
 type AdminUser struct {
+	// AvatarUrl Akasha 带来的头像地址
+	AvatarUrl *string   `json:"avatarUrl,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 
 	// DisplayName Akasha 带来的显示名（没有则为用户名）。只用于辨认

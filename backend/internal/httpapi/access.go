@@ -106,6 +106,10 @@ func (s *Server) ListAdminUsers(ctx context.Context, req api.ListAdminUsersReque
 			email := u.Email
 			item.Email = &email
 		}
+		if u.AvatarURL != "" {
+			avatar := u.AvatarURL
+			item.AvatarUrl = &avatar
+		}
 		out.Items = append(out.Items, item)
 	}
 	return out, nil
