@@ -117,7 +117,11 @@
     "randomN": "{n} 题",
     "randomExam": "一场考试 · {n} 题",
     "randomHintShort": "碎片时间",
-    "randomHintExam": "模拟考，与合格判断同一个题数"
+    "randomHintExam": "模拟考，与合格判断同一个题数",
+    "pickGoN": "开始（{n} 题）",
+    "pickCounting": "正在计算题数…",
+    "pickMatch": "符合条件：{n} 题",
+    "pickNone": "没有符合条件的题，换个组合试试"
   },
   "bank": {
     "switchBank": "切换题库",
