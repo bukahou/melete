@@ -106,11 +106,15 @@ func (e CurrentBankSource) Valid() bool {
 const (
 	DrillContextModeAll       DrillContextMode = "all"
 	DrillContextModeContested DrillContextMode = "contested"
+	DrillContextModeDomain    DrillContextMode = "domain"
 	DrillContextModeDue       DrillContextMode = "due"
+	DrillContextModePick      DrillContextMode = "pick"
+	DrillContextModeRandom    DrillContextMode = "random"
 	DrillContextModeTag       DrillContextMode = "tag"
 	DrillContextModeUnseen    DrillContextMode = "unseen"
 	DrillContextModeUnsure    DrillContextMode = "unsure"
 	DrillContextModeWrong     DrillContextMode = "wrong"
+	DrillContextModeYear      DrillContextMode = "year"
 )
 
 // Valid indicates whether the value is a known member of the DrillContextMode enum.
@@ -120,7 +124,13 @@ func (e DrillContextMode) Valid() bool {
 		return true
 	case DrillContextModeContested:
 		return true
+	case DrillContextModeDomain:
+		return true
 	case DrillContextModeDue:
+		return true
+	case DrillContextModePick:
+		return true
+	case DrillContextModeRandom:
 		return true
 	case DrillContextModeTag:
 		return true
@@ -129,6 +139,35 @@ func (e DrillContextMode) Valid() bool {
 	case DrillContextModeUnsure:
 		return true
 	case DrillContextModeWrong:
+		return true
+	case DrillContextModeYear:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DrillContextStatus.
+const (
+	DrillContextStatusAll        DrillContextStatus = "all"
+	DrillContextStatusBookmarked DrillContextStatus = "bookmarked"
+	DrillContextStatusContested  DrillContextStatus = "contested"
+	DrillContextStatusUnseen     DrillContextStatus = "unseen"
+	DrillContextStatusWrong      DrillContextStatus = "wrong"
+)
+
+// Valid indicates whether the value is a known member of the DrillContextStatus enum.
+func (e DrillContextStatus) Valid() bool {
+	switch e {
+	case DrillContextStatusAll:
+		return true
+	case DrillContextStatusBookmarked:
+		return true
+	case DrillContextStatusContested:
+		return true
+	case DrillContextStatusUnseen:
+		return true
+	case DrillContextStatusWrong:
 		return true
 	default:
 		return false
@@ -306,6 +345,30 @@ func (e ListQuestionsParamsMode) Valid() bool {
 	}
 }
 
+// Defines values for SummarizeQuestionsParamsMode.
+const (
+	SummarizeQuestionsParamsModeDue    SummarizeQuestionsParamsMode = "due"
+	SummarizeQuestionsParamsModeUnseen SummarizeQuestionsParamsMode = "unseen"
+	SummarizeQuestionsParamsModeUnsure SummarizeQuestionsParamsMode = "unsure"
+	SummarizeQuestionsParamsModeWrong  SummarizeQuestionsParamsMode = "wrong"
+)
+
+// Valid indicates whether the value is a known member of the SummarizeQuestionsParamsMode enum.
+func (e SummarizeQuestionsParamsMode) Valid() bool {
+	switch e {
+	case SummarizeQuestionsParamsModeDue:
+		return true
+	case SummarizeQuestionsParamsModeUnseen:
+		return true
+	case SummarizeQuestionsParamsModeUnsure:
+		return true
+	case SummarizeQuestionsParamsModeWrong:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListBankTagsParamsType.
 const (
 	ListBankTagsParamsTypeConcept ListBankTagsParamsType = "concept"
@@ -374,7 +437,15 @@ type AttemptInput struct {
 	// Chosen 排序后的字母集合，如 "AB"
 	Chosen string `json:"chosen"`
 
-	// Context 一次作答的出处 —— 用户是从哪个入口做的这道题
+	// Context 一次作答的出处 —— 用户是从哪个入口做的这道题。
+	// ⭐ 它必须足以**重建那个入口**：首页「继续」只从最近一条作答推出来（P9 #13），不存游标表。
+	//
+	// P9 的四个入口（mode）：
+	// · year   —— 4.1 一套卷子（session）或一组题号（noFrom–noTo），按题号全部出
+	// · domain —— 4.2 一个考纲域 / 分组 / topic（tagIds 并集），按题号全部出
+	// · pick   —— 4.3 状态 ∧ 标签并集 ∧ 卷子/题号段
+	// · random —— 4.4 seed 固定打乱，取前 count 题
+	// 其余 mode（all / unseen / wrong / unsure / contested / tag / due）是 P9 之前的入口，旧记录照常解析。
 	Context    *DrillContext `json:"context,omitempty"`
 	DurationMs *int          `json:"durationMs,omitempty"`
 	QuestionId int64         `json:"questionId"`
@@ -471,6 +542,9 @@ type BankMeta struct {
 	// SafetyRate 合格判断的安全线（正确率 %）= 及格线换算成正确率 + 10 个点。无则不做合格判断
 	SafetyRate *int `json:"safetyRate,omitempty"`
 
+	// SessionLabels session → { locale → 显示名 }（如 2026r08 → 令和8年度）。没有则显示 session 原文
+	SessionLabels *map[string]map[string]string `json:"sessionLabels,omitempty"`
+
 	// TagTypes 以标签 type（domain / topic / concept）为键
 	TagTypes *map[string]TagTypeMeta `json:"tagTypes,omitempty"`
 
@@ -478,6 +552,17 @@ type BankMeta struct {
 	// 题目只挂叶子 topic；分组不是标签，选中分组 = 它下面那几个 topic。
 	// ⚠️ 树描述的是考纲：可能含题库里没有题的 topic（库里也就没有对应的 tag）。
 	TopicTree *[]TopicTreeDomain `json:"topicTree,omitempty"`
+}
+
+// BankSession defines model for BankSession.
+type BankSession struct {
+	// NoFrom 最小原题号
+	NoFrom int `json:"noFrom"`
+
+	// NoTo 最大原题号
+	NoTo          int    `json:"noTo"`
+	QuestionCount int    `json:"questionCount"`
+	Session       string `json:"session"`
 }
 
 // BankStats 题库的内容侧统计（与用户无关）
@@ -490,6 +575,9 @@ type BankStats struct {
 
 	// QuestionCount 题目总数
 	QuestionCount int `json:"questionCount"`
+
+	// Sessions 卷子（question.session）及各自题数。单套题库只有一项且 session 为空串
+	Sessions *[]BankSession `json:"sessions,omitempty"`
 }
 
 // Choice defines model for Choice.
@@ -523,16 +611,73 @@ type CurrentBank struct {
 // CurrentBankSource chosen = 设置里选的 · recent = 没选过，按最近作答推出 · none = 都没有
 type CurrentBankSource string
 
-// DrillContext 一次作答的出处 —— 用户是从哪个入口做的这道题
+// DrillContext 一次作答的出处 —— 用户是从哪个入口做的这道题。
+// ⭐ 它必须足以**重建那个入口**：首页「继续」只从最近一条作答推出来（P9 #13），不存游标表。
+//
+// P9 的四个入口（mode）：
+// · year   —— 4.1 一套卷子（session）或一组题号（noFrom–noTo），按题号全部出
+// · domain —— 4.2 一个考纲域 / 分组 / topic（tagIds 并集），按题号全部出
+// · pick   —— 4.3 状态 ∧ 标签并集 ∧ 卷子/题号段
+// · random —— 4.4 seed 固定打乱，取前 count 题
+// 其余 mode（all / unseen / wrong / unsure / contested / tag / due）是 P9 之前的入口，旧记录照常解析。
 type DrillContext struct {
-	Mode DrillContextMode `json:"mode"`
+	// Count random 一轮的题数
+	Count *int             `json:"count,omitempty"`
+	Mode  DrillContextMode `json:"mode"`
 
-	// TagId mode=tag 时必填
+	// NoFrom 题号下限（year / pick）
+	NoFrom *int `json:"noFrom,omitempty"`
+
+	// NoTo 题号上限（year / pick）
+	NoTo *int `json:"noTo,omitempty"`
+
+	// Seed random 的打乱种子
+	Seed *int64 `json:"seed,omitempty"`
+
+	// Session 卷子（year / pick）
+	Session *string `json:"session,omitempty"`
+
+	// Status pick 的状态条件。wrong / unseen 是【会缩短】的集合 —— 做完就离开
+	Status *DrillContextStatus `json:"status,omitempty"`
+
+	// TagId mode=tag 时必填（旧入口）
 	TagId *int64 `json:"tagId,omitempty"`
+
+	// TagIds 标签并集（domain / pick）
+	TagIds *[]int64 `json:"tagIds,omitempty"`
 }
 
 // DrillContextMode defines model for DrillContext.Mode.
 type DrillContextMode string
+
+// DrillContextStatus pick 的状态条件。wrong / unseen 是【会缩短】的集合 —— 做完就离开
+type DrillContextStatus string
+
+// DrillCursor P9 #13 单一继续槽位：这个题库里**最近一次作答**的入口，以及该从第几题接着做。
+// 最后一次的入口覆盖之前的。从没作答过时缺省。
+type DrillCursor struct {
+	// Context 一次作答的出处 —— 用户是从哪个入口做的这道题。
+	// ⭐ 它必须足以**重建那个入口**：首页「继续」只从最近一条作答推出来（P9 #13），不存游标表。
+	//
+	// P9 的四个入口（mode）：
+	// · year   —— 4.1 一套卷子（session）或一组题号（noFrom–noTo），按题号全部出
+	// · domain —— 4.2 一个考纲域 / 分组 / topic（tagIds 并集），按题号全部出
+	// · pick   —— 4.3 状态 ∧ 标签并集 ∧ 卷子/题号段
+	// · random —— 4.4 seed 固定打乱，取前 count 题
+	// 其余 mode（all / unseen / wrong / unsure / contested / tag / due）是 P9 之前的入口，旧记录照常解析。
+	Context DrillContext `json:"context"`
+
+	// Finished 按顺序的集合已经做到最后一题（「继续」应给本轮小结而不是下一题）
+	Finished bool      `json:"finished"`
+	LastAt   time.Time `json:"lastAt"`
+
+	// Offset 接着做的位置（该入口集合里的 offset）。
+	// 按题号 / 按种子的集合 = 上次那题的下一题；会缩短的集合（wrong / unseen / due）恒为 0。
+	Offset int `json:"offset"`
+
+	// Total 该入口集合现在的大小
+	Total int `json:"total"`
+}
 
 // Error defines model for Error.
 type Error struct {
@@ -551,7 +696,15 @@ type ExplanationSource string
 
 // FocusCursor defines model for FocusCursor.
 type FocusCursor struct {
-	// Context 一次作答的出处 —— 用户是从哪个入口做的这道题
+	// Context 一次作答的出处 —— 用户是从哪个入口做的这道题。
+	// ⭐ 它必须足以**重建那个入口**：首页「继续」只从最近一条作答推出来（P9 #13），不存游标表。
+	//
+	// P9 的四个入口（mode）：
+	// · year   —— 4.1 一套卷子（session）或一组题号（noFrom–noTo），按题号全部出
+	// · domain —— 4.2 一个考纲域 / 分组 / topic（tagIds 并集），按题号全部出
+	// · pick   —— 4.3 状态 ∧ 标签并集 ∧ 卷子/题号段
+	// · random —— 4.4 seed 固定打乱，取前 count 题
+	// 其余 mode（all / unseen / wrong / unsure / contested / tag / due）是 P9 之前的入口，旧记录照常解析。
 	Context DrillContext `json:"context"`
 
 	// Done 集合内做过的题数；只有 tag / contested 有意义
@@ -742,8 +895,12 @@ type RefreshRequest struct {
 // · sequential —— 顺序进度：题号最小的没做过的题，无需存状态
 // · focus —— 上次专项：最近一条 context.mode ∉ {unseen, all} 的作答的出处；从未做过专项时缺省
 type Resume struct {
-	BankSlug string       `json:"bankSlug"`
-	Focus    *FocusCursor `json:"focus,omitempty"`
+	BankSlug string `json:"bankSlug"`
+
+	// Cursor P9 #13 单一继续槽位：这个题库里**最近一次作答**的入口，以及该从第几题接着做。
+	// 最后一次的入口覆盖之前的。从没作答过时缺省。
+	Cursor *DrillCursor `json:"cursor,omitempty"`
+	Focus  *FocusCursor `json:"focus,omitempty"`
 
 	// Sequential questionId 缺省 = 题库已全部做过一遍
 	Sequential SequentialCursor `json:"sequential"`
@@ -817,6 +974,18 @@ type SessionInfo struct {
 	LastActiveAt time.Time `json:"lastActiveAt"`
 }
 
+// SetSummary defines model for SetSummary.
+type SetSummary struct {
+	// Answered 其中做过的题数
+	Answered int `json:"answered"`
+
+	// Correct 其中最近一次作答为对的题数
+	Correct int `json:"correct"`
+
+	// Total 集合大小
+	Total int `json:"total"`
+}
+
 // SsoExchange defines model for SsoExchange.
 type SsoExchange struct {
 	// DeviceInfo 设备标识，用于「我的登录设备」
@@ -831,7 +1000,15 @@ type StudySession struct {
 	BankName string `json:"bankName"`
 	BankSlug string `json:"bankSlug"`
 
-	// Context 一次作答的出处 —— 用户是从哪个入口做的这道题
+	// Context 一次作答的出处 —— 用户是从哪个入口做的这道题。
+	// ⭐ 它必须足以**重建那个入口**：首页「继续」只从最近一条作答推出来（P9 #13），不存游标表。
+	//
+	// P9 的四个入口（mode）：
+	// · year   —— 4.1 一套卷子（session）或一组题号（noFrom–noTo），按题号全部出
+	// · domain —— 4.2 一个考纲域 / 分组 / topic（tagIds 并集），按题号全部出
+	// · pick   —— 4.3 状态 ∧ 标签并集 ∧ 卷子/题号段
+	// · random —— 4.4 seed 固定打乱，取前 count 题
+	// 其余 mode（all / unseen / wrong / unsure / contested / tag / due）是 P9 之前的入口，旧记录照常解析。
 	Context DrillContext `json:"context"`
 	Correct int          `json:"correct"`
 	Count   int          `json:"count"`
@@ -917,11 +1094,32 @@ type TopicTreeDomain struct {
 	} `json:"groups"`
 }
 
+// AnyTagQuery defines model for AnyTagQuery.
+type AnyTagQuery = []int64
+
 // BankQuery defines model for BankQuery.
 type BankQuery = string
 
+// BookmarkedQuery defines model for BookmarkedQuery.
+type BookmarkedQuery = bool
+
+// NoFromQuery defines model for NoFromQuery.
+type NoFromQuery = int
+
+// NoToQuery defines model for NoToQuery.
+type NoToQuery = int
+
+// SeedQuery defines model for SeedQuery.
+type SeedQuery = int64
+
+// SessionQuery defines model for SessionQuery.
+type SessionQuery = string
+
 // Slug defines model for Slug.
 type Slug = string
+
+// TakeQuery defines model for TakeQuery.
+type TakeQuery = int
 
 // NotFound defines model for NotFound.
 type NotFound = Error
@@ -999,13 +1197,69 @@ type ListQuestionsParams struct {
 	// ⚠️ due 与 unseen 互斥且不重叠：没做过的题没有卡片，不算「到期」。
 	// 两者混进一个数字会让「今天要复习 300 题」失去意义。
 	// ⚠️ due 按【到期时间】升序返回，其余模式按原题号 —— 复习队列不是浏览列表。
-	Mode   *ListQuestionsParamsMode `form:"mode,omitempty" json:"mode,omitempty"`
-	Limit  *int                     `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset *int                     `form:"offset,omitempty" json:"offset,omitempty"`
+	Mode *ListQuestionsParamsMode `form:"mode,omitempty" json:"mode,omitempty"`
+
+	// Session 只要这一套卷子（question.session）。单套题库的 session 是空串
+	Session *SessionQuery `form:"session,omitempty" json:"session,omitempty"`
+
+	// NoFrom 原题号下限（含）。4.1 无年度的题库按题号分组用
+	NoFrom *NoFromQuery `form:"noFrom,omitempty" json:"noFrom,omitempty"`
+
+	// NoTo 原题号上限（含）
+	NoTo *NoToQuery `form:"noTo,omitempty" json:"noTo,omitempty"`
+
+	// AnyTag 标签 id，可重复；**命中任意一个即可（并集）**。
+	// ⚠️ 与 `tag`（交集）是两个参数：选一个大分類 = 它下面几个中分類的并集。
+	AnyTag *AnyTagQuery `form:"anyTag,omitempty" json:"anyTag,omitempty"`
+
+	// Bookmarked 只要我收藏了的题（需要会话）
+	Bookmarked *BookmarkedQuery `form:"bookmarked,omitempty" json:"bookmarked,omitempty"`
+
+	// Seed 给了就按种子**固定打乱**（同一个种子永远同一个顺序 —— 每题一次页面跳转，刷新/后退不能换题）。
+	// ⚠️ 与 mode=due 互斥：复习队列按到期时间排。
+	Seed *SeedQuery `form:"seed,omitempty" json:"seed,omitempty"`
+
+	// Take 集合只取（排序后的）前 N 题 —— 4.4 随机一轮 10 题就是 seed + take=10
+	Take   *TakeQuery `form:"take,omitempty" json:"take,omitempty"`
+	Limit  *int       `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int       `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // ListQuestionsParamsMode defines parameters for ListQuestions.
 type ListQuestionsParamsMode string
+
+// SummarizeQuestionsParams defines parameters for SummarizeQuestions.
+type SummarizeQuestionsParams struct {
+	Tag       *[]int64                      `form:"tag,omitempty" json:"tag,omitempty"`
+	Contested *bool                         `form:"contested,omitempty" json:"contested,omitempty"`
+	Mode      *SummarizeQuestionsParamsMode `form:"mode,omitempty" json:"mode,omitempty"`
+
+	// Session 只要这一套卷子（question.session）。单套题库的 session 是空串
+	Session *SessionQuery `form:"session,omitempty" json:"session,omitempty"`
+
+	// NoFrom 原题号下限（含）。4.1 无年度的题库按题号分组用
+	NoFrom *NoFromQuery `form:"noFrom,omitempty" json:"noFrom,omitempty"`
+
+	// NoTo 原题号上限（含）
+	NoTo *NoToQuery `form:"noTo,omitempty" json:"noTo,omitempty"`
+
+	// AnyTag 标签 id，可重复；**命中任意一个即可（并集）**。
+	// ⚠️ 与 `tag`（交集）是两个参数：选一个大分類 = 它下面几个中分類的并集。
+	AnyTag *AnyTagQuery `form:"anyTag,omitempty" json:"anyTag,omitempty"`
+
+	// Bookmarked 只要我收藏了的题（需要会话）
+	Bookmarked *BookmarkedQuery `form:"bookmarked,omitempty" json:"bookmarked,omitempty"`
+
+	// Seed 给了就按种子**固定打乱**（同一个种子永远同一个顺序 —— 每题一次页面跳转，刷新/后退不能换题）。
+	// ⚠️ 与 mode=due 互斥：复习队列按到期时间排。
+	Seed *SeedQuery `form:"seed,omitempty" json:"seed,omitempty"`
+
+	// Take 集合只取（排序后的）前 N 题 —— 4.4 随机一轮 10 题就是 seed + take=10
+	Take *TakeQuery `form:"take,omitempty" json:"take,omitempty"`
+}
+
+// SummarizeQuestionsParamsMode defines parameters for SummarizeQuestions.
+type SummarizeQuestionsParamsMode string
 
 // ListBankTagsParams defines parameters for ListBankTags.
 type ListBankTagsParams struct {
@@ -1149,6 +1403,9 @@ type ServerInterface interface {
 	// 题目列表（分页 + 标签筛选）
 	// (GET /banks/{slug}/questions)
 	ListQuestions(w http.ResponseWriter, r *http.Request, slug Slug, params ListQuestionsParams)
+	// 一个题目集合的本轮小结（P9
+	// (GET /banks/{slug}/questions/summary)
+	SummarizeQuestions(w http.ResponseWriter, r *http.Request, slug Slug, params SummarizeQuestionsParams)
 	// 题库的标签列表（用于筛选与正确率热图）
 	// (GET /banks/{slug}/tags)
 	ListBankTags(w http.ResponseWriter, r *http.Request, slug Slug, params ListBankTagsParams)
@@ -1287,6 +1544,12 @@ func (_ Unimplemented) GetBank(w http.ResponseWriter, r *http.Request, slug Slug
 // 题目列表（分页 + 标签筛选）
 // (GET /banks/{slug}/questions)
 func (_ Unimplemented) ListQuestions(w http.ResponseWriter, r *http.Request, slug Slug, params ListQuestionsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 一个题目集合的本轮小结（P9
+// (GET /banks/{slug}/questions/summary)
+func (_ Unimplemented) SummarizeQuestions(w http.ResponseWriter, r *http.Request, slug Slug, params SummarizeQuestionsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1745,6 +2008,97 @@ func (siw *ServerInterfaceWrapper) ListQuestions(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// ------------- Optional query parameter "session" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "session", r.URL.Query(), &params.Session, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "session"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "session", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "noFrom" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "noFrom", r.URL.Query(), &params.NoFrom, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "noFrom"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "noFrom", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "noTo" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "noTo", r.URL.Query(), &params.NoTo, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "noTo"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "noTo", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "anyTag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "anyTag", r.URL.Query(), &params.AnyTag, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "anyTag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "anyTag", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "bookmarked" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "bookmarked", r.URL.Query(), &params.Bookmarked, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "bookmarked"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bookmarked", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "seed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "seed", r.URL.Query(), &params.Seed, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "seed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "seed", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "take" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "take", r.URL.Query(), &params.Take, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "take"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "take", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -1773,6 +2127,171 @@ func (siw *ServerInterfaceWrapper) ListQuestions(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListQuestions(w, r, slug, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SummarizeQuestions operation middleware
+func (siw *ServerInterfaceWrapper) SummarizeQuestions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug Slug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", chi.URLParam(r, "slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SummarizeQuestionsParams
+
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "contested" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "contested", r.URL.Query(), &params.Contested, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "contested"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "contested", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "mode" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "mode", r.URL.Query(), &params.Mode, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "mode"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "mode", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "session" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "session", r.URL.Query(), &params.Session, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "session"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "session", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "noFrom" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "noFrom", r.URL.Query(), &params.NoFrom, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "noFrom"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "noFrom", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "noTo" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "noTo", r.URL.Query(), &params.NoTo, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "noTo"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "noTo", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "anyTag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "anyTag", r.URL.Query(), &params.AnyTag, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "anyTag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "anyTag", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "bookmarked" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "bookmarked", r.URL.Query(), &params.Bookmarked, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "bookmarked"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bookmarked", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "seed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "seed", r.URL.Query(), &params.Seed, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "seed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "seed", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "take" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "take", r.URL.Query(), &params.Take, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "take"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "take", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SummarizeQuestions(w, r, slug, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2270,6 +2789,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/banks/{slug}/questions", wrapper.ListQuestions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/banks/{slug}/questions/summary", wrapper.SummarizeQuestions)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/banks/{slug}/tags", wrapper.ListBankTags)
@@ -2946,6 +3468,43 @@ func (response ListQuestions404JSONResponse) VisitListQuestionsResponse(w http.R
 	return err
 }
 
+type SummarizeQuestionsRequestObject struct {
+	Slug   Slug `json:"slug"`
+	Params SummarizeQuestionsParams
+}
+
+type SummarizeQuestionsResponseObject interface {
+	VisitSummarizeQuestionsResponse(w http.ResponseWriter) error
+}
+
+type SummarizeQuestions200JSONResponse SetSummary
+
+func (response SummarizeQuestions200JSONResponse) VisitSummarizeQuestionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SummarizeQuestions404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SummarizeQuestions404JSONResponse) VisitSummarizeQuestionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListBankTagsRequestObject struct {
 	Slug   Slug `json:"slug"`
 	Params ListBankTagsParams
@@ -3235,6 +3794,9 @@ type StrictServerInterface interface {
 	// 题目列表（分页 + 标签筛选）
 	// (GET /banks/{slug}/questions)
 	ListQuestions(ctx context.Context, request ListQuestionsRequestObject) (ListQuestionsResponseObject, error)
+	// 一个题目集合的本轮小结（P9
+	// (GET /banks/{slug}/questions/summary)
+	SummarizeQuestions(ctx context.Context, request SummarizeQuestionsRequestObject) (SummarizeQuestionsResponseObject, error)
 	// 题库的标签列表（用于筛选与正确率热图）
 	// (GET /banks/{slug}/tags)
 	ListBankTags(ctx context.Context, request ListBankTagsRequestObject) (ListBankTagsResponseObject, error)
@@ -3816,6 +4378,33 @@ func (sh *strictHandler) ListQuestions(w http.ResponseWriter, r *http.Request, s
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListQuestionsResponseObject); ok {
 		if err := validResponse.VisitListQuestionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SummarizeQuestions operation middleware
+func (sh *strictHandler) SummarizeQuestions(w http.ResponseWriter, r *http.Request, slug Slug, params SummarizeQuestionsParams) {
+	var request SummarizeQuestionsRequestObject
+
+	request.Slug = slug
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SummarizeQuestions(ctx, request.(SummarizeQuestionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SummarizeQuestions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SummarizeQuestionsResponseObject); ok {
+		if err := validResponse.VisitSummarizeQuestionsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
