@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Languages } from "lucide-react";
-import { LOCALES, LOCALE_LABEL, type Locale } from "@/i18n/locales";
+import { LOCALES, LOCALE_LABEL, LOCALE_SHORT, type Locale } from "@/i18n/locales";
 
 /**
  * 语言切换 —— 顶栏一个下拉。
@@ -14,7 +14,7 @@ import { LOCALES, LOCALE_LABEL, type Locale } from "@/i18n/locales";
  *
  * ⭐ 用 <select> 而不是自造下拉：键盘、读屏、移动端原生选择器全都白拿。
  */
-export function LanguageSwitcher({ current }: { current: Locale }) {
+export function LanguageSwitcher({ current, short = false }: { current: Locale; short?: boolean }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -42,7 +42,7 @@ export function LanguageSwitcher({ current }: { current: Locale }) {
       >
         {LOCALES.map((l) => (
           <option key={l} value={l}>
-            {LOCALE_LABEL[l]}
+            {(short ? LOCALE_SHORT : LOCALE_LABEL)[l]}
           </option>
         ))}
       </select>

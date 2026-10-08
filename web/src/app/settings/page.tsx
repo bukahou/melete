@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
-import { Check, KeyRound, Languages, Library, Monitor, Mail, Palette, ShieldAlert } from "lucide-react";
+import { Check, KeyRound, Languages, Library, LogOut, Monitor, Mail, Palette, ShieldAlert } from "lucide-react";
 import { cookies } from "next/headers";
 import { DEFAULT_THEME, THEMES, THEME_COOKIE, isTheme } from "@/lib/theme";
 import { getMyBank, getSessions, listBanks, type Bank, type CurrentBank, type SessionInfo } from "@/lib/api";
@@ -280,8 +280,12 @@ export default async function SettingsPage({
         </form>
       </Section>
 
-      <p className="text-xs text-muted">
+      {/* ⭐ 手机上没有左侧栏（底部标签栏放不下「我的 / 登出」），这两个出口必须在这里 */}
+      <p className="flex items-center gap-5 text-xs text-muted">
         <Link href="/me" className="underline underline-offset-4">{t("backToMe")}</Link>
+        <a href="/auth/logout" className="ml-auto inline-flex items-center gap-1 hover:text-ink">
+          <LogOut size={13} />{t("logout")}
+        </a>
       </p>
     </div>
   );

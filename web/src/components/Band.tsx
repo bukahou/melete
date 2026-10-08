@@ -1,11 +1,11 @@
 import Link from "next/link";
 
 /**
- * 宽画布：学习台与题库选择台是扫视和操作的，需要突破 layout 的阅读宽度。
- * 用 translate 居中，不改 layout —— 刷题与详情等阅读页保持窄栏。
+ * 宽画布。⚠️ 旧版用 translate 按【视口】居中来突破 layout 的阅读宽度 ——
+ * 有了左侧栏之后视口中心不再是内容区中心，会压到侧栏上。改为占满内容区。
  */
 export function Wide({ children }: { children: React.ReactNode }) {
-  return <div className="relative left-1/2 w-[min(100vw,1400px)] -translate-x-1/2 px-6">{children}</div>;
+  return <div className="w-full">{children}</div>;
 }
 
 /**

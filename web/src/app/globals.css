@@ -17,19 +17,22 @@
  */
 
 @theme {
-  /* 纸面：带一点青的冷灰底，白卡片浮在上面 */
-  --color-surface: #f2f5f7;
-  --color-raise: #ffffff;
+  /* ⭐ 2026-10-08（二版）：版式参照 it-pass —— 浅彩色整页铺底 + 左侧栏 + 近白卡片 + 白底描边按钮。
+     颜色用浅青（用户裁定）：⛔ 不用 it-pass 的绿 —— 绿 = 答对；且公开作品集与商业产品同色像仿制。 */
+  --color-surface: #e3f0f0;   /* 页面底：浅青 */
+  --color-rail: #d2e6e7;      /* 左侧栏：比页面深一档 */
+  --color-raise: #f5fafa;     /* 卡片：近白带青 */
+  --color-tile: #ffffff;      /* 卡片里的按钮：纯白，比卡片再亮一档 */
   --color-ink: #1e2a32;
-  --color-muted: #66727c;
-  --color-line: #dde4e9;
-  --color-line-2: #ebf0f3;   /* 列表行分隔，比外框更淡 */
+  --color-muted: #5a6a72;
+  --color-line: #cfe0e1;
+  --color-line-2: #e2eded;   /* 列表行分隔，比外框更淡 */
 
   /* 强调色：偏青的蓝。⛔ 不用绿（绿 = 答对）、不用社区蓝（来源色） */
-  --color-accent: #0b7285;      /* 实底（1 级按钮） */
+  --color-accent: #0b7285;      /* 实底 */
   --color-accent-fg: #ffffff;   /* 实底上的字 */
   --color-accent-ink: #0b7285;  /* 图标 / 文字 / 描边。浅色下与实底同色，深色下更亮 */
-  --color-accent-soft: #e3f1f4; /* 图标底、选中态 */
+  --color-accent-soft: #d5ebee; /* 图标底、选中态、侧栏当前项 */
 
   /* 答案主张的来源三色（categorical，已验证） */
   --color-src-bank: #b45f17;
@@ -49,23 +52,24 @@
 }
 
 /*
- * 深色：⚠️ 不是把浅色反过来。正文压暗一档（对比 11:1，旧版 12.7:1 偏刺），
- * 主按钮用强调色而不是近白实底（旧版按钮对底 13.8:1，是全页最亮的刺眼点）。
- * ⚠️ 实底与图标色在深色下必须分开：亮青实底（#4cb3c6，对底 7.2:1）实测又成了新的刺眼点 ——
- *   实底取沉的 #1a6e7d（字 5.3:1、对页面 3.0:1），图标 / 文字取亮的 #5fc0d2（对卡片 7.7:1）。
+ * 深色：⚠️ 不是把浅色反过来。正文对比 ~11:1（旧版 12.7:1 偏刺）；
+ * ⚠️ 实底与图标色在深色下必须分开：亮青实底实测是刺眼点 ——
+ *   实底取沉的 #1a6e7d（字 5.3:1），图标 / 文字取亮的 #5fc0d2。
  * 两处定义同一组值：显式选深色 / 选「跟随系统」且系统为深色。
  */
 :root[data-theme="dark"] {
-  --color-surface: #15191d;
-  --color-raise: #1c2126;
-  --color-ink: #d3d8dd;
-  --color-muted: #8b959e;
-  --color-line: #2b3238;
-  --color-line-2: #232a2f;
+  --color-surface: #121a1c;
+  --color-rail: #0e1517;
+  --color-raise: #182224;
+  --color-tile: #1e2a2c;
+  --color-ink: #d3dcdd;
+  --color-muted: #8b9a9e;
+  --color-line: #273436;
+  --color-line-2: #1f2b2d;
   --color-accent: #1a6e7d;
   --color-accent-fg: #eaf6f8;
   --color-accent-ink: #5fc0d2;
-  --color-accent-soft: #1b3036;
+  --color-accent-soft: #19343a;
   --color-src-bank: #cf7f31;
   --color-src-community: #6394e0;
   --color-src-ai: #cf6ba6;
@@ -75,16 +79,18 @@
 }
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] {
-    --color-surface: #15191d;
-    --color-raise: #1c2126;
-    --color-ink: #d3d8dd;
-    --color-muted: #8b959e;
-    --color-line: #2b3238;
-    --color-line-2: #232a2f;
+    --color-surface: #121a1c;
+    --color-rail: #0e1517;
+    --color-raise: #182224;
+    --color-tile: #1e2a2c;
+    --color-ink: #d3dcdd;
+    --color-muted: #8b9a9e;
+    --color-line: #273436;
+    --color-line-2: #1f2b2d;
     --color-accent: #1a6e7d;
     --color-accent-fg: #eaf6f8;
     --color-accent-ink: #5fc0d2;
-    --color-accent-soft: #1b3036;
+    --color-accent-soft: #19343a;
     --color-src-bank: #cf7f31;
     --color-src-community: #6394e0;
     --color-src-ai: #cf6ba6;
@@ -127,10 +133,41 @@ body {
   text-wrap: balance;
 }
 
-/* card：分区的唯一形态 —— 白卡片浮在 tinted 底上，⛔ 不画边框（规则 3） */
+/* card：分区的唯一形态 —— 近白卡片浮在浅彩色底上，⛔ 不画边框（规则 3） */
 .card {
   background: var(--color-raise);
   border-radius: 0.875rem;
+}
+
+/* tile：卡片里的可点按钮（it-pass 式）—— 白底 + 1px 强调色描边。
+   ⭐ 描边是「这里能点」的信号，所以只给按钮，⛔ 不给卡片。 */
+.tile {
+  background: var(--color-tile);
+  border: 1px solid color-mix(in oklab, var(--color-accent-ink) 55%, transparent);
+  border-radius: 0.5rem;
+  color: var(--color-accent-ink);
+  transition: background-color .15s, border-color .15s;
+}
+.tile:hover { border-color: var(--color-accent-ink); background: color-mix(in oklab, var(--color-accent-soft) 45%, var(--color-tile)); }
+
+/* 入口图标的彩色底块（浅彩色，用户裁定）。⚠️ 纯装饰 —— 身份由旁边的文字给，⛔ 颜色不承载含义 */
+.ico { display: inline-flex; align-items: center; justify-content: center; border-radius: 0.625rem; }
+.ico-teal   { background: #d5ebee; color: #0b6a7c; }
+.ico-amber  { background: #fbe9cf; color: #a35a0c; }
+.ico-violet { background: #e9e3fa; color: #5f45b8; }
+.ico-rose   { background: #f9e0e8; color: #a8325a; }
+.ico-indigo { background: #e0e6fa; color: #3a55b8; }
+:root[data-theme="dark"] .ico-teal   { background: #183a40; color: #7fd0de; }
+:root[data-theme="dark"] .ico-amber  { background: #3a2c17; color: #f0b56a; }
+:root[data-theme="dark"] .ico-violet { background: #2c2545; color: #b9a6f2; }
+:root[data-theme="dark"] .ico-rose   { background: #3d2029; color: #f09ab6; }
+:root[data-theme="dark"] .ico-indigo { background: #1f2847; color: #9fb2f2; }
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .ico-teal   { background: #183a40; color: #7fd0de; }
+  :root[data-theme="system"] .ico-amber  { background: #3a2c17; color: #f0b56a; }
+  :root[data-theme="system"] .ico-violet { background: #2c2545; color: #b9a6f2; }
+  :root[data-theme="system"] .ico-rose   { background: #3d2029; color: #f09ab6; }
+  :root[data-theme="system"] .ico-indigo { background: #1f2847; color: #9fb2f2; }
 }
 
 /* 印刷式强调：赭色荧光衬线 */

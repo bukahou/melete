@@ -20,6 +20,12 @@ export const LOCALE_LABEL: Record<Locale, string> = {
   ja: "日本語",
 };
 
+/** 窄处（左侧栏只有 84px）用的短名。⚠️ 仍用各自的语言写 —— 认不出当前语言的人要能找到自己的那一项。 */
+export const LOCALE_SHORT: Record<Locale, string> = {
+  zh: "中文",
+  ja: "日本語",
+};
+
 /** 存放显式语言选择的 cookie。⭐ 不是 httpOnly —— 客户端切换器要能读它做高亮。 */
 export const LOCALE_COOKIE = "melete_locale";
 
