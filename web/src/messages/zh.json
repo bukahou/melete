@@ -60,8 +60,6 @@
     "historyTitle": "学习履历",
     "historyAnswered": "已答",
     "historyRate": "练习正确率",
-    "historyRateNote": "练习正确率 = 全部 {n} 次作答（含重做）中答对的比例",
-    "historyEmpty": "还没有作答",
     "historyDetail": "按{domain}查看",
     "passTitle": "合格判断",
     "passSafety": "安全线 {line}%",
@@ -69,7 +67,6 @@
     "passMastery": "当前掌握率",
     "passMasteryNote": "掌握率每道题只看最近一次作答",
     "passWaiting": "再答 {n} 题后开始判断",
-    "passWaitingNote": "答满一场考试的题数（{exam} 题）之后才判断 —— 答得太少，正确率会骗人",
     "passOk": "合格圈",
     "passGap": "距安全线还差 {gap} 个点",
     "passNone": "这个题库没有官方及格线，不做合格判断",
@@ -83,7 +80,6 @@
     "drillRandom": "随机",
     "drillRandomHint": "从整个题库随机出题",
     "drillContinue": "继续上次",
-    "drillContinueNone": "还没有可以继续的",
     "noBankTitle": "先选一个题库",
     "noBankBody": "首页显示的是你正在学的题库。到设置里选一个，之后随时可以再换。",
     "noBankGo": "去设置选题库",
@@ -97,7 +93,9 @@
     "status_contested": "有分歧",
     "randomLabel": "随机 {n} 题",
     "continueFinished": "这一轮做完了，看小结",
-    "continueAt": "第 {no} / {total} 题"
+    "continueAt": "第 {no} / {total} 题",
+    "startFirst": "开始练习",
+    "startFirstHint": "从第一组题开始，按题号做"
   },
   "practice": {
     "home": "首页",
@@ -253,7 +251,7 @@
   },
   "settings": {
     "title": "账号设置",
-    "heading": "密码 · 登录设备 · 邮箱 · 语言",
+    "heading": "题库 · 账号 · 外观",
     "pwTitle": "密码",
     "pwHint": "改密后其它设备会被登出",
     "pwOld": "当前密码（从未设过密码则留空）",
@@ -299,7 +297,14 @@
     "bankUse": "切换到这个",
     "bankNote": "切换不会丢失任何记录 —— 每个题库的作答各自保留，切回来接着用。",
     "bankRecentNote": "还没选过：首页现在显示的是你最近作答的 {name}。",
-    "bankFailed": "题库列表暂时取不到"
+    "bankFailed": "题库列表暂时取不到",
+    "themeTitle": "外观",
+    "themeHint": "深色 / 浅色",
+    "theme_light": "浅色",
+    "theme_dark": "深色",
+    "theme_system": "跟随系统",
+    "themeSubmit": "保存",
+    "noticeThemeOk": "外观已更新"
   },
   "error": {
     "title": "页面出错了",

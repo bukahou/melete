@@ -58,7 +58,7 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
 
       {(q.dataIssue || (q.warnings?.length ?? 0) > 0) && (
         <div
-          className="flex gap-3 rounded-md border border-line bg-raise p-4 text-xs leading-[1.8]"
+          className="flex gap-3 card p-4 text-xs leading-[1.8]"
           style={{ boxShadow: "inset 3px 0 0 var(--color-warn)" }}
         >
           <AlertTriangle size={15} className="mt-0.5 shrink-0" style={{ color: "var(--color-warn)" }} />
@@ -81,7 +81,7 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
           <h3 className="section-rule">
             <span className="eyebrow">{t("explanation")}</span>
           </h3>
-          <div className="mt-5 rounded-md border border-line bg-raise p-6 sm:p-8">
+          <div className="mt-5 card p-6 sm:p-8">
             <Markdown>{e.body}</Markdown>
           </div>
         </section>

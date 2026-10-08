@@ -161,14 +161,14 @@ export function DrillCard({
               用户选完答案看不到任何反馈，会以为界面坏了。
               判不了对错要明说，这跟「不偷偷改调度」是同一条：把状况摆出来。 */}
           {!reference && (
-            <div className="rounded-md border border-line bg-raise p-4 text-sm text-muted"
+            <div className="card p-4 text-sm text-muted"
                  style={{ boxShadow: "inset 3px 0 0 var(--color-muted)" }}>
               {t.rich("noReference", { b: (c) => <b className="text-ink">{c}</b> })}
             </div>
           )}
           {reference && (
             <div
-              className="flex items-center gap-3 rounded-md border border-line bg-raise p-4 text-sm"
+              className="flex items-center gap-3 card p-4 text-sm"
               style={{ boxShadow: `inset 3px 0 0 ${correct ? "var(--color-ok)" : "var(--color-warn)"}` }}
             >
               <span
@@ -197,7 +197,7 @@ export function DrillCard({
           {/* ⭐ 记录成功时什么都不显示。⛔ 但失败与过期必须显示 ——
               那是「这题没记上」的唯一信号，去掉它就回到「刷了半天白刷、两边都不报错」的形状。 */}
           {saveState === "failed" && (
-            <p className="rounded-md border border-line bg-raise px-4 py-3 text-xs text-muted"
+            <p className="card px-4 py-3 text-xs text-muted"
                style={{ boxShadow: "inset 3px 0 0 var(--color-warn)" }}>
               {t("saveFailed")}
             </p>
@@ -249,7 +249,11 @@ function DrillNav({
   // ⚠️ 只有【会缩短的集合】才用 nextHref（它指向 offset 0）。
   // 普通浏览（无 mode）的下一题永远是 offset+1 —— 那种列表不会缩短。
   // 第一版写成 `nextHref ?? skipHref`，于是普通浏览也跳去了 offset 0。
-  const skipping = nav.shrinking && !answered;
+  // ⭐ 2026-10-08：没作答就前进 = 跳过，【不论集合会不会缩短】。
+  //   原来只在会缩短的集合里降级成「跳过」—— 那时按顺序的集合只有「全部浏览」。
+  //   P9 之后 4.1 / 4.2 / 随机全是按顺序的集合，没答时显示实底「下一题」，
+  //   正是下面那条教训的原形（点了以为前进，其实这题没记）。
+  const skipping = !answered;
   const forward = nav.shrinking ? (answered ? nav.nextHref : nav.skipHref) : nav.skipHref;
   if (!nav.prevHref && !forward) return null;
   return (

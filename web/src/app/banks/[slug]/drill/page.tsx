@@ -214,7 +214,7 @@ export default async function DrillPage({
       </div>
 
       {untranslated && (
-        <p className="rounded-md border border-line bg-raise px-4 py-2.5 text-xs text-muted"
+        <p className="card px-4 py-2.5 text-xs text-muted"
            style={{ boxShadow: "inset 3px 0 0 var(--color-src-bank)" }}>
           {t("sourceFallback")}
         </p>
@@ -230,7 +230,7 @@ export default async function DrillPage({
             <h3 className="section-rule">
               <span className="eyebrow">{t("explanation")}</span>
             </h3>
-            <div className="mt-5 rounded-md border border-line bg-raise p-6 sm:p-8">
+            <div className="mt-5 card p-6 sm:p-8">
               <Markdown>{e.body}</Markdown>
             </div>
           </section>

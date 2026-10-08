@@ -67,7 +67,7 @@ export function ClaimsPanel({ claims }: { claims: AnswerClaim[] }) {
           return (
             <div
               key={claim.source}
-              className="rounded-md border border-line bg-raise p-4"
+              className="card p-4"
               style={{ borderTop: `3px solid ${color}` }}
             >
               <div className="flex items-baseline justify-between gap-2">

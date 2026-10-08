@@ -45,7 +45,7 @@ export default async function YearPage({ params }: { params: Promise<{ slug: str
 
   return (
     <PracticeShell home={t("home")} title={dash("drillYear")} sub={t("yearSub", { size: bank.meta.groupSize ?? 100 })}>
-      <section className="rounded-lg border border-line bg-raise">
+      <section className="card overflow-hidden py-1.5">
         {rows.map((r, i) => {
           const s = sums[i];
           const title = r.ctx.session
