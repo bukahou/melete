@@ -26,6 +26,8 @@
     }
   },
   "pass_score": 750,
+  "exam_questions": 75,
+  "group_size": 100,
   "max_score": 1000,
   "domains": {
     "1": "Design Solutions for Organizational Complexity",

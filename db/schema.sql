@@ -240,6 +240,15 @@ CREATE TABLE IF NOT EXISTS attempt (
   KEY idx_attempt_time (user_id, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 收藏（P9）：用户 × 题目两态，取消 = DELETE。⛔ 无 bank_id，经 question 推得出。
+CREATE TABLE IF NOT EXISTS bookmark (
+  user_id     BINARY(16) NOT NULL,
+  question_id BIGINT     NOT NULL,
+  created_at  DATETIME   NOT NULL,
+  PRIMARY KEY (user_id, question_id),
+  KEY idx_bookmark_time (user_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
 -- ═══════════════════════════════════════════════════════════════════
 -- localauth 认证域（2026-09-06 起）
 --
@@ -269,6 +278,7 @@ CREATE TABLE IF NOT EXISTS users (
   last_login_at        DATETIME      NULL,
   last_login_ip        VARBINARY(16) NULL,       -- ⚠️ 必须是解析后的可信 IP
   deleted_at           DATETIME      NULL,
+  current_bank_id      BIGINT        NULL,       -- P9：首页显示哪个题库。NULL = 没选过（⛔ 不给默认值）
   PRIMARY KEY (id),
   UNIQUE KEY uk_username (username),
   -- 🔴 安全相关，⛔ 不是整洁问题：模块的 UserByVerifiedAddress 返回单个

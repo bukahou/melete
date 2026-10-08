@@ -836,6 +836,28 @@ export interface components {
             passScore?: number;
             /** @description 满分 */
             maxScore?: number;
+            /** @description 合格判断的安全线（正确率 %）= 及格线换算成正确率 + 10 个点。无则不做合格判断 */
+            safetyRate?: number;
+            /** @description 一场正式考试的题数。作答不足这个数之前不给合格判断 */
+            examQuestions?: number;
+            /** @description 顺序练习每组多少题 */
+            groupSize?: number;
+            /**
+             * @description domain › 分组 › topic 的展示树。没有则 topic 平铺。
+             *     题目只挂叶子 topic；分组不是标签，选中分组 = 它下面那几个 topic。
+             *     ⚠️ 树描述的是考纲：可能含题库里没有题的 topic（库里也就没有对应的 tag）。
+             */
+            topicTree?: components["schemas"]["TopicTreeDomain"][];
+        };
+        TopicTreeDomain: {
+            /** @description domain 标签的 value，如 domain-1 */
+            domain: string;
+            groups: {
+                /** @description 分组显示名（题库自己的语言） */
+                name: string;
+                /** @description topic 标签的 value */
+                topics: string[];
+            }[];
         };
         TagTypeMeta: {
             /** @description locale → 该标签轴的显示名 */

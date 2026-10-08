@@ -435,14 +435,28 @@ type BankDetailKind string
 // 标签轴叫什么（AWS 是「服务」、LPIC 是「命令与工具」）、考纲权重、及格线，
 // 全部从这里读。换一个题库只有这个对象不同，页面代码零改动。
 type BankMeta struct {
+	// ExamQuestions 一场正式考试的题数。作答不足这个数之前不给合格判断
+	ExamQuestions *int `json:"examQuestions,omitempty"`
+
+	// GroupSize 顺序练习每组多少题
+	GroupSize *int `json:"groupSize,omitempty"`
+
 	// MaxScore 满分
 	MaxScore *int `json:"maxScore,omitempty"`
 
 	// PassScore 官方及格分（无则不显示及格线）
 	PassScore *int `json:"passScore,omitempty"`
 
+	// SafetyRate 合格判断的安全线（正确率 %）= 及格线换算成正确率 + 10 个点。无则不做合格判断
+	SafetyRate *int `json:"safetyRate,omitempty"`
+
 	// TagTypes 以标签 type（domain / topic / concept）为键
 	TagTypes *map[string]TagTypeMeta `json:"tagTypes,omitempty"`
+
+	// TopicTree domain › 分组 › topic 的展示树。没有则 topic 平铺。
+	// 题目只挂叶子 topic；分组不是标签，选中分组 = 它下面那几个 topic。
+	// ⚠️ 树描述的是考纲：可能含题库里没有题的 topic（库里也就没有对应的 tag）。
+	TopicTree *[]TopicTreeDomain `json:"topicTree,omitempty"`
 }
 
 // BankStats 题库的内容侧统计（与用户无关）
@@ -850,6 +864,19 @@ type TokenPair struct {
 	// ExpiresIn access token 剩余秒数（非绝对时间，免受客户端时钟偏差影响）
 	ExpiresIn    int    `json:"expiresIn"`
 	RefreshToken string `json:"refreshToken"`
+}
+
+// TopicTreeDomain defines model for TopicTreeDomain.
+type TopicTreeDomain struct {
+	// Domain domain 标签的 value，如 domain-1
+	Domain string `json:"domain"`
+	Groups []struct {
+		// Name 分组显示名（题库自己的语言）
+		Name string `json:"name"`
+
+		// Topics topic 标签的 value
+		Topics []string `json:"topics"`
+	} `json:"groups"`
 }
 
 // BankQuery defines model for BankQuery.

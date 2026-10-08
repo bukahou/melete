@@ -270,6 +270,44 @@ class Loader:
         return len(rows)
 
 
+def safety_rate(spec: dict) -> int | None:
+    """
+    合格判断的「安全线」（正确率 %）= 官方及格线换算成正确率 + 10 个点（2026-10-08 用户裁定）。
+
+    为什么不直接用及格线：官方分数是加权 / 标定过的，素朴正确率只是它的近似，
+    卡在及格线上的正确率不等于能过。多出来的 10 个点就是给这层近似留的余量。
+    题库可在 spec 里写 safety_rate 覆盖（⛔ 不写就按公式，不另设默认值）。
+    """
+    if spec.get("safety_rate") is not None:
+        return spec["safety_rate"]
+    if not spec.get("pass_score") or not spec.get("max_score"):
+        return None      # 没有官方及格线 ⇒ 界面不做合格判断
+    return round(spec["pass_score"] / spec["max_score"] * 100) + 10
+
+
+def topic_tree(spec: dict) -> list | None:
+    """
+    domain › 分组 › topic 的展示树（P9，2026-10-08 用户裁定方案 A：树放 meta，⛔ 不改 tag 表）。
+
+    题目只挂叶子 topic；「分组」不是标签，选中它 = 展开成它下面那几个 topic 去查，
+    分组正确率由应用层把这几个 topic 加起来。
+    为什么不给 tag 加 parent_id：topic 只在部分题库里构成树 —— AWS 的服务横跨多个
+    考纲域，根本不是树；而且那会多出第四种 tag 角色，前后端每个按 type 分支的地方都要认识它。
+
+    来源是 spec 的封闭词表 topic_vocabulary（field = 所属 domain，major = 分组）。
+    词表里有、题目没用到的 topic 照样列出 —— 树描述的是考纲，不是题目分布。
+    没有词表、或词表不带 major 的题库 ⇒ None，界面平铺。
+    """
+    vocab = spec.get("topic_vocabulary") or []
+    if not vocab or not all(v.get("major") for v in vocab):
+        return None
+    tree: dict[str, dict[str, list[str]]] = {}
+    for v in sorted(vocab, key=lambda v: v["id"]):
+        tree.setdefault(f"domain-{v['field']}", {}).setdefault(v["major"], []).append(v["name"])
+    return [{"domain": d, "groups": [{"name": g, "topics": ts} for g, ts in groups.items()]}
+            for d, groups in tree.items()]
+
+
 def qid(qmap: dict, q: dict) -> int:
     """取一道题在库里的 id。
 
@@ -477,6 +515,11 @@ def main() -> None:
         "passScore": spec.get("pass_score"),
         "maxScore": spec.get("max_score"),
         "domains": spec.get("domains", {}),
+        # P9 首页的「合格判断」与「过去问演练」要的三个数（2026-10-08 裁定）：
+        "safetyRate": safety_rate(spec),
+        "examQuestions": spec.get("exam_questions"),   # 判断前至少要做满一场考试的题数
+        "groupSize": spec.get("group_size"),           # 顺序练习按多少题一组
+        "topicTree": topic_tree(spec),
     }, display_locale)
     qmap = ld.upsert_questions(bank_id, qs)
     n_ch = ld.upsert_choices(qmap, qs)

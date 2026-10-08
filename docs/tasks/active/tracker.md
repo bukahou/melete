@@ -309,12 +309,16 @@ Akasha 只追加两条后端回调白名单（prod + localhost）。
 | 14 | `current_bank_id` 为空：有作答取最近题库，否则引导去设置 | 新用户 / 题库下架 | — | 推荐，用户采纳 |
 | 15 | **答题页去掉自评**：选 → 判对错 → 答案主张 + 解析 → 下一题 | 用户：「不再需要判断懂不懂。因此没有人会用」（9/8 kiki 那次已实证没人点自评） | 答案主张三方并列与解析**保留** | 用户提出 |
 | 16 | **FSRS 搁置，按对错自动打分**（对 = Good，错 = Again），界面不显示 | 去掉自评 = 断了 FSRS 的输入 | 算法与 `card` 表保留，后台继续积累，将来恢复时有数据 | 推荐，用户采纳 |
+| 17 | **IPA 三层树（分野 › 大分類 › 中分類）放进 `bank.meta.topicTree`**，⛔ 不改 `tag` 表 | 库里原本只有两层（domain 3 · topic 22），9 个大分類只在 spec 的封闭词表里；且 AWS 的 topic（服务）横跨多个考纲域，**本来就不是树** | 题目只挂叶子 topic，选大分類 = 展开成其下 topic；大分類正确率由应用层求和。对 SAA/SAP 零影响（无树则平铺）。备选 B（`tag.parent_id` + 大分類入库）要 DDL、多一种 tag 角色、SAA 永远为空 —— 将来真需要 SQL 聚合时仍可从 A 升级 | 推荐 A，用户采纳 |
 
 ### 实施步骤（按依赖排序）
 
-- [ ] **0** `feature/translate-ja-saa` 先合进 dev（它改过 `load.py`，第 2 步也要改，不先合会冲突）
-- [ ] **1** 答题页简化（#15 #16）
-- [ ] **2** 数据层：`users.current_bank_id` · `bookmark` · 标签父子关系（IPA 三层）· `attempt.context` 扩展 · `bank.meta`（安全线 / 考试题数 / 分组大小）—— DDL 走 devdb admin，观察期同时写 raspidb
+- [x] **0** `feature/translate-ja-saa` 先合进 dev（它改过 `load.py`，第 2 步也要改，不先合会冲突）
+- [x] **1** 答题页简化（#15 #16）—— PR #8，`dev-8a5b79a`
+- [x] **2** 数据层（2026-10-08）：迁移 `db/migrations/2026-10-08-current-bank-and-bookmark.sql`（`users.current_bank_id` · `bookmark`，devdb + raspidb 均已应用）·
+      `bank.meta` 新增 `safetyRate` / `examQuestions` / `groupSize` / `topicTree`（#17）—— 三个题库已重导，两库 meta 语义一致。
+      `attempt.context` 的扩展形状**挪到第 4 步**与出题入口一起定（只是 JSON 形状，无 DDL）。
+      ⚠️ TiDB Cloud 尚未执行这份迁移 —— 归入「合 main 前」关卡，届时单独呈方案
 - [ ] **3** 设置里切题库 + 新首页骨架（② ③ ④ 按钮）
 - [ ] **4** 四个出题入口（出题从「一个模式」改成「条件组合」）+ 4.5 单游标
 - [ ] **5** 书签
