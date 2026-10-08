@@ -133,7 +133,7 @@ export function listQuestions(
  * 服务端调用：记录一次作答（web route handler 专用，带账号头）。
  *
  * ⭐ 2026-09-08 起 rating 是可选的 —— 作答在【揭晓那一刻】就记录，不再等自评。
- * 返回的 attemptId 供随后 rateAttempt() 补自评。
+ * ⚠️ 2026-10-08 起界面不再补自评（P9 #15），后端按对错代打分喂给 FSRS。
  */
 export async function recordAttempt(
   body: { questionId: number; chosen: string; rating?: number; durationMs?: number; context?: DrillContext },
@@ -148,15 +148,6 @@ export async function recordAttempt(
 }
 
 /** 服务端调用：给一条已记录的作答补上自评（驱动 FSRS 卡片调度）。 */
-export async function rateAttempt(attemptId: number, rating: number): Promise<AttemptResult> {
-  const res = await fetch(`${BASE}/attempts/${attemptId}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify({ rating }),
-  });
-  if (!res.ok) throw new ApiError(res.status, `PATCH /attempts/${attemptId} → ${res.status}`);
-  return res.json();
-}
 
 
 
