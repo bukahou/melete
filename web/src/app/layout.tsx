@@ -48,7 +48,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               version={process.env.APP_VERSION ?? "dev"}
               labels={{
                 home: t("nav.home"), history: t("nav.history"), glossary: t("nav.glossary"),
-                bookmarks: t("nav.bookmarks"), mine: t("common.mine"), settings: t("common.settings"),
+                bookmarks: t("nav.bookmarks"), settings: t("common.settings"),
                 logout: t("common.logout"), soon: t("nav.soon"),
               }}
             />
