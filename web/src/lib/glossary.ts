@@ -1,5 +1,4 @@
-import type { BankMeta, TermSummary } from "@/lib/claims";
-import { localized } from "@/lib/claims";
+import { localized, type BankMeta, type TermSummary } from "./claims";
 
 /**
  * 用语集的目录结构（P9 第 6 步，2026-10-08 用户裁定：照 it-pass，分类成独立页面）。
@@ -52,4 +51,25 @@ export function glossarySections(meta: BankMeta, terms: TermSummary[], locale: s
   const rest = rowsOf([...count.keys()], true);
   if (rest.length > 0) sections.push({ heading: sections.length > 0 ? labels.other : undefined, rows: rest });
   return sections.filter((s) => s.rows.length > 0);
+}
+
+/**
+ * 分类页的排法（2026-10-08 用户裁定，三项都按推荐）：
+ *   lead  主条目（分类本身那一条）置顶 —— 先回答「EC2 是什么」
+ *   main  其余按出题数从多到少（同数按读音 / 名称）—— 常考的在前
+ *   rest  只出现过 1 次的折叠起来 —— SAA 有 45% 的术语只在 1 道题里出现
+ *
+ * ⚠️ 折叠只在「折完还剩够多」时才做：IPA 的术语几乎都只出现 1 次，一律折叠会把整页折没。
+ */
+export const FOLD_MIN_MAIN = 5;
+
+export function arrangeCategory<T extends TermSummary>(terms: T[], nameOf: (x: T) => string, locale: string) {
+  const lead = terms.find((x) => x.lead);
+  const others = terms
+    .filter((x) => x !== lead)
+    .sort((a, b) => b.questionCount - a.questionCount || (a.reading ?? nameOf(a)).localeCompare(b.reading ?? nameOf(b), locale));
+  const frequent = others.filter((x) => x.questionCount >= 2);
+  return frequent.length >= FOLD_MIN_MAIN
+    ? { lead, main: frequent, rest: others.filter((x) => x.questionCount < 2) }
+    : { lead, main: others, rest: [] as T[] };
 }

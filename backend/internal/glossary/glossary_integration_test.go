@@ -39,7 +39,7 @@ func TestGlossaryIntegration(t *testing.T) {
 	q1 := exec(`INSERT INTO question (bank_id,external_no,stem,kind,pick_count) VALUES (?,2,'题干二','single',1)`, bankID)
 	q2 := exec(`INSERT INTO question (bank_id,external_no,stem,kind,pick_count) VALUES (?,1,'题干一','single',1)`, bankID)
 	exec(`INSERT INTO question_i18n (question_id,locale,stem) VALUES (?,'ja','問題文一')`, q2)
-	used := exec(`INSERT INTO term (bank_id,slug,names,definition,category) VALUES (?,'Amazon S3','{"zh":"S3","ja":"S3"}','{"zh":"对象存储","ja":"オブジェクトストレージ"}','S3')`, bankID)
+	used := exec(`INSERT INTO term (bank_id,slug,names,definition,category,is_lead) VALUES (?,'Amazon S3','{"zh":"S3","ja":"S3"}','{"zh":"对象存储","ja":"オブジェクトストレージ"}','S3',TRUE)`, bankID)
 	unused := exec(`INSERT INTO term (bank_id,slug,names,definition,category) VALUES (?,'Amazon EFS','{"zh":"EFS"}','{"zh":"文件存储"}','EFS')`, bankID)
 	exec(`INSERT INTO term_question (term_id,question_id) VALUES (?,?),(?,?)`, used, q1, used, q2)
 	t.Cleanup(func() {
@@ -56,8 +56,13 @@ func TestGlossaryIntegration(t *testing.T) {
 		t.Fatalf("目录应有 2 个术语，得到 %d（%v）", len(list), err)
 	}
 	counts := map[string]int{}
+	leads := map[string]bool{}
 	for _, x := range list {
 		counts[x.Slug] = x.QuestionCount
+		leads[x.Slug] = x.Lead
+	}
+	if !leads["Amazon S3"] || leads["Amazon EFS"] {
+		t.Fatalf("主条目标记不对：%v", leads)
 	}
 	if counts["Amazon S3"] != 2 || counts["Amazon EFS"] != 0 {
 		t.Fatalf("出题数不对：%v", counts)

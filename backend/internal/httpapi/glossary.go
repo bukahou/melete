@@ -42,7 +42,7 @@ func (s *Server) GetTerm(ctx context.Context, req api.GetTermRequestObject) (api
 	sum := toAPITermSummary(d.Summary)
 	out := api.GetTerm200JSONResponse{
 		Id: sum.Id, Slug: sum.Slug, Names: sum.Names, Reading: sum.Reading,
-		Category: sum.Category, QuestionCount: sum.QuestionCount,
+		Category: sum.Category, Lead: sum.Lead, QuestionCount: sum.QuestionCount,
 		BankSlug: d.BankSlug, Definition: d.Definition,
 	}
 	for _, q := range d.Questions {
@@ -59,6 +59,6 @@ func (s *Server) GetTerm(ctx context.Context, req api.GetTermRequestObject) (api
 func toAPITermSummary(t glossary.Summary) api.TermSummary {
 	return api.TermSummary{
 		Id: t.ID, Slug: t.Slug, Names: t.Names, Reading: t.Reading,
-		Category: t.Category, QuestionCount: t.QuestionCount,
+		Category: t.Category, Lead: t.Lead, QuestionCount: t.QuestionCount,
 	}
 }

@@ -6,12 +6,15 @@
 
 glossary.json 的形状（由生成管道产出，在 config 私有仓）：
     {
-      "terms": [{"slug", "names": {"zh","ja"}, "reading"?, "definition": {"zh","ja"}, "category"}],
+      "terms": [{"slug", "names": {"zh","ja"}, "reading"?, "definition": {"zh","ja"}, "category", "lead"?}],
       "links": [{"session", "no", "terms": ["<slug>", ...]}]     # 每道题考到哪些术语
     }
 
 ⭐ 管道拥有整张术语表：文件里没有的术语会被删掉（连同它的关联）——
    重跑生成时术语可能被归并 / 剔除，纯 upsert 会留下幽灵条目（与 load.py 清理过期主张同理）。
+⭐ 主条目（lead，由 pipeline/glossary/leads.py 标出）另按题目的服务标签补关联：
+   题目带 topic 标签 X ⇒ 关联分类 X 的主条目。第 1 遍逐题抽词挑的是细节词，题目只说「一台 EC2」时
+   往往不抽 EC2 本身（实测 SAA 的「Amazon EC2」只关联了 7 题）—— 标签恰好就是「这题考到哪个服务」。
 ⚠️ 题目按 (session, 原题号) 定位 —— 与 load.py 同一个键；题库里不存在的题跳过并报告。
 """
 import argparse
@@ -60,14 +63,14 @@ def main() -> None:
 
     # 1. 术语 upsert
     rows = [(bank_id, t["slug"], json.dumps(t["names"], ensure_ascii=False), t.get("reading") or None,
-             json.dumps(t["definition"], ensure_ascii=False), t.get("category") or "", search_text(t))
+             json.dumps(t["definition"], ensure_ascii=False), t.get("category") or "", bool(t.get("lead")), search_text(t))
             for t in terms]
     for i in range(0, len(rows), BATCH):
         cur.executemany("""
-            INSERT INTO term (bank_id, slug, names, reading, definition, category, search_text)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
+            INSERT INTO term (bank_id, slug, names, reading, definition, category, is_lead, search_text)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
             ON DUPLICATE KEY UPDATE names=VALUES(names), reading=VALUES(reading), definition=VALUES(definition),
-                                    category=VALUES(category), search_text=VALUES(search_text)""", rows[i:i + BATCH])
+                                    category=VALUES(category), is_lead=VALUES(is_lead), search_text=VALUES(search_text)""", rows[i:i + BATCH])
         conn.commit()
 
     cur.execute("SELECT slug, id FROM term WHERE bank_id = %s", (bank_id,))
@@ -94,13 +97,24 @@ def main() -> None:
             missing.append(l["no"])
             continue
         pairs.update((term_id[s], q) for s in l["terms"])
+    n_extracted = len(pairs)
+
+    # 4. 主条目按服务标签补关联
+    lead_of = {t["category"]: term_id[t["slug"]] for t in terms if t.get("lead")}
+    cur.execute("""
+        SELECT qt.question_id, t.value FROM question_tag qt
+        JOIN tag t ON t.id = qt.tag_id JOIN question q ON q.id = qt.question_id
+        WHERE q.bank_id = %s AND t.type = 'topic'""", (bank_id,))
+    pairs.update((lead_of[v], q) for q, v in cur.fetchall() if v in lead_of)
+    n_by_tag = len(pairs) - n_extracted
     pairs = sorted(pairs)
     for i in range(0, len(pairs), BATCH):
         cur.executemany("INSERT INTO term_question (term_id, question_id) VALUES (%s,%s)", pairs[i:i + BATCH])
         conn.commit()
 
     print(f"✓ 术语      {len(terms)}（删除过期 {len(stale)}）")
-    print(f"✓ 出题关联  {len(pairs)}（{len(links) - len(missing)} 题）")
+    print(f"✓ 出题关联  {len(pairs)}（{len(links) - len(missing)} 题；其中主条目按服务标签补的 {n_by_tag}）")
+    print(f"✓ 主条目    {len(lead_of)}")
     if missing:
         print(f"⚠ 题库里不存在的题 {len(missing)} 道，已跳过：{missing[:10]}")
 

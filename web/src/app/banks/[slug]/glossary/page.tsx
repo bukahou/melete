@@ -2,9 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
-import { ApiError, getBank, listTerms, type BankDetail, type TermSummary } from "@/lib/api";
+import { ApiError, getBank, getTerm, listTerms, type BankDetail, type TermSummary } from "@/lib/api";
 import { localized, tagTypeLabel } from "@/lib/claims";
-import { categoryHref, categoryLabel, glossarySections, termSub } from "@/lib/glossary";
+import { arrangeCategory, categoryHref, categoryLabel, glossarySections, termSub } from "@/lib/glossary";
 import { GlossarySearch } from "@/components/GlossaryBrowser";
 import { TermRow } from "@/components/TermRow";
 
@@ -18,9 +18,10 @@ const ALL = "*";
  */
 export default async function GlossaryPage({
   params, searchParams,
-}: { params: Promise<{ slug: string }>; searchParams: Promise<{ q?: string; c?: string }> }) {
+}: { params: Promise<{ slug: string }>; searchParams: Promise<{ q?: string; c?: string; more?: string }> }) {
   const { slug } = await params;
-  const { q, c } = await searchParams;
+  const { q, c, more: moreParam } = await searchParams;
+  const more = moreParam === "1";
   const [t, locale] = await Promise.all([getTranslations("glossary"), getLocale()]);
   let bank: BankDetail, terms: TermSummary[];
   try {
@@ -41,28 +42,54 @@ export default async function GlossaryPage({
   );
 
   // ---- 分类页 ----
+  // 排法见 lib/glossary.ts 的 arrangeCategory：主条目置顶（带释义）→ 常考的按出题数 → 只出现 1 次的折叠
   if (c) {
     const label = c === ALL ? t("allTerms") : categoryLabel(c, t("general"));
     const nameOf = (x: TermSummary) => localized(x.names, locale, x.slug);
-    const list = terms.filter((x) => c === ALL || x.category === c)
-      .map((x) => ({ x, name: nameOf(x) }))
-      .sort((a, b) => (a.x.reading ?? a.name).localeCompare(b.x.reading ?? b.name, locale));
-    if (list.length === 0) notFound();
+    // 「全部术语」不是一个分类，没有主条目
+    const pool = terms.filter((x) => c === ALL || x.category === c).map((x) => (c === ALL ? { ...x, lead: false } : x));
+    if (pool.length === 0) notFound();
+    const { lead, main, rest } = arrangeCategory(pool, nameOf, locale);
+    const leadDetail = lead ? await getTerm(lead.id) : undefined;
+    const row = (x: TermSummary) => {
+      const name = nameOf(x);
+      return <TermRow key={x.id} href={`${root}/${x.id}`} name={name} sub={termSub(x, name)}
+                      count={x.questionCount > 0 ? t("inQuestions", { n: x.questionCount }) : undefined} />;
+    };
     return (
       <div className="mx-auto grid max-w-3xl gap-4 pt-2">
         <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           {crumbs(label)}
           <h1 className="display text-[1.4rem]">{label}</h1>
-          <span className="text-[0.82rem] text-muted">{code} · {t("count", { n: list.length })}</span>
+          <span className="text-[0.82rem] text-muted">{code} · {t("count", { n: pool.length })}</span>
         </header>
-        <section className="card overflow-hidden">
-          <div className="divide-y divide-line-2">
-            {list.map(({ x, name }) => (
-              <TermRow key={x.id} href={`${root}/${x.id}`} name={name} sub={termSub(x, name)}
-                       count={x.questionCount > 0 ? t("inQuestions", { n: x.questionCount }) : undefined} />
-            ))}
-          </div>
-        </section>
+        {lead && leadDetail && (
+          <section className="card px-6 py-5">
+            <h2 className="text-[1.1rem] font-semibold">{nameOf(lead)}</h2>
+            {termSub(lead, nameOf(lead)) && <p className="mt-0.5 text-[0.78rem] text-muted">{termSub(lead, nameOf(lead))}</p>}
+            <p className="mt-3 text-[0.95rem] leading-[1.9]">{localized(leadDetail.definition, locale)}</p>
+            <Link href={`${root}/${lead.id}`} className="mt-3 inline-flex items-center gap-1 text-[0.85rem] text-accent-ink hover:underline">
+              {t("leadMore", { n: lead.questionCount })}<ChevronRight size={14} />
+            </Link>
+          </section>
+        )}
+        {main.length > 0 && (
+          <section className="card overflow-hidden">
+            <div className="divide-y divide-line-2">{main.map(row)}</div>
+          </section>
+        )}
+        {/* ⚠️ 展开状态进 URL（&more=1），⛔ 不用 <details>：展开后点进术语再返回，内存里的展开态就丢了 */}
+        {rest.length > 0 && (
+          <section className="card overflow-hidden">
+            <Link href={more ? categoryHref(slug, c) : `${categoryHref(slug, c)}&more=1`} scroll={false} replace
+                  className="flex items-center gap-3 px-5 py-3 hover:bg-accent-soft">
+              <ChevronRight size={15} className={`text-muted transition-transform ${more ? "rotate-90" : ""}`} />
+              <span className="flex-1 text-[0.92rem]">{t("rest", { n: rest.length })}</span>
+              <span className="text-[0.72rem] text-muted">{t("restNote")}</span>
+            </Link>
+            {more && <div className="divide-y divide-line-2 border-t border-line-2">{rest.map(row)}</div>}
+          </section>
+        )}
       </div>
     );
   }
