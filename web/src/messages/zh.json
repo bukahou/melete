@@ -15,7 +15,6 @@
     "glossary": "用语集",
     "bookmarks": "书签",
     "soon": "即将开放",
-    "glossaryBody": "按术语查释义，并能看到「这个词在哪些题里考过」。术语表正在整理中。",
     "backHome": "回首页"
   },
   "brand": {
@@ -90,8 +89,7 @@
     "startFirstHint": "从第一组题开始，按题号做",
     "passYours": "你的合格判断",
     "passMasteryIs": "当前掌握率 {rate}%",
-    "searchPlaceholder": "搜索术语",
-    "searchSoon": "即将开放"
+    "searchPlaceholder": "搜索术语（回车）"
   },
   "history": {
     "home": "首页",
@@ -301,5 +299,21 @@
     "on": "已收藏",
     "off": "收藏",
     "failed": "没保存上，再点一次"
+  },
+  "glossary": {
+    "locale": "zh",
+    "home": "首页",
+    "title": "用语集",
+    "summary": "{n} 个术语 · 从题目里抽出，按{axis}分组",
+    "general": "通用概念",
+    "searchPlaceholder": "搜索 {n} 个术语（名称 / 英文 / 读音）",
+    "clear": "清除",
+    "hits": "找到 {n} 个",
+    "noHit": "没有找到。换个写法试试，例如英文名或缩写",
+    "count": "{n} 个术语",
+    "inQuestions": "{n} 题",
+    "empty": "这个题库还没有用语集",
+    "category": "分组",
+    "history": "出题历史"
   }
 }

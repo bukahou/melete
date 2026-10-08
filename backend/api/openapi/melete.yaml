@@ -767,6 +767,44 @@ paths:
               schema: { $ref: "#/components/schemas/SetSummary" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /banks/{slug}/terms:
+    get:
+      tags: [glossary]
+      summary: 用语集目录（P9 第 6 步）
+      description: |
+        一个题库的全部术语，⛔ 不带释义 —— 一次给全，前端在本地即时检索与按 category 分组。
+        术语由生成管道从题目里抽出（裁决 #5）；questionCount = 在多少道题里出现过。
+      operationId: listTerms
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TermSummary" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /terms/{id}:
+    get:
+      tags: [glossary]
+      summary: 术语详情：释义 + 出题历史
+      operationId: getTerm
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TermDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /questions/{id}:
     get:
       tags: [question]
@@ -942,6 +980,43 @@ components:
             按题号 / 按种子的集合 = 上次那题的下一题；会缩短的集合（wrong / unseen / due）恒为 0。
         total:    { type: integer, description: 该入口集合现在的大小 }
         finished: { type: boolean, description: 按顺序的集合已经做到最后一题（「继续」应给本轮小结而不是下一题） }
+
+    TermSummary:
+      type: object
+      required: [id, slug, names, category, questionCount]
+      properties:
+        id:            { type: integer, format: int64 }
+        slug:          { type: string, description: 正式名称（AWS 官方英文名 / IPA 日文标准用语） }
+        names:
+          type: object
+          description: locale → 显示名（IPA 只有 ja）
+          additionalProperties: { type: string }
+        reading:       { type: string, description: 读音（IPA 平假名）；AWS 缺省 }
+        category:      { type: string, description: 分组 = 知识对象轴（AWS 服务 / IPA 中分類） }
+        questionCount: { type: integer, description: 在多少道题里出现过 }
+
+    TermDetail:
+      allOf:
+        - $ref: "#/components/schemas/TermSummary"
+        - type: object
+          required: [bankSlug, definition, questions]
+          properties:
+            bankSlug: { type: string }
+            definition:
+              type: object
+              description: locale → 一两句的通用释义（IPA 只有 ja）
+              additionalProperties: { type: string }
+            questions:
+              type: array
+              description: 出题历史（按卷子、题号）
+              items:
+                type: object
+                required: [id, externalNo, session, stem]
+                properties:
+                  id:         { type: integer, format: int64 }
+                  externalNo: { type: integer }
+                  session:    { type: string }
+                  stem:       { type: string, description: 题干（有该语言译文时为译文） }
 
     SetSummary:
       type: object

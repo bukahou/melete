@@ -13,6 +13,7 @@ import (
 	"github.com/bukahou/melete/backend/internal/api"
 	"github.com/bukahou/melete/backend/internal/auth"
 	"github.com/bukahou/melete/backend/internal/bank"
+	"github.com/bukahou/melete/backend/internal/glossary"
 	"github.com/bukahou/melete/backend/internal/httpauth"
 	"github.com/bukahou/melete/backend/internal/httplocale"
 	"github.com/bukahou/melete/backend/internal/question"
@@ -26,6 +27,7 @@ type Server struct {
 	banks     bank.Service
 	questions question.Service
 	studies   study.Service
+	glossary  glossary.Service
 	// ⭐ auth 是登录的唯一入口。⛔ 注意这里【没有】account.Service ——
 	// 阶段 3 起 melete 不再有自己的「校验密码」这件事，那全在模块里。
 	auth *auth.Service
@@ -34,12 +36,12 @@ type Server struct {
 }
 
 func NewServer(
-	banks bank.Service, questions question.Service,
-	studies study.Service, authSvc *auth.Service, oidc *token.OIDCVerifier, log *slog.Logger,
+	banks bank.Service, questions question.Service, studies study.Service, glossarySvc glossary.Service,
+	authSvc *auth.Service, oidc *token.OIDCVerifier, log *slog.Logger,
 ) *Server {
 	return &Server{
-		banks: banks, questions: questions,
-		studies: studies, auth: authSvc, oidc: oidc, log: log,
+		banks: banks, questions: questions, studies: studies, glossary: glossarySvc,
+		auth: authSvc, oidc: oidc, log: log,
 	}
 }
 

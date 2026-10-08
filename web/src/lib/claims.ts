@@ -46,6 +46,8 @@ export type CurrentBank = components["schemas"]["CurrentBank"];
 export type SetSummary = components["schemas"]["SetSummary"];
 export type DrillCursor = components["schemas"]["DrillCursor"];
 export type BankSession = components["schemas"]["BankSession"];
+export type TermSummary = components["schemas"]["TermSummary"];
+export type TermDetail = components["schemas"]["TermDetail"];
 export type StudySession = components["schemas"]["StudySession"];
 
 // ⚠️ 来源标签（题库标注 / 社区投票 …）已移入 messages 的 `source.*`。
@@ -102,4 +104,13 @@ export function tagWeight(meta: BankMeta | undefined, tag: { type: TagType; valu
 /** 标签显示名：优先本地化名（考纲域有 zh/en），否则用 value（服务名本来就是英文短名）。 */
 export function tagName(tag: { value: string; i18n?: Record<string, string> | null }, locale: string): string {
   return tag.i18n?.[locale] ?? tag.i18n?.en ?? tag.value;
+}
+
+/**
+ * 术语在某种界面语言下的名字 / 释义。
+ * ⭐ IPA 只有 ja（产品方针：IPA 不出中文）—— 中文界面看 IPA 术语就显示日文，⛔ 不现场翻译。
+ */
+export function localized(m: Record<string, string> | null | undefined, locale: string, fallback = ""): string {
+  if (!m) return fallback;
+  return m[locale] ?? m.ja ?? m.zh ?? Object.values(m)[0] ?? fallback;
 }

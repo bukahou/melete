@@ -18,14 +18,14 @@ export type {
   Bank, BankDetail, Tag, QuestionSummary, QuestionDetail, QuestionPage,
   AnswerClaim, Choice, Reference, AttemptResult, ScheduleResult, DrillMode,
   Progress, TagStat, Resume, FocusCursor, DrillContext, Overview, StudySession,
-  SessionInfo, PasswordChanged, CurrentBank, SetSummary, DrillCursor, BankSession,
+  SessionInfo, PasswordChanged, CurrentBank, SetSummary, DrillCursor, BankSession, TermSummary, TermDetail,
 } from "./claims";
 export { voteDistribution, hasDisagreement, DRILL_MODES, parseDrillMode } from "./claims";
 
 import type {
   Bank, BankDetail, Tag, QuestionDetail, QuestionPage, AttemptResult, DrillMode,
   Progress, TagStat, Resume, DrillContext, Overview, StudySession,
-  SessionInfo, PasswordChanged, CurrentBank, SetSummary,
+  SessionInfo, PasswordChanged, CurrentBank, SetSummary, TermSummary, TermDetail,
 } from "./claims";
 
 import { headers } from "next/headers";
@@ -104,6 +104,9 @@ async function get<T>(path: string, revalidate = 60, personalized = false): Prom
 export const listBanks = () => get<Bank[]>("/banks");
 export const getBank = (slug: string) => get<BankDetail>(`/banks/${slug}`);
 export const getQuestion = (id: number) => get<QuestionDetail>(`/questions/${id}`, 300);
+/** 用语集目录：内容侧、与用户无关 —— 可以缓存（术语只在重导时变）。 */
+export const listTerms = (slug: string) => get<TermSummary[]>(`/banks/${slug}/terms`, 300);
+export const getTerm = (id: number) => get<TermDetail>(`/terms/${id}`, 300);
 
 export const listBankTags = (slug: string, type?: Tag["type"]) =>
   get<Tag[]>(`/banks/${slug}/tags${type ? `?type=${type}` : ""}`);

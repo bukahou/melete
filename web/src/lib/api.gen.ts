@@ -600,6 +600,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/banks/{slug}/terms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 用语集目录（P9 第 6 步）
+         * @description 一个题库的全部术语，⛔ 不带释义 —— 一次给全，前端在本地即时检索与按 category 分组。
+         *     术语由生成管道从题目里抽出（裁决 #5）；questionCount = 在多少道题里出现过。
+         */
+        get: operations["listTerms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/terms/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 术语详情：释义 + 出题历史 */
+        get: operations["getTerm"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/questions/{id}": {
         parameters: {
             query?: never;
@@ -706,6 +744,38 @@ export interface components {
             total: number;
             /** @description 按顺序的集合已经做到最后一题（「继续」应给本轮小结而不是下一题） */
             finished: boolean;
+        };
+        TermSummary: {
+            /** Format: int64 */
+            id: number;
+            /** @description 正式名称（AWS 官方英文名 / IPA 日文标准用语） */
+            slug: string;
+            /** @description locale → 显示名（IPA 只有 ja） */
+            names: {
+                [key: string]: string;
+            };
+            /** @description 读音（IPA 平假名）；AWS 缺省 */
+            reading?: string;
+            /** @description 分组 = 知识对象轴（AWS 服务 / IPA 中分類） */
+            category: string;
+            /** @description 在多少道题里出现过 */
+            questionCount: number;
+        };
+        TermDetail: components["schemas"]["TermSummary"] & {
+            bankSlug: string;
+            /** @description locale → 一两句的通用释义（IPA 只有 ja） */
+            definition: {
+                [key: string]: string;
+            };
+            /** @description 出题历史（按卷子、题号） */
+            questions: {
+                /** Format: int64 */
+                id: number;
+                externalNo: number;
+                session: string;
+                /** @description 题干（有该语言译文时为译文） */
+                stem: string;
+            }[];
         };
         SetSummary: {
             /** @description 集合大小 */
@@ -2120,6 +2190,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SetSummary"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listTerms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 题库 slug，如 aws-saa-c03 */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TermSummary"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getTerm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TermDetail"];
                 };
             };
             404: components["responses"]["NotFound"];

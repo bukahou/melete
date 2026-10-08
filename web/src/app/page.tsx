@@ -170,15 +170,18 @@ function Drills({ t, bank, resume, kit, code }: { t: T; bank: BankDetail; resume
   );
 }
 
-/** 顶部检索框（P9 #5：只搜术语）。用语集是第 6 步 —— 先摆出来、标即将开放（用户裁定）。 */
-function SearchBox({ t }: { t: T }) {
+/**
+ * 顶部检索框（P9 #5：只搜术语）—— 回车即进用语集并带上检索词（那里是本地即时检索）。
+ * 普通 GET 表单：⛔ 不在首页引入客户端状态，首页只负责把人送到对的地方。
+ */
+function SearchBox({ t, slug }: { t: T; slug: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-full border border-[color-mix(in_oklab,var(--color-accent-ink)_55%,transparent)] bg-tile px-5 py-3 text-muted"
-         aria-disabled="true" title={t("searchSoon")}>
-      <Search size={17} />
-      <span className="flex-1 text-[0.92rem]">{t("searchPlaceholder")}</span>
-      <span className="rounded-full bg-accent-soft px-2.5 py-0.5 text-[0.7rem] font-semibold text-accent-ink">{t("searchSoon")}</span>
-    </div>
+    <form action={`/banks/${slug}/glossary`} method="GET"
+          className="flex items-center gap-3 rounded-full border border-[color-mix(in_oklab,var(--color-accent-ink)_55%,transparent)] bg-tile px-5 py-3 focus-within:border-accent-ink">
+      <Search size={17} className="text-muted" />
+      <input name="q" placeholder={t("searchPlaceholder")} aria-label={t("searchPlaceholder")}
+             className="min-w-0 flex-1 bg-transparent text-[0.92rem] outline-none placeholder:text-muted" />
+    </form>
   );
 }
 
@@ -221,7 +224,7 @@ export default async function HomePage() {
 
   return (
     <div className="mx-auto grid max-w-[960px] gap-4">
-      <SearchBox t={t} />
+      <SearchBox t={t} slug={slug} />
       <div className="grid gap-4 md:grid-cols-2">
         <History t={t} bank={bank} progress={progress} />
         <PassCheck t={t} bank={bank} progress={progress} />

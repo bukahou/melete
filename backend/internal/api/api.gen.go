@@ -1079,6 +1079,59 @@ type TagTypeMeta struct {
 	Weights *map[string]float32 `json:"weights,omitempty"`
 }
 
+// TermDetail defines model for TermDetail.
+type TermDetail struct {
+	BankSlug string `json:"bankSlug"`
+
+	// Category 分组 = 知识对象轴（AWS 服务 / IPA 中分類）
+	Category string `json:"category"`
+
+	// Definition locale → 一两句的通用释义（IPA 只有 ja）
+	Definition map[string]string `json:"definition"`
+	Id         int64             `json:"id"`
+
+	// Names locale → 显示名（IPA 只有 ja）
+	Names map[string]string `json:"names"`
+
+	// QuestionCount 在多少道题里出现过
+	QuestionCount int `json:"questionCount"`
+
+	// Questions 出题历史（按卷子、题号）
+	Questions []struct {
+		ExternalNo int    `json:"externalNo"`
+		Id         int64  `json:"id"`
+		Session    string `json:"session"`
+
+		// Stem 题干（有该语言译文时为译文）
+		Stem string `json:"stem"`
+	} `json:"questions"`
+
+	// Reading 读音（IPA 平假名）；AWS 缺省
+	Reading *string `json:"reading,omitempty"`
+
+	// Slug 正式名称（AWS 官方英文名 / IPA 日文标准用语）
+	Slug string `json:"slug"`
+}
+
+// TermSummary defines model for TermSummary.
+type TermSummary struct {
+	// Category 分组 = 知识对象轴（AWS 服务 / IPA 中分類）
+	Category string `json:"category"`
+	Id       int64  `json:"id"`
+
+	// Names locale → 显示名（IPA 只有 ja）
+	Names map[string]string `json:"names"`
+
+	// QuestionCount 在多少道题里出现过
+	QuestionCount int `json:"questionCount"`
+
+	// Reading 读音（IPA 平假名）；AWS 缺省
+	Reading *string `json:"reading,omitempty"`
+
+	// Slug 正式名称（AWS 官方英文名 / IPA 日文标准用语）
+	Slug string `json:"slug"`
+}
+
 // TokenPair access 是 JWT（不落库，TTL 1h）；refresh 是不透明随机串（落库，可吊销）。
 // 对齐 geass-v3：refresh 不做成 JWT —— 生命周期以月计的凭证必须能撤回。
 type TokenPair struct {
@@ -1421,6 +1474,9 @@ type ServerInterface interface {
 	// 题库的标签列表（用于筛选与正确率热图）
 	// (GET /banks/{slug}/tags)
 	ListBankTags(w http.ResponseWriter, r *http.Request, slug Slug, params ListBankTagsParams)
+	// 用语集目录（P9 第 6 步）
+	// (GET /banks/{slug}/terms)
+	ListTerms(w http.ResponseWriter, r *http.Request, slug Slug)
 	// 当前题库（首页显示哪一个）
 	// (GET /me/bank)
 	GetMyBank(w http.ResponseWriter, r *http.Request)
@@ -1451,6 +1507,9 @@ type ServerInterface interface {
 	// 单题详情（题干 + 选项 + 各方答案主张 + 解析 + 标签）
 	// (GET /questions/{id})
 	GetQuestion(w http.ResponseWriter, r *http.Request, id int64)
+	// 术语详情：释义 + 出题历史
+	// (GET /terms/{id})
+	GetTerm(w http.ResponseWriter, r *http.Request, id int64)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -1577,6 +1636,12 @@ func (_ Unimplemented) ListBankTags(w http.ResponseWriter, r *http.Request, slug
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// 用语集目录（P9 第 6 步）
+// (GET /banks/{slug}/terms)
+func (_ Unimplemented) ListTerms(w http.ResponseWriter, r *http.Request, slug Slug) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // 当前题库（首页显示哪一个）
 // (GET /me/bank)
 func (_ Unimplemented) GetMyBank(w http.ResponseWriter, r *http.Request) {
@@ -1634,6 +1699,12 @@ func (_ Unimplemented) GetMyTagStats(w http.ResponseWriter, r *http.Request, par
 // 单题详情（题干 + 选项 + 各方答案主张 + 解析 + 标签）
 // (GET /questions/{id})
 func (_ Unimplemented) GetQuestion(w http.ResponseWriter, r *http.Request, id int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 术语详情：释义 + 出题历史
+// (GET /terms/{id})
+func (_ Unimplemented) GetTerm(w http.ResponseWriter, r *http.Request, id int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2379,6 +2450,38 @@ func (siw *ServerInterfaceWrapper) ListBankTags(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ListTerms operation middleware
+func (siw *ServerInterfaceWrapper) ListTerms(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "slug" -------------
+	var slug Slug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "slug", chi.URLParam(r, "slug"), &slug, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "slug", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTerms(w, r, slug)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMyBank operation middleware
 func (siw *ServerInterfaceWrapper) GetMyBank(w http.ResponseWriter, r *http.Request) {
 
@@ -2717,6 +2820,38 @@ func (siw *ServerInterfaceWrapper) GetQuestion(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetTerm operation middleware
+func (siw *ServerInterfaceWrapper) GetTerm(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTerm(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -2891,6 +3026,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/banks/{slug}/tags", wrapper.ListBankTags)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/banks/{slug}/terms", wrapper.ListTerms)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/bank", wrapper.GetMyBank)
 	})
 	r.Group(func(r chi.Router) {
@@ -2919,6 +3057,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/questions/{id}", wrapper.GetQuestion)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/terms/{id}", wrapper.GetTerm)
 	})
 
 	return r
@@ -3642,6 +3783,42 @@ func (response ListBankTags404JSONResponse) VisitListBankTagsResponse(w http.Res
 	return err
 }
 
+type ListTermsRequestObject struct {
+	Slug Slug `json:"slug"`
+}
+
+type ListTermsResponseObject interface {
+	VisitListTermsResponse(w http.ResponseWriter) error
+}
+
+type ListTerms200JSONResponse []TermSummary
+
+func (response ListTerms200JSONResponse) VisitListTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTerms404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListTerms404JSONResponse) VisitListTermsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMyBankRequestObject struct {
 }
 
@@ -3884,6 +4061,42 @@ func (response GetQuestion404JSONResponse) VisitGetQuestionResponse(w http.Respo
 	return err
 }
 
+type GetTermRequestObject struct {
+	Id int64 `json:"id"`
+}
+
+type GetTermResponseObject interface {
+	VisitGetTermResponse(w http.ResponseWriter) error
+}
+
+type GetTerm200JSONResponse TermDetail
+
+func (response GetTerm200JSONResponse) VisitGetTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTerm404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetTerm404JSONResponse) VisitGetTermResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
@@ -3946,6 +4159,9 @@ type StrictServerInterface interface {
 	// 题库的标签列表（用于筛选与正确率热图）
 	// (GET /banks/{slug}/tags)
 	ListBankTags(ctx context.Context, request ListBankTagsRequestObject) (ListBankTagsResponseObject, error)
+	// 用语集目录（P9 第 6 步）
+	// (GET /banks/{slug}/terms)
+	ListTerms(ctx context.Context, request ListTermsRequestObject) (ListTermsResponseObject, error)
 	// 当前题库（首页显示哪一个）
 	// (GET /me/bank)
 	GetMyBank(ctx context.Context, request GetMyBankRequestObject) (GetMyBankResponseObject, error)
@@ -3976,6 +4192,9 @@ type StrictServerInterface interface {
 	// 单题详情（题干 + 选项 + 各方答案主张 + 解析 + 标签）
 	// (GET /questions/{id})
 	GetQuestion(ctx context.Context, request GetQuestionRequestObject) (GetQuestionResponseObject, error)
+	// 术语详情：释义 + 出题历史
+	// (GET /terms/{id})
+	GetTerm(ctx context.Context, request GetTermRequestObject) (GetTermResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -4591,6 +4810,32 @@ func (sh *strictHandler) ListBankTags(w http.ResponseWriter, r *http.Request, sl
 	}
 }
 
+// ListTerms operation middleware
+func (sh *strictHandler) ListTerms(w http.ResponseWriter, r *http.Request, slug Slug) {
+	var request ListTermsRequestObject
+
+	request.Slug = slug
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTerms(ctx, request.(ListTermsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTerms")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTermsResponseObject); ok {
+		if err := validResponse.VisitListTermsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetMyBank operation middleware
 func (sh *strictHandler) GetMyBank(w http.ResponseWriter, r *http.Request) {
 	var request GetMyBankRequestObject
@@ -4845,6 +5090,32 @@ func (sh *strictHandler) GetQuestion(w http.ResponseWriter, r *http.Request, id 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetQuestionResponseObject); ok {
 		if err := validResponse.VisitGetQuestionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTerm operation middleware
+func (sh *strictHandler) GetTerm(w http.ResponseWriter, r *http.Request, id int64) {
+	var request GetTermRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTerm(ctx, request.(GetTermRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTerm")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTermResponseObject); ok {
+		if err := validResponse.VisitGetTermResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
