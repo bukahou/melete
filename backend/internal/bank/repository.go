@@ -68,6 +68,12 @@ func (r *mysqlRepository) LoadStats(ctx context.Context, bankID int64) (*Stats, 
 	if err != nil {
 		return nil, fmt.Errorf("统计题库 %d: %w", bankID, err)
 	}
+	if err := r.db.SelectContext(ctx, &s.Sessions, `
+		SELECT session, COUNT(*) AS question_count,
+		       MIN(external_no) AS no_from, MAX(external_no) AS no_to
+		FROM question WHERE bank_id = ? GROUP BY session ORDER BY session`, bankID); err != nil {
+		return nil, fmt.Errorf("统计题库 %d 的卷子: %w", bankID, err)
+	}
 	return &s, nil
 }
 

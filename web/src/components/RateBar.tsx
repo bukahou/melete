@@ -1,4 +1,5 @@
-import type { TagStat } from "@/lib/claims";
+import { useLocale, useTranslations } from "next-intl";
+import { tagName, type TagStat } from "@/lib/claims";
 
 /**
  * 正确率条 —— 单序列水平条形图（dataviz：一个序列不需要图例，标题已说明画的是什么）。
@@ -14,7 +15,10 @@ export function rateColor(rate: number): string {
 }
 
 export function RateBar({ stat }: { stat: TagStat }) {
-  const name = stat.i18n?.en ?? stat.value;
+  // ⚠️ 原来写死 `stat.i18n?.en ?? stat.value` —— 考纲域明明有中文名却一直显示英文。
+  // 走 tagName 之后它跟着界面语言：有该语言的名字就用，没有才退到 en / value。
+  const locale = useLocale();
+  const name = tagName(stat, locale);
   const color = rateColor(stat.rate);
   return (
     <div className="flex items-center gap-3 py-1.5">
@@ -37,12 +41,13 @@ export function RateBar({ stat }: { stat: TagStat }) {
 
 /** 阈值图例 —— 颜色有语义时必须说明，不能让读者猜。 */
 export function RateLegend() {
+  const t = useTranslations("me");
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 text-[0.7rem] text-muted">
       {[
-        ["< 50%　明显薄弱", "var(--color-warn)"],
-        ["50–79%　需巩固", "var(--color-src-bank)"],
-        ["≥ 80%　已掌握", "var(--color-ok)"],
+        [t("legendWeak"), "var(--color-warn)"],
+        [t("legendMid"), "var(--color-src-bank)"],
+        [t("legendGood"), "var(--color-ok)"],
       ].map(([label, c]) => (
         <span key={label} className="inline-flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full" style={{ background: c }} aria-hidden />

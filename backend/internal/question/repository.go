@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+
+	"github.com/bukahou/melete/backend/internal/userid"
 )
 
 var ErrNotFound = errors.New("question not found")
@@ -16,12 +18,17 @@ var ErrNotFound = errors.New("question not found")
 // Repository 是题目数据的读取契约。
 type Repository interface {
 	ListQuestions(ctx context.Context, bankID int64, f ListFilter) (*Page, error)
-	FindQuestionByID(ctx context.Context, id int64) (*Detail, error)
+	// FindQuestionByID 的 locale 空串 = 只要源语言，⛔ 不查 i18n 表。
+	FindQuestionByID(ctx context.Context, id int64, locale string) (*Detail, error)
 	// LoadReference 只取参考答案（study 域判对错用的窄路径，避免拉全量详情）。
 	LoadReference(ctx context.Context, questionID int64) (*Reference, error)
 	// LoadTextLength 只取题面字数（题干 + 全部选项）。
 	// study 域用它判断「这个用时根本读不完题面」，同样是窄路径 —— 不拉正文。
 	LoadTextLength(ctx context.Context, questionID int64) (int, error)
+	// ListQuestionIDs 返回整个集合的 id，顺序与 ListQuestions 完全一致。
+	ListQuestionIDs(ctx context.Context, bankID int64, f ListFilter) ([]int64, error)
+	// SummarizeAnswers 统计这些题里该账号做过几道、最近一次答对几道。
+	SummarizeAnswers(ctx context.Context, account userid.UserID, ids []int64) (answered, correct int, err error)
 }
 
 type mysqlRepository struct{ db *sqlx.DB }
@@ -75,6 +82,30 @@ func buildFilter(bankID int64, f ListFilter) (where string, having string, args 
 	if f.OnlyEnriched {
 		conds = append(conds, enrichedExpr)
 	}
+	if f.Session != nil {
+		conds = append(conds, "q.session = ?")
+		args = append(args, *f.Session)
+	}
+	if f.NoFrom > 0 {
+		conds = append(conds, "q.external_no >= ?")
+		args = append(args, f.NoFrom)
+	}
+	if f.NoTo > 0 {
+		conds = append(conds, "q.external_no <= ?")
+		args = append(args, f.NoTo)
+	}
+	if len(f.AnyTagIDs) > 0 {
+		// 并集用 EXISTS 而不是 JOIN：JOIN 会让命中两个标签的题出现两次，分页与计数都会错。
+		conds = append(conds, "EXISTS (SELECT 1 FROM question_tag qa WHERE qa.question_id = q.id AND qa.tag_id IN (?"+
+			strings.Repeat(",?", len(f.AnyTagIDs)-1)+"))")
+		for _, id := range f.AnyTagIDs {
+			args = append(args, id)
+		}
+	}
+	if f.OnlyBookmarked {
+		conds = append(conds, "EXISTS (SELECT 1 FROM bookmark bm WHERE bm.user_id = ? AND bm.question_id = q.id)")
+		args = append(args, f.AccountID)
+	}
 	switch f.Mode {
 	case "wrong":
 		conds = append(conds, fmt.Sprintf(lastAttemptExpr, "correct")+" = 0")
@@ -116,47 +147,164 @@ func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f Lis
 		return nil, fmt.Errorf("统计题目数: %w", err)
 	}
 
-	listQuery := `SELECT q.id, q.external_no, q.stem, q.kind, q.pick_count,
-		` + contestedExpr + ` AS contested, ` + enrichedExpr + ` AS enriched
-		FROM question q` + join + where
+	// ⭐ 译文：LEFT JOIN + COALESCE，没有该语言就回退源语言，并用 localized 标记出来。
+	//
+	// ⚠️⚠️ 这个 JOIN 的 `?` 出现在 where 的占位符【之前】—— 占位符按出现顺序绑定，
+	//   所以 locale 必须排在 args 最前面。这正是本函数下面那条注释警告过的同一个陷阱：
+	//   顺序错了不报错，只会把参数喂给错误的位置（静默返回错数据）。
+	i18nJoin, localeArgs := "", []any{}
+	stemExpr, localizedExpr := "q.stem", "FALSE"
+	if f.Locale != "" {
+		i18nJoin = " LEFT JOIN question_i18n qi ON qi.question_id = q.id AND qi.locale = ?"
+		localeArgs = []any{f.Locale}
+		stemExpr, localizedExpr = "COALESCE(qi.stem, q.stem)", "(qi.stem IS NOT NULL)"
+	}
+
+	// ⚠️ 占位符顺序陷阱又一处：last_correct 的 user_id 在 SELECT 列里，排在 i18n JOIN 与 WHERE 【之前】。
+	lastExpr, lastArgs := "NULL", []any{}
+	bookmarkExpr := "FALSE"
+	if f.AccountID != "" {
+		lastExpr = fmt.Sprintf(lastAttemptExpr, "correct")
+		bookmarkExpr = "EXISTS (SELECT 1 FROM bookmark bk WHERE bk.user_id = ? AND bk.question_id = q.id)"
+		lastArgs = []any{f.AccountID, f.AccountID} // 依次对应 last_correct、bookmarked 两列
+	}
+	listQuery := `SELECT q.id, q.external_no, ` + stemExpr + ` AS stem, q.kind, q.pick_count,
+		` + contestedExpr + ` AS contested, ` + enrichedExpr + ` AS enriched,
+		` + localizedExpr + ` AS localized, ` + lastExpr + ` AS last_correct, ` + bookmarkExpr + ` AS bookmarked
+		FROM question q` + i18nJoin + join + where
 	if having != "" {
 		listQuery += " GROUP BY q.id" + having
 	}
 	// 排序：复习队列按到期时间，其余按原题号（让「第 N 题」在界面上可预期）。
 	// ⚠️ 排序参数必须插在 LIMIT/OFFSET 【之前】—— 占位符是按出现顺序绑定的，
 	// 顺序错了不会报错，只会把 user_id 当成 LIMIT。
-	listArgs := args
-	if f.Mode == "due" {
-		listQuery += " ORDER BY " + dueOrderExpr + " ASC"
-		listArgs = append(append([]any{}, args...), f.AccountID)
-	} else {
-		listQuery += " ORDER BY q.external_no"
-	}
+	listArgs := append(append(append([]any{}, lastArgs...), localeArgs...), args...)
+	order, orderArgs := orderBy(f)
+	listQuery += order
+	listArgs = append(listArgs, orderArgs...)
 	listQuery += " LIMIT ? OFFSET ?"
 
+	// Take：集合 = 排序后的前 Take 题。total 与可取的 limit 都要跟着收窄，
+	// 否则「第 11 题」会从集合外面拿 —— 排序是确定的，所以「前 Take 题」也是确定的。
+	limit := f.Limit
+	if f.Take > 0 {
+		if total > f.Take {
+			total = f.Take
+		}
+		if f.Offset >= total {
+			return &Page{Items: []Summary{}, Total: total, Limit: f.Limit, Offset: f.Offset}, nil
+		}
+		if f.Offset+limit > total {
+			limit = total - f.Offset
+		}
+	}
+
 	items := []Summary{}
-	if err := r.db.SelectContext(ctx, &items, listQuery, append(listArgs, f.Limit, f.Offset)...); err != nil {
+	if err := r.db.SelectContext(ctx, &items, listQuery, append(listArgs, limit, f.Offset)...); err != nil {
 		return nil, fmt.Errorf("查询题目列表: %w", err)
 	}
 	return &Page{Items: items, Total: total, Limit: f.Limit, Offset: f.Offset}, nil
 }
 
+// orderBy 是题目集合的唯一排序规则 —— 列表、定位（PositionAfter）、小结都用它，
+// ⛔ 不各写一份：三处排序不一致，「继续」就会落到别的题上而且不报错。
+//
+//   - due：按到期时间（复习队列，最该复习的在前）
+//   - seed：按种子固定打乱。MD5 两边（MySQL / TiDB）都有且结果一致；同哈希再按 id 排，保证顺序完全确定。
+//     ⚠️ 2026-10-08 由 CRC32 改为 MD5：CRC32 是【线性】的 —— 对等长输入，换种子只等于把所有哈希
+//     异或上同一个常数，不同种子的排序强相关（实测种子 11 / 12 在 6 题上一半概率给出完全相同的顺序）。
+//     在 SAA 千题规模、随机大种子下没观察到「换一批还是同一批」，但打乱质量不该靠运气。
+//   - 其余：按 (卷子, 原题号) —— 多套卷子的题库里题号会重复，只按题号会把各套交错在一起
+func orderBy(f ListFilter) (string, []any) {
+	switch {
+	case f.Mode == "due":
+		return " ORDER BY " + dueOrderExpr + " ASC, q.id", []any{f.AccountID}
+	case f.Seed != nil:
+		return " ORDER BY MD5(CONCAT(?, ':', q.id)), q.id", []any{*f.Seed}
+	default:
+		return " ORDER BY q.session, q.external_no", nil
+	}
+}
+
+// ListQuestionIDs 按 orderBy 返回整个集合的题目 id（已按 Take 截断）。
+// 只取 id，一个题库一千来题也只是几 KB —— 定位与小结在应用层做，比把同一套过滤再写成 SQL 窗口函数简单可靠。
+func (r *mysqlRepository) ListQuestionIDs(ctx context.Context, bankID int64, f ListFilter) ([]int64, error) {
+	where, having, args := buildFilter(bankID, f)
+	join := ""
+	if len(f.TagIDs) > 0 {
+		join = " JOIN question_tag qt ON qt.question_id = q.id"
+	}
+	query := `SELECT q.id FROM question q` + join + where
+	if having != "" {
+		query += " GROUP BY q.id" + having
+	}
+	order, orderArgs := orderBy(f)
+	query += order
+	args = append(args, orderArgs...)
+	if f.Take > 0 {
+		query += " LIMIT ?"
+		args = append(args, f.Take)
+	}
+	ids := []int64{}
+	if err := r.db.SelectContext(ctx, &ids, query, args...); err != nil {
+		return nil, fmt.Errorf("查询题目集合: %w", err)
+	}
+	return ids, nil
+}
+
+// SummarizeAnswers 统计这些题里该账号做过几道、最近一次答对几道。
+func (r *mysqlRepository) SummarizeAnswers(ctx context.Context, account userid.UserID, ids []int64) (answered, correct int, err error) {
+	for i := 0; i < len(ids); i += 500 { // 分批：IN 列表别无限长
+		chunk := ids[i:min(i+500, len(ids))]
+		q, args, err := sqlx.In(`
+			SELECT COUNT(*) AS answered, COALESCE(SUM(a.correct = 1), 0) AS correct
+			FROM attempt a
+			JOIN (SELECT question_id, MAX(id) AS max_id FROM attempt
+			      WHERE user_id = ? AND question_id IN (?) GROUP BY question_id) m
+			  ON m.max_id = a.id`, account, chunk)
+		if err != nil {
+			return 0, 0, err
+		}
+		var row struct {
+			Answered int `db:"answered"`
+			Correct  int `db:"correct"`
+		}
+		if err := r.db.GetContext(ctx, &row, r.db.Rebind(q), args...); err != nil {
+			return 0, 0, fmt.Errorf("统计作答: %w", err)
+		}
+		answered += row.Answered
+		correct += row.Correct
+	}
+	return answered, correct, nil
+}
+
 // FindQuestionByID 拉取单题的全部关联数据。
 // 分多条查询而非一条大 join —— 一对多的笛卡尔积在应用层拼装更清晰，
 // 也避免了 stem / explanation 这类大字段被重复传输。
-func (r *mysqlRepository) FindQuestionByID(ctx context.Context, id int64) (*Detail, error) {
+func (r *mysqlRepository) FindQuestionByID(ctx context.Context, id int64, locale string) (*Detail, error) {
 	var row struct {
 		Summary
-		BankSlug  string         `db:"bank_slug"`
-		DataIssue *string        `db:"data_issue"`
-		Raw       sql.NullString `db:"raw"`
+		BankSlug     string         `db:"bank_slug"`
+		SourceLocale string         `db:"source_locale"`
+		DataIssue    *string        `db:"data_issue"`
+		Raw          sql.NullString `db:"raw"`
+	}
+	// 同 ListQuestions：LEFT JOIN 译文、COALESCE 回退、localized 标记。
+	// ⚠️ locale 的占位符在 WHERE 之前，args 顺序必须跟着。
+	i18nJoin, stemExpr, localizedExpr := "", "q.stem", "FALSE"
+	args := []any{id}
+	if locale != "" {
+		i18nJoin = " LEFT JOIN question_i18n qi ON qi.question_id = q.id AND qi.locale = ?"
+		stemExpr, localizedExpr = "COALESCE(qi.stem, q.stem)", "(qi.stem IS NOT NULL)"
+		args = []any{locale, id}
 	}
 	err := r.db.GetContext(ctx, &row, `
-		SELECT q.id, q.external_no, q.stem, q.kind, q.pick_count, q.data_issue, q.raw,
-		       b.slug AS bank_slug,
-		       `+contestedExpr+` AS contested, `+enrichedExpr+` AS enriched
-		FROM question q JOIN bank b ON b.id = q.bank_id
-		WHERE q.id = ?`, id)
+		SELECT q.id, q.external_no, `+stemExpr+` AS stem, q.kind, q.pick_count, q.data_issue, q.raw,
+		       b.slug AS bank_slug, b.locale AS source_locale,
+		       `+contestedExpr+` AS contested, `+enrichedExpr+` AS enriched,
+		       `+localizedExpr+` AS localized
+		FROM question q JOIN bank b ON b.id = q.bank_id`+i18nJoin+`
+		WHERE q.id = ?`, args...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -165,12 +313,13 @@ func (r *mysqlRepository) FindQuestionByID(ctx context.Context, id int64) (*Deta
 	}
 
 	d := &Detail{
-		Summary:   row.Summary,
-		BankSlug:  row.BankSlug,
-		DataIssue: row.DataIssue,
-		Warnings:  parseWarnings(row.Raw),
+		Summary:      row.Summary,
+		BankSlug:     row.BankSlug,
+		SourceLocale: row.SourceLocale,
+		DataIssue:    row.DataIssue,
+		Warnings:     parseWarnings(row.Raw),
 	}
-	if d.Choices, err = r.loadChoices(ctx, id); err != nil {
+	if d.Choices, err = r.loadChoices(ctx, id, locale); err != nil {
 		return nil, err
 	}
 	if d.Claims, err = r.loadClaims(ctx, id); err != nil {
@@ -222,11 +371,20 @@ func (r *mysqlRepository) LoadTextLength(ctx context.Context, questionID int64) 
 	return n, nil
 }
 
-func (r *mysqlRepository) loadChoices(ctx context.Context, id int64) ([]Choice, error) {
+func (r *mysqlRepository) loadChoices(ctx context.Context, id int64, locale string) ([]Choice, error) {
 	out := []Choice{}
-	err := r.db.SelectContext(ctx, &out,
-		`SELECT label, body FROM choice WHERE question_id = ? ORDER BY label`, id)
-	if err != nil {
+	// 选项的译文与题干各自独立（可能只补了题干），所以各带各的 localized。
+	query := `SELECT c.label, c.body, FALSE AS localized
+	          FROM choice c WHERE c.question_id = ? ORDER BY c.label`
+	args := []any{id}
+	if locale != "" {
+		query = `SELECT c.label, COALESCE(ci.body, c.body) AS body, (ci.body IS NOT NULL) AS localized
+		         FROM choice c
+		         LEFT JOIN choice_i18n ci ON ci.choice_id = c.id AND ci.locale = ?
+		         WHERE c.question_id = ? ORDER BY c.label`
+		args = []any{locale, id}
+	}
+	if err := r.db.SelectContext(ctx, &out, query, args...); err != nil {
 		return nil, fmt.Errorf("查询题目 %d 的选项: %w", id, err)
 	}
 	return out, nil

@@ -19,6 +19,16 @@ type Stats struct {
 	QuestionCount  int `db:"question_count"`
 	EnrichedCount  int `db:"enriched_count"`
 	ContestedCount int `db:"contested_count"`
+	// Sessions 各套卷子（P9 4.1）。单套题库只有一项、Session 为空串。
+	Sessions []SessionStat `db:"-"`
+}
+
+// SessionStat 是一套卷子的规模与题号范围。
+type SessionStat struct {
+	Session       string `db:"session"`
+	QuestionCount int    `db:"question_count"`
+	NoFrom        int    `db:"no_from"`
+	NoTo          int    `db:"no_to"`
 }
 
 // Tag 采用通用 (type, value) 结构。

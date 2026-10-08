@@ -85,6 +85,13 @@ type Service interface {
 	LoadOverview(ctx context.Context, accountID userid.UserID) (*Overview, error)
 	LoadRecentSessions(ctx context.Context, accountID userid.UserID, limit int) ([]Session, error)
 	LoadDueSummary(ctx context.Context, accountID userid.UserID) ([]DueSummary, error)
+	// 当前题库（P9）：首页显示哪一个，跟着账号走。见 current_bank.go。
+	LoadCurrentBank(ctx context.Context, accountID userid.UserID) (*CurrentBank, error)
+	ChooseCurrentBank(ctx context.Context, accountID userid.UserID, slug string) error
+	LoadLastAttempt(ctx context.Context, accountID userid.UserID, slug string) (*LastAttempt, error)
+	// 收藏（P9 #20）：见 bookmark.go
+	SetBookmark(ctx context.Context, accountID userid.UserID, questionID int64, on bool) error
+	IsBookmarked(ctx context.Context, accountID userid.UserID, questionID int64) (bool, error)
 }
 
 type service struct {
@@ -132,11 +139,25 @@ func (s *service) RecordAttempt(ctx context.Context, a Attempt) (*Result, error)
 
 	out := &Result{AttemptID: attemptID, Correct: correct, Reference: ref}
 
-	// ⭐ 只有自评过才排卡片 —— 没有 rating 就没有记忆信号，排不出有意义的间隔。
-	// ⚠️ 未排卡片 ≠ 这题没做过：attempt 已经落库，unseen / 正确率 / resume 都认它。
-	//    只有「到期复习（due）」这一个集合看卡片，所以未评分的题不会进复习队列 —— 这是对的。
-	if a.Rating != nil {
-		correction, next, err := s.scheduleFor(ctx, tx, a.AccountID, a.QuestionID, *a.Rating, correct, ref, a.DurationMs)
+	// ⭐ FSRS 的输入在【记录这一刻】就定下来：带了自评用自评，没带就按对错代打。
+	//
+	// 2026-10-08（P9 #15 #16）界面去掉了自评，FSRS 功能搁置但算法保留。
+	// 若仍沿用「没自评就不排卡片」，去掉自评 = 永远断了 FSRS 的输入，
+	// 将来恢复时只能从零开始。⇒ 按对错代打：答对 Good、答错 Again，后台照常积累。
+	//
+	// ⚠️ 代打的分【不写进 attempt.rating】—— 那一列的含义是「用户自己的评价」，
+	//    用户确实没评。学习侧只存事实，代打分只是喂给调度器的推导值。
+	// ⚠️ 没有参考答案的题判不了对错（ref == nil）⇒ 没有信号，不排卡片。
+	fsrsRating := a.Rating
+	if fsrsRating == nil && ref != nil {
+		derived := scheduler.RatingAgain
+		if correct {
+			derived = scheduler.RatingGood
+		}
+		fsrsRating = &derived
+	}
+	if fsrsRating != nil {
+		correction, next, err := s.scheduleFor(ctx, tx, a.AccountID, a.QuestionID, *fsrsRating, correct, ref, a.DurationMs)
 		if err != nil {
 			return nil, err
 		}
@@ -149,59 +170,32 @@ func (s *service) RecordAttempt(ctx context.Context, a Attempt) (*Result, error)
 	return out, nil
 }
 
-// RateAttempt 给一条已记录的作答补上自评，并据此排 FSRS 卡片。
+// RateAttempt 给一条已记录的作答补上自评 —— ⭐ 只记录，⛔ 不再推进卡片。
+//
+// 2026-10-08 起卡片在【记录作答那一刻】就已推进（自评或按对错代打，见 RecordAttempt）。
+// 这里若再推一次，同一次作答会让 FSRS 走两步，间隔被错误拉长。
+// ⇒ 补来的自评只作为「用户的评价」这一事实落库。界面已不再调用本端点，保留它是为了契约稳定。
 //
 // ⭐ 归属校验放在 UPDATE 的 WHERE 里（user_id = ?），⛔ 不是先查后判 ——
 // 先查后判存在检查与写入之间的窗口，且容易在重构时把 user_id 条件弄丢；
 // 写在 WHERE 里则「改不到别人的记录」由 SQL 本身保证，影响行数为 0 就是没权限或不存在。
 func (s *service) RateAttempt(ctx context.Context, accountID userid.UserID, attemptID int64, rating int) (*Result, error) {
-	tx, err := s.db.BeginTxx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("开启事务: %w", err)
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE attempt SET rating = ? WHERE id = ? AND user_id = ?`,
+		rating, attemptID, accountID); err != nil {
+		return nil, fmt.Errorf("写入自评: %w", err)
 	}
-	defer tx.Rollback() //nolint:errcheck
-
-	var row struct {
-		QuestionID int64 `db:"question_id"`
-		Correct    bool  `db:"correct"`
-		DurationMs *int  `db:"duration_ms"`
-	}
-	if err := tx.GetContext(ctx, &row, `
-		SELECT question_id, correct, duration_ms FROM attempt WHERE id = ? AND user_id = ?`,
-		attemptID, accountID); err != nil {
+	// ⚠️ 不能只看 RowsAffected：同值更新在 MySQL/TiDB 上可能报 0 行，
+	//    会把「本人重复提交同一个分」误判成没权限。⇒ 再查一次归属。
+	var correct bool
+	if err := s.db.GetContext(ctx, &correct,
+		`SELECT correct FROM attempt WHERE id = ? AND user_id = ?`, attemptID, accountID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrAttemptNotFound
 		}
 		return nil, fmt.Errorf("读取作答记录: %w", err)
 	}
-
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE attempt SET rating = ? WHERE id = ? AND user_id = ?`,
-		rating, attemptID, accountID); err != nil {
-		return nil, fmt.Errorf("写入自评: %w", err)
-	}
-
-	ref, err := s.refs.LoadReference(ctx, row.QuestionID)
-	if err != nil {
-		return nil, err
-	}
-	correction, next, err := s.scheduleFor(ctx, tx, accountID, row.QuestionID, rating, row.Correct, ref, row.DurationMs)
-	if err != nil {
-		return nil, err
-	}
-	if err = tx.Commit(); err != nil {
-		return nil, fmt.Errorf("提交自评: %w", err)
-	}
-
-	return &Result{
-		AttemptID:  attemptID,
-		Correct:    row.Correct,
-		Reference:  ref,
-		Scheduled:  true,
-		Correction: correction,
-		NextDue:    next.Due,
-		NextState:  next.State,
-	}, nil
+	return &Result{AttemptID: attemptID, Correct: correct, Scheduled: false}, nil
 }
 
 // scheduleFor 由自评算出纠正后的评分并推进卡片。RecordAttempt 与 RateAttempt 共用 ——

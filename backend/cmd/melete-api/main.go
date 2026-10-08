@@ -26,6 +26,7 @@ import (
 	"github.com/bukahou/melete/backend/internal/config"
 	"github.com/bukahou/melete/backend/internal/httpapi"
 	"github.com/bukahou/melete/backend/internal/httpauth"
+	"github.com/bukahou/melete/backend/internal/httplocale"
 	"github.com/bukahou/melete/backend/internal/localauthx"
 	"github.com/bukahou/melete/backend/internal/platform/database"
 	"github.com/bukahou/melete/backend/internal/question"
@@ -284,6 +285,10 @@ func run() error {
 		v1.Use(httpauth.ResolveClientIP(localauth.TrustCloudflare()))
 		// 业务端点要求 access token；认证端点豁免（那时还没有 token）
 		v1.Use(httpauth.RequireUserExcept(authSvc, publicPaths...))
+		// 语言协商：客户端用 Accept-Language 表达，服务端在白名单里挑。
+		// ⚠️ 白名单是【有译文的语言】，不是「界面支持的语言」—— 界面文案在前端，
+		// 与题库译文是两件事，⛔ 别把两个清单混成一个。
+		v1.Use(httplocale.NegotiateLocale("zh", "ja", "en"))
 		oidcHandler.Register(v1) // 在 /auth/ 前缀下：限流与豁免天然覆盖
 		api.HandlerFromMux(api.NewStrictHandler(server, nil), v1)
 	})

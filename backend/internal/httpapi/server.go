@@ -14,6 +14,7 @@ import (
 	"github.com/bukahou/melete/backend/internal/auth"
 	"github.com/bukahou/melete/backend/internal/bank"
 	"github.com/bukahou/melete/backend/internal/httpauth"
+	"github.com/bukahou/melete/backend/internal/httplocale"
 	"github.com/bukahou/melete/backend/internal/question"
 	"github.com/bukahou/melete/backend/internal/study"
 	"github.com/bukahou/melete/backend/internal/token"
@@ -106,30 +107,21 @@ func (s *Server) ListQuestions(ctx context.Context, req api.ListQuestionsRequest
 		return nil, s.fail("ListQuestions.bank", err)
 	}
 
-	f := question.ListFilter{}
-	if p := req.Params; true {
-		if p.Tag != nil {
-			f.TagIDs = *p.Tag
-		}
-		if p.Contested != nil {
-			f.OnlyContested = *p.Contested
-		}
-		if p.Enriched != nil {
-			f.OnlyEnriched = *p.Enriched
-		}
-		if p.Limit != nil {
-			f.Limit = *p.Limit
-		}
-		if p.Offset != nil {
-			f.Offset = *p.Offset
-		}
-		if p.Mode != nil {
-			f.Mode = string(*p.Mode)
-		}
-	}
+	p := req.Params
 	// 账号来自已验签的会话 JWT，不是请求参数 —— 无从伪造
-	if id, ok := httpauth.AccountID(ctx); ok {
-		f.AccountID = userid.UserID(id)
+	f := drillQuery{
+		Tag: deref(p.Tag), AnyTag: deref(p.AnyTag),
+		Contested: deref(p.Contested), Bookmarked: deref(p.Bookmarked),
+		Mode: string(deref(p.Mode)), Session: p.Session,
+		NoFrom: deref(p.NoFrom), NoTo: deref(p.NoTo), Seed: p.Seed, Take: deref(p.Take),
+	}.filter(accountOf(ctx))
+	f.OnlyEnriched = deref(p.Enriched)
+	f.Limit, f.Offset = deref(p.Limit), deref(p.Offset)
+	// ⭐ 请求的语言就是题库源语言时不查 i18n 表 —— 那张表里本来就没有源语言的行，
+	// 查了必然全部 COALESCE 回退。省的不是那一次 join，是「localized 恒为 false」
+	// 这个会让界面到处标注「暂无译文」的假信号。
+	if l := httplocale.RequestLocale(ctx); l != "" && l != b.Locale {
+		f.Locale = l
 	}
 
 	page, err := s.questions.ListQuestions(ctx, b.ID, f)
@@ -148,15 +140,80 @@ func (s *Server) ListQuestions(ctx context.Context, req api.ListQuestionsRequest
 	}, nil
 }
 
+// SummarizeQuestions 是一个题目集合的本轮小结（P9 #19）。过滤条件与 ListQuestions 同一套。
+func (s *Server) SummarizeQuestions(ctx context.Context, req api.SummarizeQuestionsRequestObject) (api.SummarizeQuestionsResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "SummarizeQuestions")
+	if err != nil {
+		return nil, err
+	}
+	b, err := s.banks.FindBank(ctx, req.Slug)
+	if errors.Is(err, bank.ErrNotFound) {
+		return api.SummarizeQuestions404JSONResponse{NotFoundJSONResponse: notFound("题库不存在: " + req.Slug)}, nil
+	}
+	if err != nil {
+		return nil, s.fail("SummarizeQuestions.bank", err)
+	}
+	p := req.Params
+	f := drillQuery{
+		Tag: deref(p.Tag), AnyTag: deref(p.AnyTag),
+		Contested: deref(p.Contested), Bookmarked: deref(p.Bookmarked),
+		Mode: string(deref(p.Mode)), Session: p.Session,
+		NoFrom: deref(p.NoFrom), NoTo: deref(p.NoTo), Seed: p.Seed, Take: deref(p.Take),
+	}.filter(accountID)
+	sum, err := s.questions.SummarizeSet(ctx, b.ID, f)
+	if err != nil {
+		return nil, s.fail("SummarizeQuestions", err)
+	}
+	return api.SummarizeQuestions200JSONResponse{Total: sum.Total, Answered: sum.Answered, Correct: sum.Correct}, nil
+}
+
 func (s *Server) GetQuestion(ctx context.Context, req api.GetQuestionRequestObject) (api.GetQuestionResponseObject, error) {
-	d, err := s.questions.GetQuestion(ctx, req.Id)
+	// 这里【不】比对题库源语言：拿到 bank 要多一次查询，而多余的 join 是
+	// 主键等值查找，比那次查询更便宜。回退语义两边一致，界面据 localized 判断。
+	d, err := s.questions.GetQuestion(ctx, req.Id, httplocale.RequestLocale(ctx))
 	if errors.Is(err, question.ErrNotFound) {
 		return api.GetQuestion404JSONResponse{NotFoundJSONResponse: notFound("题目不存在")}, nil
 	}
 	if err != nil {
 		return nil, s.fail("GetQuestion", err)
 	}
-	return api.GetQuestion200JSONResponse(toAPIDetail(d)), nil
+	out := toAPIDetail(d)
+	// 收藏状态是个人的：登录了才查（详情接口本身不要求登录）
+	if id, ok := httpauth.AccountID(ctx); ok {
+		on, err := s.studies.IsBookmarked(ctx, userid.UserID(id), d.ID)
+		if err != nil {
+			return nil, s.fail("GetQuestion.bookmark", err)
+		}
+		out.Bookmarked = &on
+	}
+	return api.GetQuestion200JSONResponse(out), nil
+}
+
+// AddBookmark / RemoveBookmark：收藏是「答题时不懂、靠猜」的自选标记（P9 #20）。两个方向都幂等。
+func (s *Server) AddBookmark(ctx context.Context, req api.AddBookmarkRequestObject) (api.AddBookmarkResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "AddBookmark")
+	if err != nil {
+		return nil, err
+	}
+	err = s.studies.SetBookmark(ctx, accountID, req.QuestionId, true)
+	if errors.Is(err, study.ErrQuestionNotFound) {
+		return api.AddBookmark404JSONResponse{NotFoundJSONResponse: notFound("题目不存在")}, nil
+	}
+	if err != nil {
+		return nil, s.fail("AddBookmark", err)
+	}
+	return api.AddBookmark204Response{}, nil
+}
+
+func (s *Server) RemoveBookmark(ctx context.Context, req api.RemoveBookmarkRequestObject) (api.RemoveBookmarkResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "RemoveBookmark")
+	if err != nil {
+		return nil, err
+	}
+	if err := s.studies.SetBookmark(ctx, accountID, req.QuestionId, false); err != nil {
+		return nil, s.fail("RemoveBookmark", err)
+	}
+	return api.RemoveBookmark204Response{}, nil
 }
 
 func (s *Server) PasswordLogin(ctx context.Context, req api.PasswordLoginRequestObject) (api.PasswordLoginResponseObject, error) {
@@ -220,13 +277,6 @@ func toTokenPair(p *auth.Pair) api.TokenPair {
 		AccountId:    p.AccountID,
 		Display:      p.Display,
 	}
-}
-
-func deref(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }
 
 func (s *Server) RecordAttempt(ctx context.Context, req api.RecordAttemptRequestObject) (api.RecordAttemptResponseObject, error) {
@@ -315,7 +365,7 @@ func (s *Server) GetMyProgress(ctx context.Context, req api.GetMyProgressRequest
 	if err != nil {
 		return nil, err
 	}
-	slug, err := s.currentBank(ctx, req.Params.Bank)
+	slug, err := s.currentBank(ctx, accountID, req.Params.Bank)
 	if err != nil {
 		return nil, s.fail("GetMyProgress.banks", err)
 	}
@@ -327,7 +377,8 @@ func (s *Server) GetMyProgress(ctx context.Context, req api.GetMyProgressRequest
 		BankSlug: p.BankSlug, QuestionCount: p.QuestionCount, SeenCount: p.SeenCount,
 		CorrectCount: p.CorrectCount, WrongCount: p.WrongCount,
 		UnsureCount: p.UnsureCount, AttemptCount: p.AttemptCount,
-		DueCount: p.DueCount,
+		AttemptCorrectCount: p.AttemptCorrectCount,
+		DueCount:            p.DueCount,
 	}
 	if p.LastActiveAt.Valid {
 		t := p.LastActiveAt.Time
@@ -341,7 +392,7 @@ func (s *Server) GetMyTagStats(ctx context.Context, req api.GetMyTagStatsRequest
 	if err != nil {
 		return nil, err
 	}
-	slug, err := s.currentBank(ctx, req.Params.Bank)
+	slug, err := s.currentBank(ctx, accountID, req.Params.Bank)
 	if err != nil {
 		return nil, s.fail("GetMyTagStats.banks", err)
 	}
@@ -372,9 +423,21 @@ func (s *Server) GetMyTagStats(ctx context.Context, req api.GetMyTagStatsRequest
 
 // currentBank 决定「当前题库」：显式传了 bank 就用它，否则退回第一个题库。
 // 多题库后「当前」应改为最近活跃的那个 —— 到时只改这一处。
-func (s *Server) currentBank(ctx context.Context, explicit *string) (string, error) {
+// currentBank 解析可选的 bank 参数：显式给了就用；缺省 = 这个账号的当前题库
+// （与 GET /me/bank 同一套 chosen → recent 规则）；都没有才退到第一个题库。
+//
+// ⚠️ 这里原来直接取第一个题库 —— 契约上写的就是「缺省 = 当前题库（现阶段为第一个）」，
+// P9 有了真正的当前题库之后兑现它。
+func (s *Server) currentBank(ctx context.Context, accountID userid.UserID, explicit *string) (string, error) {
 	if explicit != nil && *explicit != "" {
 		return *explicit, nil
+	}
+	cur, err := s.studies.LoadCurrentBank(ctx, accountID)
+	if err != nil {
+		return "", err
+	}
+	if cur.Source != study.CurrentBankNone {
+		return cur.Slug, nil
 	}
 	banks, err := s.banks.ListBanks(ctx)
 	if err != nil {
@@ -386,12 +449,46 @@ func (s *Server) currentBank(ctx context.Context, explicit *string) (string, err
 	return banks[0].Slug, nil
 }
 
+func (s *Server) GetMyBank(ctx context.Context, _ api.GetMyBankRequestObject) (api.GetMyBankResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "GetMyBank")
+	if err != nil {
+		return nil, err
+	}
+	cur, err := s.studies.LoadCurrentBank(ctx, accountID)
+	if err != nil {
+		return nil, s.fail("GetMyBank", err)
+	}
+	out := api.GetMyBank200JSONResponse{Source: api.CurrentBankSource(cur.Source)}
+	if cur.Source != study.CurrentBankNone {
+		out.BankSlug = &cur.Slug
+	}
+	return out, nil
+}
+
+func (s *Server) ChooseMyBank(ctx context.Context, req api.ChooseMyBankRequestObject) (api.ChooseMyBankResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "ChooseMyBank")
+	if err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return api.ChooseMyBank404JSONResponse{NotFoundJSONResponse: notFound("缺少 bankSlug")}, nil
+	}
+	err = s.studies.ChooseCurrentBank(ctx, accountID, req.Body.BankSlug)
+	if errors.Is(err, study.ErrNotFound) {
+		return api.ChooseMyBank404JSONResponse{NotFoundJSONResponse: notFound("题库不存在: " + req.Body.BankSlug)}, nil
+	}
+	if err != nil {
+		return nil, s.fail("ChooseMyBank", err)
+	}
+	return api.ChooseMyBank204Response{}, nil
+}
+
 func (s *Server) GetMyResume(ctx context.Context, req api.GetMyResumeRequestObject) (api.GetMyResumeResponseObject, error) {
 	accountID, err := s.requireAccount(ctx, "GetMyResume")
 	if err != nil {
 		return nil, err
 	}
-	slug, err := s.currentBank(ctx, req.Params.Bank)
+	slug, err := s.currentBank(ctx, accountID, req.Params.Bank)
 	if err != nil {
 		return nil, s.fail("GetMyResume.banks", err)
 	}
@@ -399,7 +496,11 @@ func (s *Server) GetMyResume(ctx context.Context, req api.GetMyResumeRequestObje
 	if err != nil {
 		return nil, s.fail("GetMyResume", err)
 	}
-	return api.GetMyResume200JSONResponse(toAPIResume(r)), nil
+	out := toAPIResume(r)
+	if out.Cursor, err = s.loadCursor(ctx, accountID, slug); err != nil {
+		return nil, s.fail("GetMyResume.cursor", err)
+	}
+	return api.GetMyResume200JSONResponse(out), nil
 }
 
 func (s *Server) GetMyOverview(ctx context.Context, _ api.GetMyOverviewRequestObject) (api.GetMyOverviewResponseObject, error) {

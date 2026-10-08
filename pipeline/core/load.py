@@ -94,6 +94,75 @@ class Loader:
                       ON DUPLICATE KEY UPDATE body=VALUES(body)""", rows)
         return len(rows)
 
+    # ---- 译文（question_i18n / choice_i18n / explanation）----
+    def choice_ids(self, qmap: dict) -> dict:
+        """(question_id, label) → choice.id。choice_i18n 按 choice_id 存，必须先拿到它。"""
+        ids = sorted(set(qmap.values()))
+        out = {}
+        for i in range(0, len(ids), 500):  # ⚠️ TiDB 单事务/单语句都别喂太大
+            chunk = ids[i:i + 500]
+            self.cur.execute(
+                f"SELECT question_id, label, id FROM choice WHERE question_id IN ({','.join(['%s'] * len(chunk))})",
+                chunk)
+            out.update({(q, l): c for q, l, c in self.cur.fetchall()})
+        return out
+
+    def upsert_question_i18n(self, qmap: dict, tr_items: list, locale: str) -> int:
+        """
+        题干译文 → question_i18n。
+
+        ⭐ 与旧的 display_text() 路线的根本区别：那条路把译文【写进 question.stem】，
+        原文就此从库里消失（SAP-C02 的英文原文正是这么丢的，只剩 enriched.json 里有）。
+        这里译文另存一张表，question.stem 永远是原文 ⇒ 同一道题可以同时供多种语言。
+        """
+        rows, orphan = [], []
+        for it in tr_items:
+            key = (it.get("session", ""), it["no"])
+            if key not in qmap:
+                # ⚠️ 译文有、库里没有这道题。⛔ 不静默丢弃 ——
+                # 它意味着有人白翻了一道题（#477 就是：0 选项，导入时被跳过）。
+                # 数量对不上而没人知道原因，是最难查的一类问题。
+                orphan.append(it["no"])
+                continue
+            if it.get("stem"):
+                rows.append((qmap[key], locale, it["stem"]))
+        if orphan:
+            print(f"⚠ 译文里有 {len(orphan)} 题在库中不存在，已跳过："
+                  f"{orphan[:8]}{' …' if len(orphan) > 8 else ''}")
+            print(f"  （多半是素材缺陷题被导入时跳过了 —— 那几题的译文属于白翻，"
+                  f"归属地是素材脏点清单）")
+        self._exec("""INSERT INTO question_i18n (question_id, locale, stem, source)
+                      VALUES (%s,%s,%s,'ai')
+                      ON DUPLICATE KEY UPDATE stem=VALUES(stem)""", rows)
+        return len(rows)
+
+    def upsert_choice_i18n(self, qmap: dict, cmap: dict, tr_items: list, locale: str) -> int:
+        rows = []
+        for it in tr_items:
+            key = (it.get("session", ""), it["no"])
+            if key not in qmap:
+                continue
+            for label, body in (it.get("choices") or {}).items():
+                cid = cmap.get((qmap[key], label))
+                # ⚠️ 选项对不上就跳过，⛔ 不猜 —— 译文的 label 与库里不一致
+                # 说明素材变过，那是要人看的事，不该在这里静默补一行
+                if cid and body:
+                    rows.append((cid, locale, body))
+        self._exec("""INSERT INTO choice_i18n (choice_id, locale, body, source)
+                      VALUES (%s,%s,%s,'ai')
+                      ON DUPLICATE KEY UPDATE body=VALUES(body)""", rows)
+        return len(rows)
+
+    def upsert_translated_explanations(self, qmap: dict, tr_items: list, locale: str) -> int:
+        """译文里的解析 → explanation(locale)。explanation 表本来就是多语言的，直接加一行。"""
+        rows = [(qmap[(it.get("session", ""), it["no"])], "ai", locale, it["explanation"])
+                for it in tr_items
+                if (it.get("session", ""), it["no"]) in qmap and it.get("explanation")]
+        self._exec("""INSERT INTO explanation (question_id, source, locale, body)
+                      VALUES (%s,%s,%s,%s)
+                      ON DUPLICATE KEY UPDATE body=VALUES(body)""", rows)
+        return len(rows)
+
     # 管道拥有的主张来源。user_note 之类由用户在应用里写入的来源不在此列 —— 重导不得动它们。
     PIPELINE_SOURCES = ("bank_label", "community_vote", "ai_verdict")
 
@@ -199,6 +268,44 @@ class Loader:
         self._exec("""INSERT INTO question_tag (question_id, tag_id, weight) VALUES (%s,%s,%s)
                       ON DUPLICATE KEY UPDATE weight=VALUES(weight)""", rows)
         return len(rows)
+
+
+def safety_rate(spec: dict) -> int | None:
+    """
+    合格判断的「安全线」（正确率 %）= 官方及格线换算成正确率 + 10 个点（2026-10-08 用户裁定）。
+
+    为什么不直接用及格线：官方分数是加权 / 标定过的，素朴正确率只是它的近似，
+    卡在及格线上的正确率不等于能过。多出来的 10 个点就是给这层近似留的余量。
+    题库可在 spec 里写 safety_rate 覆盖（⛔ 不写就按公式，不另设默认值）。
+    """
+    if spec.get("safety_rate") is not None:
+        return spec["safety_rate"]
+    if not spec.get("pass_score") or not spec.get("max_score"):
+        return None      # 没有官方及格线 ⇒ 界面不做合格判断
+    return round(spec["pass_score"] / spec["max_score"] * 100) + 10
+
+
+def topic_tree(spec: dict) -> list | None:
+    """
+    domain › 分组 › topic 的展示树（P9，2026-10-08 用户裁定方案 A：树放 meta，⛔ 不改 tag 表）。
+
+    题目只挂叶子 topic；「分组」不是标签，选中它 = 展开成它下面那几个 topic 去查，
+    分组正确率由应用层把这几个 topic 加起来。
+    为什么不给 tag 加 parent_id：topic 只在部分题库里构成树 —— AWS 的服务横跨多个
+    考纲域，根本不是树；而且那会多出第四种 tag 角色，前后端每个按 type 分支的地方都要认识它。
+
+    来源是 spec 的封闭词表 topic_vocabulary（field = 所属 domain，major = 分组）。
+    词表里有、题目没用到的 topic 照样列出 —— 树描述的是考纲，不是题目分布。
+    没有词表、或词表不带 major 的题库 ⇒ None，界面平铺。
+    """
+    vocab = spec.get("topic_vocabulary") or []
+    if not vocab or not all(v.get("major") for v in vocab):
+        return None
+    tree: dict[str, dict[str, list[str]]] = {}
+    for v in sorted(vocab, key=lambda v: v["id"]):
+        tree.setdefault(f"domain-{v['field']}", {}).setdefault(v["major"], []).append(v["name"])
+    return [{"domain": d, "groups": [{"name": g, "topics": ts} for g, ts in groups.items()]}
+            for d, groups in tree.items()]
 
 
 def qid(qmap: dict, q: dict) -> int:
@@ -408,6 +515,13 @@ def main() -> None:
         "passScore": spec.get("pass_score"),
         "maxScore": spec.get("max_score"),
         "domains": spec.get("domains", {}),
+        # P9 首页的「合格判断」与「过去问演练」要的三个数（2026-10-08 裁定）：
+        "safetyRate": safety_rate(spec),
+        "examQuestions": spec.get("exam_questions"),   # 判断前至少要做满一场考试的题数
+        "groupSize": spec.get("group_size"),           # 顺序练习按多少题一组
+        "topicTree": topic_tree(spec),
+        # 卷子（question.session）的显示名：session 是给机器的键（2026r08），人要看「令和8年度」
+        "sessionLabels": spec.get("session_labels"),
     }, display_locale)
     qmap = ld.upsert_questions(bank_id, qs)
     n_ch = ld.upsert_choices(qmap, qs)
@@ -415,6 +529,27 @@ def main() -> None:
     # 解析的语言 ≠ 题库的语言：SAP-C02 题面是英文，但富化会话按学习者语言写中文解析。
     # 由 spec 声明 explanation_locale，缺省才退回题库 locale（SAA 中文题库两者相同）。
     n_ex = ld.upsert_explanations(qmap, qs, spec.get("explanation_locale") or doc["bank"].get("locale", "zh"))
+    # ---- 译文：translated.<locale>.json（translate.py merge 的产物）----
+    #
+    # ⚠️ 与上面 display_text() 那条【烧死译文】的老路是两回事，两者暂时并存：
+    #   老路：译文覆盖 question.stem，原文从库里消失（SAP-C02 的英文就是这么丢的）
+    #   新路：译文另存 question_i18n，stem 永远是原文 ⇒ 同一道题能供多种语言
+    # 老路要拆，但那会把 SAP-C02 的展示语言从 zh 改成 en，是对既有题库的行为变更，
+    # 单独一步做（已登记 tracker P8）。⛔ 别在这个改动里顺手改掉。
+    n_i18n = {}
+    for tr_path in sorted(bank_dir(args.bank).glob("translated.*.json")):
+        tr_doc = json.loads(tr_path.read_text(encoding="utf-8"))
+        tr_locale, tr_items = tr_doc["locale"], tr_doc.get("items", [])
+        if tr_locale == display_locale:
+            print(f"⚠ 跳过 {tr_path.name}：它的语言与题面展示语言相同（{tr_locale}），"
+                  f"存进 i18n 表没有意义")
+            continue
+        cmap = ld.choice_ids(qmap)
+        a = ld.upsert_question_i18n(qmap, tr_items, tr_locale)
+        b = ld.upsert_choice_i18n(qmap, cmap, tr_items, tr_locale)
+        c = ld.upsert_translated_explanations(qmap, tr_items, tr_locale)
+        n_i18n[tr_locale] = (a, b, c, tr_doc.get("complete", True))
+
     tmap = ld.upsert_tags(bank_id, qs, spec)
     topic_field = spec.get("tag_types", {}).get("topic", {}).get("enrichment_field", "topics")
     n_qt = ld.link_question_tags(bank_id, qmap, qs, tmap, topic_field)
@@ -423,6 +558,9 @@ def main() -> None:
     n_enriched = sum(1 for q in qs if q.get("enrichment"))
     print(f"✓ 题库      {doc['bank']['slug']}  (bank_id={bank_id})")
     print(f"✓ 题目      {len(qs)}   其中已富化 {n_enriched}")
+    for loc, (a, b, c, complete) in sorted(n_i18n.items()):
+        flag = "" if complete else "   ⚠ 部分译文（complete=false）"
+        print(f"✓ 译文 {loc}    题干 {a} · 选项 {b} · 解析 {c}{flag}")
     print(f"✓ 选项      {n_ch}")
     print(f"✓ 答案主张  {n_cl}")
     print(f"✓ 解析      {n_ex}")

@@ -1,8 +1,11 @@
 import Link from "next/link";
 import Image from "next/image";
 import logo from "../../icon.png";
+import { getTranslations } from "next-intl/server";
 
-export const metadata = { title: "找回密码" };
+export async function generateMetadata() {
+  return { title: (await getTranslations("forgot"))("title") };
+}
 
 /**
  * 找回密码 —— 与登录页同在墙外。
@@ -18,6 +21,7 @@ export default async function ForgotPage({
   searchParams,
 }: { searchParams: Promise<{ sent?: string; n?: string }> }) {
   const sp = await searchParams;
+  const t = await getTranslations("forgot");
   const sent = sp.sent === "1";
   const bad = sp.n === "bad";
   const rate = sp.n === "rate";
@@ -25,49 +29,46 @@ export default async function ForgotPage({
   return (
     <div className="mx-auto flex max-w-sm flex-col items-center pt-14">
       <Image src={logo} alt="" width={48} height={48} priority />
-      <h1 className="display mt-4 text-xl tracking-wide">找回密码</h1>
+      <h1 className="display mt-4 text-xl tracking-wide">{t("title")}</h1>
 
       {sent ? (
         <>
           {/* ⛔ 这段文案对「有账号」与「没账号」是同一份 —— 有意如此。 */}
           <p className="mt-8 max-w-[20rem] text-center text-[0.85rem] leading-[1.9] text-muted">
-            如果这个邮箱在 Melete 有账号，验证码已经发过去了。
+            {t("sent")}
             <br />
-            <span className="text-[0.78rem]">
-              ⚠️ 没收到不一定是发错了 —— 用 Akasha 登录的账号没有本站验证过的邮箱，
-              这条路对它们不适用。
-            </span>
+            <span className="text-[0.78rem]">{t("sentNote")}</span>
           </p>
           <form method="POST" action="/auth/recover" className="mt-8 w-full space-y-3">
             <input type="hidden" name="step" value="reset" />
-            <input name="email" type="email" required placeholder="邮箱"
+            <input name="email" type="email" required placeholder={t("email")}
                    className="w-full rounded-md border border-line bg-surface px-3 py-2.5 text-sm outline-none focus:border-muted" />
-            <input name="code" required inputMode="numeric" placeholder="6 位验证码"
+            <input name="code" required inputMode="numeric" placeholder={t("code")}
                    className="w-full rounded-md border border-line bg-surface px-3 py-2.5 text-sm outline-none focus:border-muted" />
-            <input name="password" type="password" required autoComplete="new-password" placeholder="新密码（至少 8 位）"
+            <input name="password" type="password" required autoComplete="new-password" placeholder={t("newPassword")}
                    className="w-full rounded-md border border-line bg-surface px-3 py-2.5 text-sm outline-none focus:border-muted" />
-            {bad && <p className="text-xs" style={{ color: "var(--color-warn)" }}>验证码无效或已过期，或新密码不合要求。</p>}
+            {bad && <p className="text-xs" style={{ color: "var(--color-warn)" }}>{t("bad")}</p>}
             <button type="submit" className="w-full rounded-md px-4 py-2.5 text-sm font-medium"
                     style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}>
-              重置密码
+              {t("reset")}
             </button>
           </form>
         </>
       ) : (
         <form method="POST" action="/auth/recover" className="mt-10 w-full space-y-3">
           <input type="hidden" name="step" value="send" />
-          <input name="email" type="email" required autoComplete="email" placeholder="邮箱"
+          <input name="email" type="email" required autoComplete="email" placeholder={t("email")}
                  className="w-full rounded-md border border-line bg-surface px-3 py-2.5 text-sm outline-none focus:border-muted" />
-          {rate && <p className="text-xs" style={{ color: "var(--color-warn)" }}>发送过于频繁，请稍后再试。</p>}
+          {rate && <p className="text-xs" style={{ color: "var(--color-warn)" }}>{t("rate")}</p>}
           <button type="submit" className="w-full rounded-md px-4 py-2.5 text-sm font-medium"
                   style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}>
-            发送验证码
+            {t("send")}
           </button>
         </form>
       )}
 
       <p className="mt-8 text-xs text-muted">
-        <Link href="/auth/login" className="underline underline-offset-4">← 回到登录</Link>
+        <Link href="/auth/login" className="underline underline-offset-4">{t("backToLogin")}</Link>
       </p>
     </div>
   );

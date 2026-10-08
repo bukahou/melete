@@ -22,6 +22,8 @@
     }
   },
   "pass_score": 720,
+  "exam_questions": 65,
+  "group_size": 100,
   "max_score": 1000,
   "domains": {
     "1": "Design Secure Architectures",

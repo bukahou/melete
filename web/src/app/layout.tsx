@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import Image from "next/image";
-import logo from "./icon.png";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getTranslations } from "next-intl/server";
 import { Noto_Serif_SC } from "next/font/google";
-import { LogOut } from "lucide-react";
 import { readAccessToken } from "@/lib/session";
+import { SideNav } from "@/components/SideNav";
+import type { Locale } from "@/i18n/locales";
+import { cookies } from "next/headers";
+import { DEFAULT_THEME, THEME_COOKIE, isTheme } from "@/lib/theme";
 import "./globals.css";
 
 const notoSerif = Noto_Serif_SC({
@@ -14,72 +16,52 @@ const notoSerif = Noto_Serif_SC({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: { default: "Melete — 练习与修习", template: "%s · Melete" },
-  description: "题库驱动的学习平台。题目是第一等公民，答案是一组带来源的主张。",
-};
+// ⚠️ metadata 也要跟着语言走 —— 标题会进浏览器标签页与分享卡片。
+// 用 generateMetadata（函数）而不是常量：常量在构建期求值，拿不到请求的语言。
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("brand");
+  return {
+    title: { default: t("metaTitle"), template: "%s · Melete" },
+    description: t("metaDescription"),
+  };
+}
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // 登录态只用于决定是否显示登出入口；用户名从 token 的 cookie 拿不到，
-  // 显示名改由页面按需取（避免每个页面都为了 header 多打一次 API）
+  // 登录态决定是否显示导航（侧栏）；用户名从 token 的 cookie 拿不到，
+  // 显示名改由页面按需取（避免每个页面都为了导航多打一次 API）
   const signedIn = Boolean(await readAccessToken());
+  // ⭐ lang 属性不是装饰：读屏软件靠它选发音，浏览器靠它选断行与字体回退。
+  // 中日共用大量汉字，标错了日文会被用中文字形渲染 —— 这是肉眼可见的错。
+  const locale = (await getLocale()) as Locale;
+  const t = await getTranslations();
+  const themeCookie = (await cookies()).get(THEME_COOKIE)?.value;
+  const theme = isTheme(themeCookie) ? themeCookie : DEFAULT_THEME;
   return (
-    <html lang="zh-CN" className={notoSerif.variable}>
-      <body className="flex min-h-screen flex-col overflow-x-clip">
-        <header className="border-b border-line">
-          <div className="mx-auto flex w-full max-w-[1400px] items-baseline gap-6 px-6 py-5">
-            <Link href="/" className="group flex items-center gap-2.5">
-              {/* 与 atlantis / geass 同形状的作品系列标识，配色取 melete 的题库赭 */}
-              <Image src={logo} alt="" width={26} height={26} priority className="translate-y-px" />
-              <span className="display text-lg tracking-wide">Melete</span>
-            </Link>
-            <span className="hidden text-xs tracking-wide text-muted sm:inline">练习与修习</span>
-            <nav className="ml-auto flex items-baseline gap-5 text-sm">
-              <Link href="/" className="text-muted transition-colors hover:text-ink">
-                首页
-              </Link>
-              {signedIn && (
-                <Link href="/me" className="text-muted transition-colors hover:text-ink">
-                  我的
-                </Link>
-              )}
-              {signedIn && (
-                <Link href="/settings" className="text-muted transition-colors hover:text-ink">
-                  设置
-                </Link>
-              )}
-              {signedIn && (
-                <span className="flex items-baseline gap-3">
-                  <a
-                    href="/auth/logout"
-                    title="登出"
-                    className="translate-y-0.5 text-muted transition-colors hover:text-ink"
-                  >
-                    <LogOut size={13} />
-                  </a>
-                </span>
-              )}
-            </nav>
+    <html lang={locale} data-theme={theme} className={notoSerif.variable}>
+      <body className="min-h-screen overflow-x-clip">
+        <NextIntlClientProvider>
+        {signedIn ? (
+          // ⭐ 版式参照 it-pass（2026-10-08 用户裁定）：左侧栏 + 浅彩色整页铺底，⛔ 没有顶栏与页脚
+          <div className="flex min-h-screen">
+            <SideNav
+              locale={locale}
+              version={process.env.APP_VERSION ?? "dev"}
+              labels={{
+                home: t("nav.home"), history: t("nav.history"), glossary: t("nav.glossary"),
+                bookmarks: t("nav.bookmarks"), mine: t("common.mine"), settings: t("common.settings"),
+                logout: t("common.logout"), soon: t("nav.soon"),
+              }}
+            />
+            {/* pb-24：手机上给底部标签栏让位 */}
+            <main className="min-w-0 flex-1 px-5 pb-24 pt-6 md:px-8 md:pb-10">
+              <div className="mx-auto w-full max-w-[1000px]">{children}</div>
+            </main>
           </div>
-        </header>
-
-        <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-12">{children}</main>
-
-        <footer className="border-t border-line">
-          <div className="mx-auto flex w-full max-w-[1400px] flex-wrap items-baseline gap-x-6 gap-y-1 px-6 py-6 text-xs text-muted">
-            <span className="display text-sm">Μελέτη</span>
-            <span>司「练习、修习」的缪斯</span>
-            {/* ⭐ 版本号 = 镜像 tag，由 CI 经 build-arg 落成运行时 ENV。
-                本 layout 是 async server component 且已因读 cookie 而动态渲染，
-                所以这里读到的是【运行时】的值，⛔ 不是 build 期被内联的常量。
-                ⚠️ 显示它的意义不只是好看：打开页面就能回答「线上跑的到底是哪个 commit」——
-                在 dev / prod 两套环境并存时，这是最省事的一条自证。 */}
-            <span className="font-mono opacity-70" title="镜像 tag">
-              {process.env.APP_VERSION ?? "dev"}
-            </span>
-            <span className="ml-auto">被动阅读不产生学习，主动回忆才产生</span>
-          </div>
-        </footer>
+        ) : (
+          // 未登录（登录 / 找回密码）：没有导航可去，只留居中的内容
+          <main className="mx-auto w-full max-w-4xl px-6 py-12">{children}</main>
+        )}
+        </NextIntlClientProvider>
       </body>
     </html>
   );

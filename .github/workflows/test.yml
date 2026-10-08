@@ -95,7 +95,7 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
-      - name: 建表（19 张，与生产同一份 schema.sql）
+      - name: 建表（21 张，与生产同一份 schema.sql）
         run: |
           mysql -h 127.0.0.1 -P 3306 -uroot -pci-root-not-a-real-secret melete_test < db/schema.sql
           n=$(mysql -h 127.0.0.1 -P 3306 -uroot -pci-root-not-a-real-secret melete_test -N -B \

@@ -331,8 +331,8 @@ export interface paths {
         /**
          * 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
          * @description ⭐ 2026-09-08 起：作答在**揭晓答案那一刻**就记录，⛔ 不再依赖自评。
-         *     rating 不再必填 —— 不评分也留下完整的一条 attempt（对错、用时、出处）。
-         *     自评是可选增强，通过 `PATCH /attempts/{id}` 补上，届时才驱动 FSRS 卡片调度。
+         *     ⭐ 2026-10-08（P9 #16）起：不带 rating 时 FSRS 由服务端**按对错代为打分**
+         *     （对 = Good，错 = Again）并排卡片；代打的分⛔ 不写进 attempt.rating。
          */
         post: operations["recordAttempt"];
         delete?: never;
@@ -355,8 +355,10 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * 给一条已记录的作答补上自评（驱动 FSRS 卡片调度）
-         * @description 只更新自己的 attempt（服务端按会话账号校验归属）。补上 rating 后才排卡片、返回调度结果。
+         * 给一条已记录的作答补上自评（只记录，⛔ 不再推进卡片）
+         * @description 只更新自己的 attempt（服务端按会话账号校验归属）。
+         *     ⚠️ 2026-10-08（P9 #16）起只写 attempt.rating：卡片已在 POST 时按对错排过，
+         *     再推进一次会让同一次作答被调度两遍。界面已不提供自评，本端点为兼容保留。
          */
         patch: operations["rateAttempt"];
         trace?: never;
@@ -373,6 +375,54 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/bank": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 当前题库（首页显示哪一个）
+         * @description P9 #2 #14：当前题库跟着账号走（换设备 / iOS 看到同一个）。决定顺序：
+         *     `chosen` 用户在设置里选过的 → `recent` 没选过但有作答，取最近作答的题库 →
+         *     `none` 都没有（新用户），此时 bankSlug 缺省，界面引导去设置选。
+         *     ⛔ `recent` 只是推出来的，**不会**被写回成 chosen。
+         */
+        get: operations["getMyBank"];
+        /** 切换当前题库（设置页） */
+        put: operations["chooseMyBank"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/bookmarks/{questionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                questionId: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 收藏一题（P9
+         * @description 幂等：已收藏再 PUT 仍是 204。收藏是「答题时不懂、靠猜」的自选标记 ——
+         *     去掉自评之后，「蒙对的题」系统看不出来，靠它补。可选，不用的人不受任何影响。
+         */
+        put: operations["addBookmark"];
+        post?: never;
+        /** 取消收藏（幂等：本来没收藏也是 204） */
+        delete: operations["removeBookmark"];
         options?: never;
         head?: never;
         patch?: never;
@@ -528,6 +578,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/banks/{slug}/questions/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 一个题目集合的本轮小结（P9
+         * @description 条件与 `GET /banks/{slug}/questions` 完全相同（同一套过滤，⛔ 不另写一份）。
+         *     answered / correct 按**每题最近一次作答**算 —— 回答的是「这一组我现在会多少」，
+         *     ⛔ 不存「一轮」这个状态（学习侧只存事实）。需要会话。
+         */
+        get: operations["summarizeQuestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/questions/{id}": {
         parameters: {
             query?: never;
@@ -564,6 +636,12 @@ export interface components {
             /** @description 总作答次数（含重做） */
             attemptCount: number;
             /**
+             * @description 作答为对的次数（含重做）。练习正确率 = attemptCorrectCount / attemptCount。
+             *     ⚠️ 与「当前掌握率」= correctCount / seenCount（每题只看最近一次）是**两个口径**（P9 #9）：
+             *     前者回答「我练得怎么样」，后者回答「现在去考能不能过」。
+             */
+            attemptCorrectCount: number;
+            /**
              * @description FSRS 复习队列里已到期的题数。
              *     ⚠️ **不含从没做过的题** —— 那些题没有卡片，属于「没做过」入口。
              *     两者混进一个数字，「今天要复习 300 题」就失去意义了，
@@ -572,6 +650,15 @@ export interface components {
             dueCount: number;
             /** Format: date-time */
             lastActiveAt?: string;
+        };
+        CurrentBank: {
+            /** @description source 为 none 时缺省 */
+            bankSlug?: string;
+            /**
+             * @description chosen = 设置里选的 · recent = 没选过，按最近作答推出 · none = 都没有
+             * @enum {string}
+             */
+            source: "chosen" | "recent" | "none";
         };
         TagStat: {
             /** Format: int64 */
@@ -600,6 +687,33 @@ export interface components {
             bankSlug: string;
             sequential: components["schemas"]["SequentialCursor"];
             focus?: components["schemas"]["FocusCursor"];
+            cursor?: components["schemas"]["DrillCursor"];
+        };
+        /**
+         * @description P9 #13 单一继续槽位：这个题库里**最近一次作答**的入口，以及该从第几题接着做。
+         *     最后一次的入口覆盖之前的。从没作答过时缺省。
+         */
+        DrillCursor: {
+            context: components["schemas"]["DrillContext"];
+            /** Format: date-time */
+            lastAt: string;
+            /**
+             * @description 接着做的位置（该入口集合里的 offset）。
+             *     按题号 / 按种子的集合 = 上次那题的下一题；会缩短的集合（wrong / unseen / due）恒为 0。
+             */
+            offset: number;
+            /** @description 该入口集合现在的大小 */
+            total: number;
+            /** @description 按顺序的集合已经做到最后一题（「继续」应给本轮小结而不是下一题） */
+            finished: boolean;
+        };
+        SetSummary: {
+            /** @description 集合大小 */
+            total: number;
+            /** @description 其中做过的题数 */
+            answered: number;
+            /** @description 其中最近一次作答为对的题数 */
+            correct: number;
         };
         Overview: {
             /** @description 今天的作答次数 */
@@ -654,15 +768,45 @@ export interface components {
             /** Format: date-time */
             lastAt: string;
         };
-        /** @description 一次作答的出处 —— 用户是从哪个入口做的这道题 */
+        /**
+         * @description 一次作答的出处 —— 用户是从哪个入口做的这道题。
+         *     ⭐ 它必须足以**重建那个入口**：首页「继续」只从最近一条作答推出来（P9 #13），不存游标表。
+         *
+         *     P9 的四个入口（mode）：
+         *     · year   —— 4.1 一套卷子（session）或一组题号（noFrom–noTo），按题号全部出
+         *     · domain —— 4.2 一个考纲域 / 分组 / topic（tagIds 并集），按题号全部出
+         *     · pick   —— 4.3 状态 ∧ 标签并集 ∧ 卷子/题号段
+         *     · random —— 4.4 seed 固定打乱，取前 count 题
+         *     其余 mode（all / unseen / wrong / unsure / contested / tag / due）是 P9 之前的入口，旧记录照常解析。
+         */
         DrillContext: {
             /** @enum {string} */
-            mode: "all" | "unseen" | "wrong" | "unsure" | "contested" | "tag" | "due";
+            mode: "all" | "unseen" | "wrong" | "unsure" | "contested" | "tag" | "due" | "year" | "domain" | "pick" | "random";
             /**
              * Format: int64
-             * @description mode=tag 时必填
+             * @description mode=tag 时必填（旧入口）
              */
             tagId?: number;
+            /** @description 标签并集（domain / pick） */
+            tagIds?: number[];
+            /** @description 卷子（year / pick） */
+            session?: string;
+            /** @description 题号下限（year / pick） */
+            noFrom?: number;
+            /** @description 题号上限（year / pick） */
+            noTo?: number;
+            /**
+             * @description pick 的状态条件。wrong / unseen 是【会缩短】的集合 —— 做完就离开
+             * @enum {string}
+             */
+            status?: "all" | "wrong" | "unseen" | "bookmarked" | "contested";
+            /**
+             * Format: int64
+             * @description random / pick 的打乱种子（pick 可选：4.3 列表「打乱顺序」）
+             */
+            seed?: number;
+            /** @description random 一轮的题数 */
+            count?: number;
         };
         AttemptInput: {
             /** Format: int64 */
@@ -836,6 +980,34 @@ export interface components {
             passScore?: number;
             /** @description 满分 */
             maxScore?: number;
+            /** @description 合格判断的安全线（正确率 %）= 及格线换算成正确率 + 10 个点。无则不做合格判断 */
+            safetyRate?: number;
+            /** @description 一场正式考试的题数。作答不足这个数之前不给合格判断 */
+            examQuestions?: number;
+            /** @description 顺序练习每组多少题 */
+            groupSize?: number;
+            /** @description session → { locale → 显示名 }（如 2026r08 → 令和8年度）。没有则显示 session 原文 */
+            sessionLabels?: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+            /**
+             * @description domain › 分组 › topic 的展示树。没有则 topic 平铺。
+             *     题目只挂叶子 topic；分组不是标签，选中分组 = 它下面那几个 topic。
+             *     ⚠️ 树描述的是考纲：可能含题库里没有题的 topic（库里也就没有对应的 tag）。
+             */
+            topicTree?: components["schemas"]["TopicTreeDomain"][];
+        };
+        TopicTreeDomain: {
+            /** @description domain 标签的 value，如 domain-1 */
+            domain: string;
+            groups: {
+                /** @description 分组显示名（题库自己的语言） */
+                name: string;
+                /** @description topic 标签的 value */
+                topics: string[];
+            }[];
         };
         TagTypeMeta: {
             /** @description locale → 该标签轴的显示名 */
@@ -858,6 +1030,16 @@ export interface components {
             enrichedCount: number;
             /** @description 题库标注与社区投票不一致的题数 */
             contestedCount: number;
+            /** @description 卷子（question.session）及各自题数。单套题库只有一项且 session 为空串 */
+            sessions?: components["schemas"]["BankSession"][];
+        };
+        BankSession: {
+            session: string;
+            questionCount: number;
+            /** @description 最小原题号 */
+            noFrom: number;
+            /** @description 最大原题号 */
+            noTo: number;
         };
         /** @description 通用 (type, value) 结构，不硬编码任何特定题库的分类体系 */
         Tag: {
@@ -877,6 +1059,12 @@ export interface components {
             /** @example A */
             label: string;
             body: string;
+            /**
+             * @description body 是否为请求语言的译文。**false 表示回退到了源语言原文**，
+             *     界面必须把这件事显示出来，⛔ 不静默回退。
+             *     选项与题干各自独立（可能只补了题干），所以各带各的标记。
+             */
+            localized?: boolean;
         };
         /**
          * @description 一条带来源的答案主张。同一道题可以有多条，**故意不做合并**。
@@ -912,6 +1100,10 @@ export interface components {
             id: number;
             /** @description 原题号，用于溯源 */
             externalNo: number;
+            /** @description 我最近一次作答这题是否答对；没做过（或未登录）时缺省。列表据此打 ✓ / ✕ */
+            lastCorrect?: boolean;
+            /** @description 我是否收藏了这题（P9 */
+            bookmarked?: boolean;
             stem: string;
             /** @enum {string} */
             kind: "single" | "multi";
@@ -920,9 +1112,21 @@ export interface components {
             contested: boolean;
             /** @description 是否已完成 AI 富化 */
             enriched: boolean;
+            /**
+             * @description stem 是否为请求语言（Accept-Language 协商结果）的译文。
+             *     **false 表示回退到了源语言原文** —— 与 `sourceLocale` 比对后决定是否标注
+             *     「本题暂无该语言版本」。请求源语言本身时同样是 false（那本就不是译文）。
+             */
+            localized?: boolean;
         };
         QuestionDetail: components["schemas"]["QuestionSummary"] & {
             bankSlug: string;
+            /**
+             * @description 题库正文的源语言。⭐ 带上它，界面才能把「没有译文」与
+             *     「请求的就是源语言」区分开 —— 只看 localized 两者都是 false。
+             * @example zh
+             */
+            sourceLocale?: string;
             reference?: components["schemas"]["Reference"];
             /** @description 题目本身有缺陷时的说明（题库脏点），正常不出现 */
             dataIssue?: string;
@@ -961,7 +1165,27 @@ export interface components {
         };
     };
     parameters: {
-        /** @description 题库 slug；缺省 = 当前题库（现阶段为第一个题库） */
+        /** @description 只要这一套卷子（question.session）。单套题库的 session 是空串 */
+        SessionQuery: string;
+        /** @description 原题号下限（含）。4.1 无年度的题库按题号分组用 */
+        NoFromQuery: number;
+        /** @description 原题号上限（含） */
+        NoToQuery: number;
+        /**
+         * @description 标签 id，可重复；**命中任意一个即可（并集）**。
+         *     ⚠️ 与 `tag`（交集）是两个参数：选一个大分類 = 它下面几个中分類的并集。
+         */
+        AnyTagQuery: number[];
+        /** @description 只要我收藏了的题（需要会话） */
+        BookmarkedQuery: boolean;
+        /**
+         * @description 给了就按种子**固定打乱**（同一个种子永远同一个顺序 —— 每题一次页面跳转，刷新/后退不能换题）。
+         *     ⚠️ 与 mode=due 互斥：复习队列按到期时间排。
+         */
+        SeedQuery: number;
+        /** @description 集合只取（排序后的）前 N 题 —— 4.4 随机一轮 10 题就是 seed + take=10 */
+        TakeQuery: number;
+        /** @description 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库） */
         BankQuery: string;
         /** @description 题库 slug，如 aws-saa-c03 */
         Slug: string;
@@ -1521,7 +1745,7 @@ export interface operations {
     getMyProgress: {
         parameters: {
             query?: {
-                /** @description 题库 slug；缺省 = 当前题库（现阶段为第一个题库） */
+                /** @description 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库） */
                 bank?: components["parameters"]["BankQuery"];
             };
             header?: never;
@@ -1541,10 +1765,96 @@ export interface operations {
             };
         };
     };
+    getMyBank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentBank"];
+                };
+            };
+        };
+    };
+    chooseMyBank: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    bankSlug: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 已切换 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                questionId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已收藏 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                questionId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已取消 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     getMyTagStats: {
         parameters: {
             query: {
-                /** @description 题库 slug；缺省 = 当前题库（现阶段为第一个题库） */
+                /** @description 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库） */
                 bank?: components["parameters"]["BankQuery"];
                 type: "domain" | "topic" | "concept";
                 /** @description 至少做过几道才纳入（样本太小的标签正确率没有意义） */
@@ -1612,7 +1922,7 @@ export interface operations {
     getMyResume: {
         parameters: {
             query?: {
-                /** @description 题库 slug；缺省 = 当前题库（现阶段为第一个题库） */
+                /** @description 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库） */
                 bank?: components["parameters"]["BankQuery"];
             };
             header?: never;
@@ -1723,6 +2033,26 @@ export interface operations {
                  *     ⚠️ due 按【到期时间】升序返回，其余模式按原题号 —— 复习队列不是浏览列表。
                  */
                 mode?: "wrong" | "unsure" | "unseen" | "due";
+                /** @description 只要这一套卷子（question.session）。单套题库的 session 是空串 */
+                session?: components["parameters"]["SessionQuery"];
+                /** @description 原题号下限（含）。4.1 无年度的题库按题号分组用 */
+                noFrom?: components["parameters"]["NoFromQuery"];
+                /** @description 原题号上限（含） */
+                noTo?: components["parameters"]["NoToQuery"];
+                /**
+                 * @description 标签 id，可重复；**命中任意一个即可（并集）**。
+                 *     ⚠️ 与 `tag`（交集）是两个参数：选一个大分類 = 它下面几个中分類的并集。
+                 */
+                anyTag?: components["parameters"]["AnyTagQuery"];
+                /** @description 只要我收藏了的题（需要会话） */
+                bookmarked?: components["parameters"]["BookmarkedQuery"];
+                /**
+                 * @description 给了就按种子**固定打乱**（同一个种子永远同一个顺序 —— 每题一次页面跳转，刷新/后退不能换题）。
+                 *     ⚠️ 与 mode=due 互斥：复习队列按到期时间排。
+                 */
+                seed?: components["parameters"]["SeedQuery"];
+                /** @description 集合只取（排序后的）前 N 题 —— 4.4 随机一轮 10 题就是 seed + take=10 */
+                take?: components["parameters"]["TakeQuery"];
                 limit?: number;
                 offset?: number;
             };
@@ -1742,6 +2072,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QuestionPage"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    summarizeQuestions: {
+        parameters: {
+            query?: {
+                tag?: number[];
+                contested?: boolean;
+                mode?: "wrong" | "unsure" | "unseen" | "due";
+                /** @description 只要这一套卷子（question.session）。单套题库的 session 是空串 */
+                session?: components["parameters"]["SessionQuery"];
+                /** @description 原题号下限（含）。4.1 无年度的题库按题号分组用 */
+                noFrom?: components["parameters"]["NoFromQuery"];
+                /** @description 原题号上限（含） */
+                noTo?: components["parameters"]["NoToQuery"];
+                /**
+                 * @description 标签 id，可重复；**命中任意一个即可（并集）**。
+                 *     ⚠️ 与 `tag`（交集）是两个参数：选一个大分類 = 它下面几个中分類的并集。
+                 */
+                anyTag?: components["parameters"]["AnyTagQuery"];
+                /** @description 只要我收藏了的题（需要会话） */
+                bookmarked?: components["parameters"]["BookmarkedQuery"];
+                /**
+                 * @description 给了就按种子**固定打乱**（同一个种子永远同一个顺序 —— 每题一次页面跳转，刷新/后退不能换题）。
+                 *     ⚠️ 与 mode=due 互斥：复习队列按到期时间排。
+                 */
+                seed?: components["parameters"]["SeedQuery"];
+                /** @description 集合只取（排序后的）前 N 题 —— 4.4 随机一轮 10 题就是 seed + take=10 */
+                take?: components["parameters"]["TakeQuery"];
+            };
+            header?: never;
+            path: {
+                /** @description 题库 slug，如 aws-saa-c03 */
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetSummary"];
                 };
             };
             404: components["responses"]["NotFound"];

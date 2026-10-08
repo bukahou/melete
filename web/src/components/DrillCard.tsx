@@ -3,44 +3,26 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Check, X } from "lucide-react";
-import { SOURCE_LABEL, type Choice, type DrillContext, type Reference, type ScheduleResult } from "@/lib/claims";
+import { useTranslations } from "next-intl";
+import type { Choice, DrillContext, Reference } from "@/lib/claims";
 import { QuestionBody } from "./QuestionBody";
 
 /**
- * 刷题卡片：作答 → 揭晓（**此刻即落库**）→ 四键自评（可选）。
+ * 刷题卡片：作答 → 揭晓（**此刻即落库**）→ 答案主张 + 解析 → 下一题。
  *
- * ## ⭐ 2026-09-08：保存从「自评」解绑到「揭晓」
+ * ## ⭐ 2026-10-08（P9 #15）：去掉自评
  *
- * 旧版是「点了自评才落记录」，理由是「作答+自评是一条完整的 attempt，不拆两次写」。
- * ⚠️ 那条理由在数据上被证伪了：一个用户连续多天在用，attempt 表一条都没有 ——
- * 她答完看一眼答案就翻页，从不点自评。界面上她看到的是「每天打开都从头开始」，
- * 库里是 0 行，两边都不报错。
+ * 用户裁定：「不再需要判断懂不懂。因此没有人会用。」—— 9/8 那次已实证：
+ * 一个用户连续多天在用却从不点自评。界面上的四键自评就此移除。
  *
- * ⇒ **作答本身就是事实**（答对没、用了多久、从哪个入口来），
- *   它不该依赖一个可选的后续动作才能存活。
- *   自评是增强（驱动 FSRS 调度），⛔ 不是保存的前提。
+ * FSRS 搁置但算法保留：后端在记录作答时按对错代为打分（对 Good / 错 Again），
+ * 卡片照常在后台推进，界面上什么都不显示（见 backend study.RecordAttempt）。
  *
- * 现在：揭晓 → POST /api/attempts（rating 留空）→ 拿到 attemptId；
- *       点自评 → PATCH /api/attempts/{id} → 排卡片、返回「下次何时再见」。
+ * ## 2026-09-08 起不变的一条：作答本身就是事实
+ *
+ * 揭晓那一刻就 POST /api/attempts 落库，⛔ 不依赖任何后续动作才能存活。
+ * 记录失败与会话过期**必须**显示出来 —— 那是「这题没记上」的唯一信号。
  */
-
-const RATINGS: Array<{ value: number; label: string; hint: string; color: string }> = [
-  { value: 1, label: "不会", hint: "Again", color: "var(--color-warn)" },
-  { value: 2, label: "模糊", hint: "Hard", color: "var(--color-src-bank)" },
-  { value: 3, label: "掌握", hint: "Good", color: "var(--color-ok)" },
-  { value: 4, label: "轻松", hint: "Easy", color: "var(--color-src-community)" },
-];
-
-/** nextLine 把「下次什么时候再见」说成人话。 */
-function nextLine(s: ScheduleResult): string {
-  const ms = new Date(s.due).getTime() - Date.now();
-  if (ms <= 0) return "已记录。这题还没稳，稍后会再出现。";
-  const mins = Math.round(ms / 60_000);
-  if (mins < 60) return `已记录。约 ${mins} 分钟后再见到它。`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `已记录。约 ${hours} 小时后再见到它。`;
-  return `已记录。约 ${Math.round(hours / 24)} 天后再见到它。`;
-}
 
 export function DrillCard({
   questionId,
@@ -73,20 +55,16 @@ export function DrillCard({
   nav: { prevHref?: string; skipHref?: string; nextHref?: string; shrinking: boolean };
   children: React.ReactNode;
 }) {
+  const t = useTranslations("drill");
+  const source = useTranslations("source");
   const [picked, setPicked] = useState<string[]>([]);
-  const [rated, setRated] = useState<number | null>(null);
-  const [schedule, setSchedule] = useState<ScheduleResult | null>(null);
   // ⚠️ expired 与 failed 分开：会话过期时重试【永远不会成功】，
   // 而原来两者都显示「记录失败了，可以重试」—— 用户会反复点，
   // 每一题都记不上，且完全不知道原因（刷了半小时白刷）。
   //
-  // ⭐ saveState 现在描述的是【这次作答有没有被记下来】（揭晓时决定），
-  //    ⛔ 不再是「自评有没有提交成功」。
+  // ⭐ saveState 描述的是【这次作答有没有被记下来】（揭晓时决定）。
   const [saveState, setSaveState] =
     useState<"idle" | "saving" | "saved" | "failed" | "expired">("idle");
-  // 自评是可选的第二步，单独一套状态 —— 自评失败⛔不代表作答没记下来。
-  const [rateState, setRateState] = useState<"idle" | "saving" | "done" | "failed">("idle");
-  const attemptId = useRef<number | null>(null);
   const startedAt = useRef(Date.now());
 
   const chosen = picked.join("");
@@ -132,14 +110,12 @@ export function DrillCard({
         body: JSON.stringify({
           questionId,
           chosen,
-          // ⛔ 不带 rating：这一步只记录「答了什么、对不对」
+          // ⛔ 不带 rating：自评已从界面移除，FSRS 由后端按对错代打
           durationMs: Date.now() - startedAt.current,
           context,
         }),
       });
       if (res.ok) {
-        const body = (await res.json().catch(() => null)) as { attemptId?: number } | null;
-        attemptId.current = body?.attemptId ?? null;
         setSaveState("saved");
       } else {
         // 401 = 会话过期（BFF 在转发前先查了会话）。重试无用，只能重新登录。
@@ -147,31 +123,6 @@ export function DrillCard({
       }
     } catch {
       setSaveState("failed");
-    }
-  }
-
-  /** 自评：给已记录的作答补 rating，换回 FSRS 调度结果。⛔ 失败不影响作答已被记录。 */
-  async function rate(rating: number) {
-    if (rateState === "saving" || rateState === "done") return;
-    setRated(rating);
-    // 作答还没记上（还在飞 / 失败 / 过期）就没有可补的对象
-    if (saveState !== "saved" || attemptId.current == null) return;
-    setRateState("saving");
-    try {
-      const res = await fetch(`/api/attempts/${attemptId.current}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ rating }),
-      });
-      if (res.ok) {
-        const body = (await res.json().catch(() => null)) as { schedule?: ScheduleResult } | null;
-        setSchedule(body?.schedule ?? null);
-        setRateState("done");
-      } else {
-        setRateState("failed");
-      }
-    } catch {
-      setRateState("failed");
     }
   }
 
@@ -190,7 +141,7 @@ export function DrillCard({
       {!revealed ? (
         pickCount === 1 ? (
           // 单选：没有需要点的东西，只提示
-          <p className="text-sm text-muted">选一个答案</p>
+          <p className="text-sm text-muted">{t("pickOne")}</p>
         ) : (
           // 多选：留一次确认，在此之前可以随意改选
           <button
@@ -200,7 +151,7 @@ export function DrillCard({
             className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium transition-opacity disabled:opacity-35"
             style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
           >
-            {ready ? `提交这 ${pickCount} 项` : `请选 ${pickCount} 项（已选 ${picked.length}）`}
+            {ready ? t("submitN", { n: pickCount }) : t("needN", { n: pickCount, picked: picked.length })}
           </button>
         )
       ) : (
@@ -210,15 +161,14 @@ export function DrillCard({
               用户选完答案看不到任何反馈，会以为界面坏了。
               判不了对错要明说，这跟「不偷偷改调度」是同一条：把状况摆出来。 */}
           {!reference && (
-            <div className="rounded-md border border-line bg-raise p-4 text-sm text-muted"
+            <div className="card p-4 text-sm text-muted"
                  style={{ boxShadow: "inset 3px 0 0 var(--color-muted)" }}>
-              这道题没有任何答案来源，<b className="text-ink">无法判定对错</b> ——
-              素材里就缺，不是你选错了。自评仍会记录，但它不参与正确率统计。
+              {t.rich("noReference", { b: (c) => <b className="text-ink">{c}</b> })}
             </div>
           )}
           {reference && (
             <div
-              className="flex items-center gap-3 rounded-md border border-line bg-raise p-4 text-sm"
+              className="flex items-center gap-3 card p-4 text-sm"
               style={{ boxShadow: `inset 3px 0 0 ${correct ? "var(--color-ok)" : "var(--color-warn)"}` }}
             >
               <span
@@ -231,94 +181,43 @@ export function DrillCard({
                 {correct ? <Check size={14} /> : <X size={14} />}
               </span>
               <span>
-                你选了 <b className="font-mono">{chosen}</b>
+                {t("youPicked")} <b className="font-mono">{chosen}</b>
                 {!correct && (
                   <>
-                    ，参考答案 <b className="font-mono">{reference.answer}</b>
+                    {t("referenceIs")} <b className="font-mono">{reference.answer}</b>
                   </>
                 )}
-                <span className="ml-2 text-xs text-muted">以「{SOURCE_LABEL[reference.source]}」为准</span>
+                <span className="ml-2 text-xs text-muted">
+                  {t("basedOn", { source: source(reference.source) })}
+                </span>
               </span>
             </div>
           )}
 
-          {/* 四键自评 —— ⭐ 可选。作答在揭晓那一刻已经记下来了。 */}
-          <div className="rounded-md border border-line bg-raise p-4">
-            <p className="text-xs text-muted">
-              {saveState === "expired"
-                ? "登录已过期 —— 这一题没有记录下来。"
-                : saveState === "failed"
-                  ? "这一题没能记录下来（网络或服务异常）。"
-                  : saveState === "saving"
-                    ? "正在记录…"
-                    : schedule
-                      ? nextLine(schedule)
-                      : rateState === "failed"
-                        ? "作答已记录；自评没提交上，可以再点一次。"
-                        : "✓ 已记录。想让它进入复习计划的话，评一下掌握程度（可选）"}
+          {/* ⭐ 记录成功时什么都不显示。⛔ 但失败与过期必须显示 ——
+              那是「这题没记上」的唯一信号，去掉它就回到「刷了半天白刷、两边都不报错」的形状。 */}
+          {saveState === "failed" && (
+            <p className="card px-4 py-3 text-xs text-muted"
+               style={{ boxShadow: "inset 3px 0 0 var(--color-warn)" }}>
+              {t("saveFailed")}
             </p>
-            {saveState === "expired" && (
-              <div
-                className="mt-3 rounded-md border px-3 py-2.5 text-[0.8rem]"
-                style={{ borderColor: "var(--color-warn)",
-                         background: "color-mix(in oklab, var(--color-warn) 8%, transparent)" }}
-              >
-                <div className="font-semibold text-ink">重新登录后这一题需要再做一次</div>
-                <p className="mt-1 text-muted">
-                  ⚠️ 继续往下刷也不会被记录。
-                  <Link href="/auth/login" className="ml-1 underline underline-offset-4"
-                        style={{ color: "var(--color-src-community)" }}>
-                    去登录
-                  </Link>
-                </p>
-              </div>
-            )}
-            {/* ⭐ 自评被下调时把理由摆出来，⛔ 不偷偷改调度。
-                与三方答案主张并列展示是同一条哲学：不替学习者下结论，把分歧摆出来。 */}
-            {schedule && schedule.effectiveRating !== schedule.rating && (
-              <div
-                className="mt-3 rounded-md border px-3 py-2.5 text-[0.8rem]"
-                style={{ borderColor: "var(--color-warn)", background: "color-mix(in oklab, var(--color-warn) 8%, transparent)" }}
-              >
-                <div className="font-semibold text-ink">
-                  你按了「{RATINGS[schedule.rating - 1]?.label}」，按「{RATINGS[schedule.effectiveRating - 1]?.label}」安排复习
-                </div>
-                <ul className="mt-1 space-y-0.5 text-muted">
-                  {schedule.reasons.map((r) => (
-                    <li key={r}>· {r}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <div className="mt-3 grid grid-cols-4 gap-2">
-              {RATINGS.map((r) => {
-                const active = rated === r.value;
-                return (
-                  <button
-                    key={r.value}
-                    type="button"
-                    disabled={saveState !== "saved" || rateState === "saving" || rateState === "done"}
-                    onClick={() => rate(r.value)}
-                    className="rounded-md border py-2.5 text-center transition-all disabled:cursor-default"
-                    style={{
-                      borderColor: active ? r.color : "var(--color-line)",
-                      background: active
-                        ? `color-mix(in oklab, ${r.color} 12%, transparent)`
-                        : "transparent",
-                      opacity: rateState === "done" && !active ? 0.35 : 1,
-                    }}
-                  >
-                    <span className="block text-sm font-medium" style={active ? { color: r.color } : undefined}>
-                      {r.label}
-                    </span>
-                    <span className="mt-0.5 block font-mono text-[0.62rem] uppercase tracking-wider text-muted">
-                      {r.hint}
-                    </span>
-                  </button>
-                );
-              })}
+          )}
+          {saveState === "expired" && (
+            <div
+              className="rounded-md border px-4 py-3 text-[0.8rem]"
+              style={{ borderColor: "var(--color-warn)",
+                       background: "color-mix(in oklab, var(--color-warn) 8%, transparent)" }}
+            >
+              <div className="font-semibold text-ink">{t("saveExpired")}</div>
+              <p className="mt-1 text-muted">
+                {t("reloginHint")}
+                <Link href="/auth/login" className="ml-1 underline underline-offset-4"
+                      style={{ color: "var(--color-src-community)" }}>
+                  {t("goLogin")}
+                </Link>
+              </p>
             </div>
-          </div>
+          )}
 
           {children}
         </>
@@ -337,6 +236,7 @@ function DrillNav({
   nav: { prevHref?: string; skipHref?: string; nextHref?: string; shrinking: boolean };
   answered: boolean;
 }) {
+  const t = useTranslations("drill");
   // ⭐ 2026-09-08：`answered` 现在的含义是【这次作答已落库】（揭晓即发生），
   //   ⛔ 不再是「已自评」。所以揭晓之后前进就是正常的下一题，
   //   「跳过（不记录）」只适用于**没答就走**的情况。
@@ -349,7 +249,11 @@ function DrillNav({
   // ⚠️ 只有【会缩短的集合】才用 nextHref（它指向 offset 0）。
   // 普通浏览（无 mode）的下一题永远是 offset+1 —— 那种列表不会缩短。
   // 第一版写成 `nextHref ?? skipHref`，于是普通浏览也跳去了 offset 0。
-  const skipping = nav.shrinking && !answered;
+  // ⭐ 2026-10-08：没作答就前进 = 跳过，【不论集合会不会缩短】。
+  //   原来只在会缩短的集合里降级成「跳过」—— 那时按顺序的集合只有「全部浏览」。
+  //   P9 之后 4.1 / 4.2 / 随机全是按顺序的集合，没答时显示实底「下一题」，
+  //   正是下面那条教训的原形（点了以为前进，其实这题没记）。
+  const skipping = !answered;
   const forward = nav.shrinking ? (answered ? nav.nextHref : nav.skipHref) : nav.skipHref;
   if (!nav.prevHref && !forward) return null;
   return (
@@ -357,7 +261,7 @@ function DrillNav({
       {nav.prevHref ? (
         <Link href={nav.prevHref} className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink">
           <ArrowLeft size={15} />
-          上一题
+          {t("prev")}
         </Link>
       ) : (
         <span />
@@ -367,9 +271,9 @@ function DrillNav({
           <Link
             href={forward}
             className="inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink"
-            title="不做自评就前进，这道题不会进入复习计划"
+            title={t("skipTitle")}
           >
-            跳过（不记录）
+            {t("skip")}
             <ArrowRight size={14} />
           </Link>
         ) : (
@@ -378,7 +282,7 @@ function DrillNav({
             className="inline-flex items-center gap-2 rounded-md px-5 py-2.5 text-sm font-medium"
             style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
           >
-            下一题
+            {t("next")}
             <ArrowRight size={15} />
           </Link>
         )

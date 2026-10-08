@@ -1,23 +1,38 @@
 @import "tailwindcss";
 
 /*
- * Melete 设计系统 —— 编辑风 / 印刷感。
+ * Melete 设计系统（2026-10-08 改版：层级优先）。
  *
- * 立场：学习产品的本质是长时间阅读，所以整个界面向纸面排版看齐 ——
- * 暖纸色底、衬线中文标题、等宽题号与答案字母、hairline 分割线。
- * 数据的呈现遵循 dataviz 规范：来源三色经 validate_palette.js 双模式验证
- * （浅色 worst ΔE 11.3 protan / 深色 9.7，全部 PASS），
- * 且来源身份从不只靠颜色 —— 每处色块旁必有文字标签。
+ * ⭐ 改版起因（用户原话）：「一眼望去有点视觉疲劳…找不到重点」。根因是层级：
+ *   旧版每个标题、每个数字都用最粗的衬线，每块面板都有同样的边框 ——
+ *   所有东西都是重点 = 没有重点。深色底再把亮字的「喊声」放大一档。
+ *
+ * 三条规则（改任何页面前先对照）：
+ *   1. 强调色（accent）只给「能点、且最该点」的东西 —— 一屏最多一处实底
+ *   2. 界面文字一律无衬线、字重 ≤ 600；数字小而安静，统计只是交代现状
+ *   3. 不画面板边框：浅色 tinted 底 + 白卡片 + 间距 来分区（hairline 只留给列表行）
+ *
+ * 深浅色：默认浅色；设置里可选 浅 / 深 / 跟随系统（cookie melete_theme → <html data-theme>）。
+ * 来源三色（题库 / 社区 / AI）与状态色沿用旧版已验证的值，⛔ 不拿来当强调色。
  */
 
 @theme {
-  /* 纸面 */
-  --color-surface: #f9f7f2;
-  --color-raise: #fffefb;
-  --color-ink: #23222b;
-  --color-muted: #6d6a75;
-  --color-line: #e5e1d8;
-  --color-line-2: #efece5;   /* 面板内的行分隔，比外框更淡 */
+  /* ⭐ 2026-10-08（二版）：版式参照 it-pass —— 浅彩色整页铺底 + 左侧栏 + 近白卡片 + 白底描边按钮。
+     颜色用浅青（用户裁定）：⛔ 不用 it-pass 的绿 —— 绿 = 答对；且公开作品集与商业产品同色像仿制。 */
+  --color-surface: #e3f0f0;   /* 页面底：浅青 */
+  --color-rail: #d2e6e7;      /* 左侧栏：比页面深一档 */
+  --color-raise: #f5fafa;     /* 卡片：近白带青 */
+  --color-tile: #ffffff;      /* 卡片里的按钮：纯白，比卡片再亮一档 */
+  --color-ink: #1e2a32;
+  --color-muted: #5a6a72;
+  --color-line: #cfe0e1;
+  --color-line-2: #e2eded;   /* 列表行分隔，比外框更淡 */
+
+  /* 强调色：偏青的蓝。⛔ 不用绿（绿 = 答对）、不用社区蓝（来源色） */
+  --color-accent: #0b7285;      /* 实底 */
+  --color-accent-fg: #ffffff;   /* 实底上的字 */
+  --color-accent-ink: #0b7285;  /* 图标 / 文字 / 描边。浅色下与实底同色，深色下更亮 */
+  --color-accent-soft: #d5ebee; /* 图标底、选中态、侧栏当前项 */
 
   /* 答案主张的来源三色（categorical，已验证） */
   --color-src-bank: #b45f17;
@@ -28,36 +43,64 @@
   --color-ok: #337a4d;
   --color-warn: #b3402e;
 
-  /* 主操作：印刷式的墨色实底 */
-  --color-cta: #23222b;
-  --color-cta-fg: #f9f7f2;
+  /* 主操作 = 强调色（旧代码里的 cta 全部跟着变） */
+  --color-cta: var(--color-accent);
+  --color-cta-fg: var(--color-accent-fg);
 
   --font-serif: var(--font-noto-serif), "Noto Serif CJK SC", "Source Han Serif SC", Georgia, serif;
   --font-mono-x: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
+/*
+ * 深色：⚠️ 不是把浅色反过来。正文对比 ~11:1（旧版 12.7:1 偏刺）；
+ * ⚠️ 实底与图标色在深色下必须分开：亮青实底实测是刺眼点 ——
+ *   实底取沉的 #1a6e7d（字 5.3:1），图标 / 文字取亮的 #5fc0d2。
+ * 两处定义同一组值：显式选深色 / 选「跟随系统」且系统为深色。
+ */
+:root[data-theme="dark"] {
+  --color-surface: #121a1c;
+  --color-rail: #0e1517;
+  --color-raise: #182224;
+  --color-tile: #1e2a2c;
+  --color-ink: #d3dcdd;
+  --color-muted: #8b9a9e;
+  --color-line: #273436;
+  --color-line-2: #1f2b2d;
+  --color-accent: #1a6e7d;
+  --color-accent-fg: #eaf6f8;
+  --color-accent-ink: #5fc0d2;
+  --color-accent-soft: #19343a;
+  --color-src-bank: #cf7f31;
+  --color-src-community: #6394e0;
+  --color-src-ai: #cf6ba6;
+  --color-ok: #5fae7f;
+  --color-warn: #d9705c;
+  color-scheme: dark;
+}
 @media (prefers-color-scheme: dark) {
-  @theme {
-    --color-surface: #1d1d24;
-    --color-raise: #24242c;
-    --color-ink: #ece9e2;
-    --color-muted: #a09da8;
-    --color-line: #35343e;
-    --color-line-2: #2c2b34;
-
+  :root[data-theme="system"] {
+    --color-surface: #121a1c;
+    --color-rail: #0e1517;
+    --color-raise: #182224;
+    --color-tile: #1e2a2c;
+    --color-ink: #d3dcdd;
+    --color-muted: #8b9a9e;
+    --color-line: #273436;
+    --color-line-2: #1f2b2d;
+    --color-accent: #1a6e7d;
+    --color-accent-fg: #eaf6f8;
+    --color-accent-ink: #5fc0d2;
+    --color-accent-soft: #19343a;
     --color-src-bank: #cf7f31;
     --color-src-community: #6394e0;
     --color-src-ai: #cf6ba6;
-
     --color-ok: #5fae7f;
     --color-warn: #d9705c;
-
-    --color-cta: #ece9e2;
-    --color-cta-fg: #1d1d24;
+    color-scheme: dark;
   }
 }
 
-html { color-scheme: light dark; }
+html { color-scheme: light; }
 
 body {
   background: var(--color-surface);
@@ -73,22 +116,58 @@ body {
 
 /* ---- 排版部件 ---- */
 
-/* eyebrow：小型字距标签，节标题的固定形态 */
+/* eyebrow：节标题。⚠️ 旧版是全大写 + 0.18em 字距 —— 对中日文无意义（没有大小写），
+   只会让汉字之间稀稀拉拉，像报纸版面。改成普通字重的小标题。 */
 .eyebrow {
-  font-size: 0.6875rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+  font-size: 0.8125rem;
   color: var(--color-muted);
-  font-weight: 500;
+  font-weight: 600;
 }
 
-/* 衬线 display */
+/* display：界面标题与数字。⚠️ 旧版是 900 衬线 —— 全站「喊」的来源（规则 2）。
+   改成无衬线 600；真正需要大的地方由字号决定，⛔ 不靠字重。 */
 .display {
-  font-family: var(--font-serif);
-  font-weight: 900;
-  letter-spacing: 0.01em;
-  line-height: 1.28;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
   text-wrap: balance;
+}
+
+/* card：分区的唯一形态 —— 近白卡片浮在浅彩色底上，⛔ 不画边框（规则 3） */
+.card {
+  background: var(--color-raise);
+  border-radius: 0.875rem;
+}
+
+/* tile：卡片里的可点按钮（it-pass 式）—— 白底 + 1px 强调色描边。
+   ⭐ 描边是「这里能点」的信号，所以只给按钮，⛔ 不给卡片。 */
+.tile {
+  background: var(--color-tile);
+  border: 1px solid color-mix(in oklab, var(--color-accent-ink) 55%, transparent);
+  border-radius: 0.5rem;
+  color: var(--color-accent-ink);
+  transition: background-color .15s, border-color .15s;
+}
+.tile:hover { border-color: var(--color-accent-ink); background: color-mix(in oklab, var(--color-accent-soft) 45%, var(--color-tile)); }
+
+/* 入口图标的彩色底块（浅彩色，用户裁定）。⚠️ 纯装饰 —— 身份由旁边的文字给，⛔ 颜色不承载含义 */
+.ico { display: inline-flex; align-items: center; justify-content: center; border-radius: 0.625rem; }
+.ico-teal   { background: #d5ebee; color: #0b6a7c; }
+.ico-amber  { background: #fbe9cf; color: #a35a0c; }
+.ico-violet { background: #e9e3fa; color: #5f45b8; }
+.ico-rose   { background: #f9e0e8; color: #a8325a; }
+.ico-indigo { background: #e0e6fa; color: #3a55b8; }
+:root[data-theme="dark"] .ico-teal   { background: #183a40; color: #7fd0de; }
+:root[data-theme="dark"] .ico-amber  { background: #3a2c17; color: #f0b56a; }
+:root[data-theme="dark"] .ico-violet { background: #2c2545; color: #b9a6f2; }
+:root[data-theme="dark"] .ico-rose   { background: #3d2029; color: #f09ab6; }
+:root[data-theme="dark"] .ico-indigo { background: #1f2847; color: #9fb2f2; }
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] .ico-teal   { background: #183a40; color: #7fd0de; }
+  :root[data-theme="system"] .ico-amber  { background: #3a2c17; color: #f0b56a; }
+  :root[data-theme="system"] .ico-violet { background: #2c2545; color: #b9a6f2; }
+  :root[data-theme="system"] .ico-rose   { background: #3d2029; color: #f09ab6; }
+  :root[data-theme="system"] .ico-indigo { background: #1f2847; color: #9fb2f2; }
 }
 
 /* 印刷式强调：赭色荧光衬线 */

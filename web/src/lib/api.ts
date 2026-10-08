@@ -18,19 +18,21 @@ export type {
   Bank, BankDetail, Tag, QuestionSummary, QuestionDetail, QuestionPage,
   AnswerClaim, Choice, Reference, AttemptResult, ScheduleResult, DrillMode,
   Progress, TagStat, Resume, FocusCursor, DrillContext, Overview, StudySession,
-  SessionInfo, PasswordChanged,
+  SessionInfo, PasswordChanged, CurrentBank, SetSummary, DrillCursor, BankSession,
 } from "./claims";
-export { SOURCE_LABEL, voteDistribution, hasDisagreement, DRILL_MODES, parseDrillMode } from "./claims";
+export { voteDistribution, hasDisagreement, DRILL_MODES, parseDrillMode } from "./claims";
 
 import type {
   Bank, BankDetail, Tag, QuestionDetail, QuestionPage, AttemptResult, DrillMode,
   Progress, TagStat, Resume, DrillContext, Overview, StudySession,
-  SessionInfo, PasswordChanged,
+  SessionInfo, PasswordChanged, CurrentBank, SetSummary,
 } from "./claims";
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasRenewMark, logAuth, readAccessToken, safeReturnPath } from "./session";
+import { resolveLocale } from "@/i18n/resolve";
+import type { ListParams } from "./drillSpec";
 
 const BASE = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
 
@@ -41,6 +43,23 @@ const BASE = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
 async function authHeaders(): Promise<Record<string, string>> {
   const t = await readAccessToken();
   return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
+/**
+ * 出站请求带上界面语言 —— 题目正文、选项跟着界面走。
+ *
+ * ⭐ 用 Accept-Language 而不是给每个函数加 locale 参数：一处加，全部端点受益，
+ * ⛔ 而且不会出现「某个端点忘了传」这种只在特定页面显形的漏。
+ *
+ * ⚠️ 它同时进入 Next 的 fetch 缓存键（缓存键含 headers）——
+ * 这正是需要的：中文与日文的响应⛔不得互相复用。
+ */
+async function localeHeaders(): Promise<Record<string, string>> {
+  return { "Accept-Language": await resolveLocale() };
+}
+
+async function requestHeaders(): Promise<Record<string, string>> {
+  return { ...(await authHeaders()), ...(await localeHeaders()) };
 }
 
 export class ApiError extends Error {
@@ -74,7 +93,7 @@ async function recoverFrom401(path: string): Promise<never> {
 async function get<T>(path: string, revalidate = 60, personalized = false): Promise<T> {
   // 个人化数据绝不进共享缓存；且带 Authorization 的请求本就不该被缓存复用
   const cache = personalized ? { cache: "no-store" as const } : { next: { revalidate } };
-  const res = await fetch(`${BASE}${path}`, { ...cache, headers: await authHeaders() });
+  const res = await fetch(`${BASE}${path}`, { ...cache, headers: await requestHeaders() });
   if (res.status === 401) await recoverFrom401(path);
   if (!res.ok) {
     throw new ApiError(res.status, `GET ${path} → ${res.status}`);
@@ -89,33 +108,51 @@ export const getQuestion = (id: number) => get<QuestionDetail>(`/questions/${id}
 export const listBankTags = (slug: string, type?: Tag["type"]) =>
   get<Tag[]>(`/banks/${slug}/tags${type ? `?type=${type}` : ""}`);
 
+/**
+ * 出题入口用的两轴标签（domain + topic）。
+ * ⚠️ 不带 type 的 listBankTags 会连全局 concept 一起返回（AWS 题库数百个）——
+ *   入口与刷题页只需要两轴，⛔ 别为一个标签名把几百行拉过来。
+ */
+export const listAxisTags = async (slug: string) =>
+  (await Promise.all([listBankTags(slug, "domain"), listBankTags(slug, "topic")])).flat();
+
 export function listQuestions(
   slug: string,
-  opts: {
-    tags?: number[];
-    contested?: boolean;
-    enriched?: boolean;
-    mode?: DrillMode;
-    limit?: number;
-    offset?: number;
-  } = {},
+  opts: ListParams & { enriched?: boolean; limit?: number; offset?: number } = {},
 ) {
-  const q = new URLSearchParams();
-  opts.tags?.forEach((t) => q.append("tag", String(t)));
-  if (opts.contested) q.set("contested", "true");
+  const q = drillQuery(opts);
   if (opts.enriched) q.set("enriched", "true");
-  if (opts.mode) q.set("mode", opts.mode);
   if (opts.limit != null) q.set("limit", String(opts.limit));
   if (opts.offset != null) q.set("offset", String(opts.offset));
-  // 个人化模式（错题本等）走 no-store：结果因人而异
-  return get<QuestionPage>(`/banks/${slug}/questions?${q}`, 60, Boolean(opts.mode));
+  // 个人化条件（错题本 / 收藏等）走 no-store：结果因人而异
+  return get<QuestionPage>(`/banks/${slug}/questions?${q}`, 60, Boolean(opts.mode || opts.bookmarked));
+}
+
+/** 一个题目集合的本轮小结（P9 #19）：多大、做过几道、最近一次答对几道。条件与 listQuestions 同一套。 */
+export const summarizeQuestions = (slug: string, opts: ListParams) =>
+  get<SetSummary>(`/banks/${slug}/questions/summary?${drillQuery(opts)}`, 0, true);
+
+/** ListParams → 查询串。⚠️ 两个标签参数：tag = 交集（旧入口），anyTag = 并集（P9）。 */
+function drillQuery(o: ListParams): URLSearchParams {
+  const q = new URLSearchParams();
+  o.tags?.forEach((t) => q.append("tag", String(t)));
+  o.anyTag?.forEach((t) => q.append("anyTag", String(t)));
+  if (o.contested) q.set("contested", "true");
+  if (o.bookmarked) q.set("bookmarked", "true");
+  if (o.mode) q.set("mode", o.mode);
+  if (o.session != null) q.set("session", o.session);
+  if (o.noFrom) q.set("noFrom", String(o.noFrom));
+  if (o.noTo) q.set("noTo", String(o.noTo));
+  if (o.seed != null) q.set("seed", String(o.seed));
+  if (o.take) q.set("take", String(o.take));
+  return q;
 }
 
 /**
  * 服务端调用：记录一次作答（web route handler 专用，带账号头）。
  *
  * ⭐ 2026-09-08 起 rating 是可选的 —— 作答在【揭晓那一刻】就记录，不再等自评。
- * 返回的 attemptId 供随后 rateAttempt() 补自评。
+ * ⚠️ 2026-10-08 起界面不再补自评（P9 #15），后端按对错代打分喂给 FSRS。
  */
 export async function recordAttempt(
   body: { questionId: number; chosen: string; rating?: number; durationMs?: number; context?: DrillContext },
@@ -129,16 +166,6 @@ export async function recordAttempt(
   return res.json();
 }
 
-/** 服务端调用：给一条已记录的作答补上自评（驱动 FSRS 卡片调度）。 */
-export async function rateAttempt(attemptId: number, rating: number): Promise<AttemptResult> {
-  const res = await fetch(`${BASE}/attempts/${attemptId}`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json", ...(await authHeaders()) },
-    body: JSON.stringify({ rating }),
-  });
-  if (!res.ok) throw new ApiError(res.status, `PATCH /attempts/${attemptId} → ${res.status}`);
-  return res.json();
-}
 
 
 
@@ -151,6 +178,28 @@ export const getMyTagStats = (type: Tag["type"], minAttempts = 3, bank?: string)
   get<TagStat[]>(`/me/tag-stats?type=${type}&minAttempts=${minAttempts}${bank ? `&bank=${encodeURIComponent(bank)}` : ""}`, 0, true);
 export const getMyOverview = () => get<Overview>("/me/overview", 0, true);
 export const getMyRecent = (limit = 5) => get<StudySession[]>(`/me/recent?limit=${limit}`, 0, true);
+
+/** 服务端调用：收藏 / 取消收藏（P9 #20）。两个方向都幂等。 */
+export async function setBookmark(questionId: number, on: boolean): Promise<{ ok: boolean; status: number }> {
+  const res = await fetch(`${BASE}/me/bookmarks/${questionId}`, {
+    method: on ? "PUT" : "DELETE",
+    headers: await authHeaders(),
+  });
+  return { ok: res.ok, status: res.status };
+}
+
+/** 当前题库（P9）：chosen 设置里选的 · recent 按最近作答推出 · none 都没有。 */
+export const getMyBank = () => get<CurrentBank>("/me/bank", 0, true);
+
+/** 服务端调用：切换当前题库（设置页表单 → BFF 路由 → 这里）。 */
+export async function chooseMyBank(bankSlug: string): Promise<{ ok: true } | { ok: false; status: number }> {
+  const res = await fetch(`${BASE}/me/bank`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ bankSlug }),
+  });
+  return res.ok ? { ok: true } : { ok: false, status: res.status };
+}
 
 // ---- 账号设置（阶段 5 的端点，2026-09-07 接前端）----
 //

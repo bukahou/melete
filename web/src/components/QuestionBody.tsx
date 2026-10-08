@@ -55,7 +55,7 @@ export function QuestionBody({
             : isWrongPick
               ? "var(--color-warn)"
               : isPicked
-                ? "var(--color-ink)"
+                ? "var(--color-accent-ink)"   // 多选题揭晓前的「已选」：可点的东西用强调色（层级规则 1）
                 : "transparent";
           return (
             <li key={c.label}>
@@ -64,17 +64,17 @@ export function QuestionBody({
                 disabled={revealed || !interactive}
                 onClick={() => toggle(c.label)}
                 aria-pressed={isPicked}
-                className="flex w-full gap-3.5 rounded-md border border-line bg-raise p-4 text-left text-[0.92rem] leading-[1.85] transition-all disabled:cursor-default enabled:hover:border-muted"
+                className="flex w-full gap-3.5 rounded-xl border border-transparent bg-raise p-4 text-left text-[0.92rem] leading-[1.85] transition-all disabled:cursor-default enabled:hover:border-accent-ink"
                 style={{ boxShadow: `inset 3px 0 0 ${edge}` }}
               >
                 <span
                   className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm border font-mono text-[0.8rem] font-semibold transition-colors"
                   style={
                     isPicked || isCorrect
-                      ? { background: edge === "transparent" ? "var(--color-ink)" : edge,
+                      ? { background: edge === "transparent" ? "var(--color-accent-ink)" : edge,
                           borderColor: "transparent",
                           color: "var(--color-raise)" }
-                      : { borderColor: "var(--color-line)", color: "var(--color-muted)" }
+                      : { borderColor: "var(--color-line)", color: "var(--color-muted)", background: "var(--color-surface)" }
                   }
                 >
                   {c.label}
