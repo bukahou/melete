@@ -20,6 +20,8 @@ type Progress struct {
 	WrongCount    int    `db:"wrong_count"`
 	UnsureCount   int    `db:"unsure_count"`
 	AttemptCount  int    `db:"attempt_count"`
+	// AttemptCorrectCount 作答为对的次数（含重做）—— 练习正确率的分子（P9 #9）。
+	AttemptCorrectCount int `db:"attempt_correct_count"`
 	// DueCount 已到期、等着复习的题数（FSRS）。⛔ 不含从没做过的题。
 	DueCount     int          `db:"due_count"`
 	LastActiveAt sql.NullTime `db:"last_active_at"`
@@ -119,6 +121,9 @@ func (s *service) LoadProgress(ctx context.Context, accountID userid.UserID, slu
 		  (SELECT COUNT(*) FROM attempt a2
 		     JOIN question q2 ON q2.id = a2.question_id AND q2.bank_id = b.id
 		   WHERE a2.user_id = ?)      AS attempt_count,
+		  (SELECT COUNT(*) FROM attempt a4
+		     JOIN question q4 ON q4.id = a4.question_id AND q4.bank_id = b.id
+		   WHERE a4.user_id = ? AND a4.correct = 1) AS attempt_correct_count,
 		  -- FSRS 到期数。⚠️ 从没做过的题没有 card 行，不算到期 —— 它属于
 		  -- 「没做过」那个入口。两者混进一个数字，「今天要复习 300 题」就没有意义。
 		  (SELECT COUNT(*) FROM card c
@@ -137,7 +142,7 @@ func (s *service) LoadProgress(ctx context.Context, accountID userid.UserID, slu
 		  JOIN question q ON q.id = la.question_id
 		  GROUP BY q.bank_id
 		) agg ON agg.bank_id = b.id
-		WHERE b.slug = ?`, accountID, accountID, accountID, slug)
+		WHERE b.slug = ?`, accountID, accountID, accountID, accountID, slug)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
-import { KeyRound, Languages, Monitor, Mail, ShieldAlert } from "lucide-react";
-import { getSessions, type SessionInfo } from "@/lib/api";
+import { Check, KeyRound, Languages, Library, Monitor, Mail, ShieldAlert } from "lucide-react";
+import { getMyBank, getSessions, listBanks, type Bank, type CurrentBank, type SessionInfo } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { getLocale, getTranslations } from "next-intl/server";
 import { LOCALES, LOCALE_LABEL } from "@/i18n/locales";
@@ -24,11 +24,11 @@ export async function generateMetadata() {
  * 形态沿用登录页：⛔ 不引入客户端状态，表单 POST 给 BFF 路由 → 303 回来。
  * 表单提交天然串行，⇒ 顺带避开并发刷新那类问题。
  */
-function Section({ icon, title, hint, children }: {
-  icon: React.ReactNode; title: string; hint?: string; children: React.ReactNode;
+function Section({ id, icon, title, hint, children }: {
+  id?: string; icon: React.ReactNode; title: string; hint?: string; children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-lg border border-line bg-raise">
+    <section id={id} className="scroll-mt-6 rounded-lg border border-line bg-raise">
       <div className="flex items-baseline gap-3 border-b border-line px-6 py-4">
         <span className="translate-y-0.5 text-muted">{icon}</span>
         <span className="eyebrow">{title}</span>
@@ -101,6 +101,15 @@ export default async function SettingsPage({
     sessionsFailed = true;
   }
 
+  // 题库切换（P9 #1）：同上，取不到也不让整页 500 —— 其余设置照常可用。
+  let banks: Bank[] = [];
+  let current: CurrentBank | null = null;
+  try {
+    [banks, current] = await Promise.all([listBanks(), getMyBank()]);
+  } catch (e) {
+    unstable_rethrow(e);
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-6 pt-4">
       <header>
@@ -122,6 +131,46 @@ export default async function SettingsPage({
           )}
         </div>
       )}
+
+      {/* ⭐ 放在最上面：P9 起「换题库」只在这里做，是设置页最常用的一项。 */}
+      <Section id="bank" icon={<Library size={15} />} title={t("bankTitle")} hint={t("bankHint")}>
+        {banks.length === 0 ? (
+          <p className="text-sm text-muted">{t("bankFailed")}</p>
+        ) : (
+          <ul className="divide-y divide-line-2">
+            {banks.map((b) => {
+              const chosen = current?.source === "chosen" && current.bankSlug === b.slug;
+              return (
+                <li key={b.slug} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
+                  <span className="min-w-0 flex-1">
+                    <span className={`block truncate text-sm ${chosen ? "font-semibold text-ink" : ""}`}>{b.name}</span>
+                    <span className="block font-mono text-[0.72rem] text-muted">{b.slug}</span>
+                  </span>
+                  {chosen ? (
+                    <span className="inline-flex items-center gap-1 text-[0.8rem] text-muted">
+                      <Check size={13} />{t("bankCurrent")}
+                    </span>
+                  ) : (
+                    <form method="POST" action="/settings/bank">
+                      <input type="hidden" name="bank" value={b.slug} />
+                      <button
+                        type="submit"
+                        className="rounded-md border border-line px-3 py-1.5 text-[0.8rem] transition-colors hover:border-muted"
+                      >
+                        {t("bankUse")}
+                      </button>
+                    </form>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="mt-4 text-xs leading-relaxed text-muted">
+          {current?.source === "recent" && <>{t("bankRecentNote", { name: banks.find((b) => b.slug === current?.bankSlug)?.name ?? current.bankSlug ?? "" })} </>}
+          {t("bankNote")}
+        </p>
+      </Section>
 
       <Section icon={<KeyRound size={15} />} title={t("pwTitle")} hint={t("pwHint")}>
         <form method="POST" action="/settings/password" className="space-y-3">
