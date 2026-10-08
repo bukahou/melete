@@ -1318,6 +1318,25 @@ components:
             题目只挂叶子 topic；分组不是标签，选中分组 = 它下面那几个 topic。
             ⚠️ 树描述的是考纲：可能含题库里没有题的 topic（库里也就没有对应的 tag）。
           items: { $ref: "#/components/schemas/TopicTreeDomain" }
+        topicFamilies:
+          type: array
+          description: |
+            topic 的大类（AWS = 官方服务类别：计算 / 存储 / 数据库 …）。没有则不分大类。
+            与 topicTree 不同：大类不挂在考纲域下 —— AWS 的服务横跨多个域，构不成树。
+          items: { $ref: "#/components/schemas/TopicFamily" }
+
+    TopicFamily:
+      type: object
+      required: [name, topics]
+      properties:
+        name:
+          type: object
+          description: locale → 大类显示名
+          additionalProperties: { type: string }
+        topics:
+          type: array
+          description: topic 标签的 value（也是用语集术语的 category）
+          items: { type: string }
 
     TopicTreeDomain:
       type: object

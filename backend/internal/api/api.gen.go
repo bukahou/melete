@@ -548,6 +548,10 @@ type BankMeta struct {
 	// TagTypes 以标签 type（domain / topic / concept）为键
 	TagTypes *map[string]TagTypeMeta `json:"tagTypes,omitempty"`
 
+	// TopicFamilies topic 的大类（AWS = 官方服务类别：计算 / 存储 / 数据库 …）。没有则不分大类。
+	// 与 topicTree 不同：大类不挂在考纲域下 —— AWS 的服务横跨多个域，构不成树。
+	TopicFamilies *[]TopicFamily `json:"topicFamilies,omitempty"`
+
 	// TopicTree domain › 分组 › topic 的展示树。没有则 topic 平铺。
 	// 题目只挂叶子 topic；分组不是标签，选中分组 = 它下面那几个 topic。
 	// ⚠️ 树描述的是考纲：可能含题库里没有题的 topic（库里也就没有对应的 tag）。
@@ -1144,6 +1148,15 @@ type TokenPair struct {
 	// ExpiresIn access token 剩余秒数（非绝对时间，免受客户端时钟偏差影响）
 	ExpiresIn    int    `json:"expiresIn"`
 	RefreshToken string `json:"refreshToken"`
+}
+
+// TopicFamily defines model for TopicFamily.
+type TopicFamily struct {
+	// Name locale → 大类显示名
+	Name map[string]string `json:"name"`
+
+	// Topics topic 标签的 value（也是用语集术语的 category）
+	Topics []string `json:"topics"`
 }
 
 // TopicTreeDomain defines model for TopicTreeDomain.

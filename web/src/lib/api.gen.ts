@@ -1068,6 +1068,19 @@ export interface components {
              *     ⚠️ 树描述的是考纲：可能含题库里没有题的 topic（库里也就没有对应的 tag）。
              */
             topicTree?: components["schemas"]["TopicTreeDomain"][];
+            /**
+             * @description topic 的大类（AWS = 官方服务类别：计算 / 存储 / 数据库 …）。没有则不分大类。
+             *     与 topicTree 不同：大类不挂在考纲域下 —— AWS 的服务横跨多个域，构不成树。
+             */
+            topicFamilies?: components["schemas"]["TopicFamily"][];
+        };
+        TopicFamily: {
+            /** @description locale → 大类显示名 */
+            name: {
+                [key: string]: string;
+            };
+            /** @description topic 标签的 value（也是用语集术语的 category） */
+            topics: string[];
         };
         TopicTreeDomain: {
             /** @description domain 标签的 value，如 domain-1 */

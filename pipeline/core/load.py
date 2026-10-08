@@ -308,6 +308,21 @@ def topic_tree(spec: dict) -> list | None:
             for d, groups in tree.items()]
 
 
+def topic_families(spec: dict, spec_dir: Path) -> list | None:
+    """
+    topic 的「大类」（2026-10-08 用户裁定：AWS 用官方服务类别）。与 topic_tree 是两回事：
+    树挂在考纲域下（IPA），大类不属于任何域 —— AWS 的服务横跨多个考纲域，只能这样分。
+
+    来源是 spec 的 topic_families：一个相对 spec 目录的文件路径（AWS 两个题库共用一份）。
+    没有 ⇒ None，界面不分大类。
+    """
+    ref = spec.get("topic_families")
+    if not ref:
+        return None
+    doc = json.loads((spec_dir / ref).read_text(encoding="utf-8"))
+    return doc["families"]
+
+
 def qid(qmap: dict, q: dict) -> int:
     """取一道题在库里的 id。
 
@@ -520,6 +535,7 @@ def main() -> None:
         "examQuestions": spec.get("exam_questions"),   # 判断前至少要做满一场考试的题数
         "groupSize": spec.get("group_size"),           # 顺序练习按多少题一组
         "topicTree": topic_tree(spec),
+        "topicFamilies": topic_families(spec, spec_path.parent),
         # 卷子（question.session）的显示名：session 是给机器的键（2026r08），人要看「令和8年度」
         "sessionLabels": spec.get("session_labels"),
     }, display_locale)
