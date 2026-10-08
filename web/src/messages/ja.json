@@ -117,7 +117,11 @@
     "randomN": "{n} 問",
     "randomExam": "本番 1 回分 ・ {n} 問",
     "randomHintShort": "すきま時間に",
-    "randomHintExam": "模擬試験。合格判定と同じ問題数"
+    "randomHintExam": "模擬試験。合格判定と同じ問題数",
+    "pickGoN": "開始（{n} 問）",
+    "pickCounting": "問題数を計算中…",
+    "pickMatch": "該当：{n} 問",
+    "pickNone": "条件に合う問題がありません。組み合わせを変えてください"
   },
   "bank": {
     "switchBank": "問題集を切り替え",
