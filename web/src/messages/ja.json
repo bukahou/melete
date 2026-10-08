@@ -92,7 +92,8 @@
     "banksTitle": "問題集一覧",
     "banksHint": "クリックで切り替え",
     "banksCurrent": "学習中",
-    "banksDone": "{total} 問中 {done} 問解答"
+    "banksDone": "{total} 問中 {done} 問解答",
+    "guestDomain": "分野"
   },
   "history": {
     "home": "ホーム",
@@ -186,8 +187,10 @@
     "copyright": "問題集の内容は著作権に関わるため、アカウント保持者のみ閲覧できます。",
     "oidcCancelled": "Akasha ログインをキャンセルしました",
     "oidcState": "ログインセッションが期限切れです。もう一度お試しください",
-    "oidcUpstream": "Akasha が一時的に利用できません。しばらくしてから、またはパスワードでログインしてください",
-    "oidcApplication": "ログイン時に問題が発生しました。もう一度お試しください"
+    "oidcUpstream": "Akasha が一時的に利用できません。しばらくしてから再度お試しください",
+    "oidcApplication": "ログイン時に問題が発生しました。もう一度お試しください",
+    "modalTitle": "ログイン／新規登録",
+    "autoRegister": "初めて Akasha でログインすると、Melete のアカウントが自動で作成されます。"
   },
   "settings": {
     "title": "設定",

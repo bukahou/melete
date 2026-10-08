@@ -4,6 +4,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { Noto_Serif_SC } from "next/font/google";
 import { readAccessToken } from "@/lib/session";
 import { SideNav } from "@/components/SideNav";
+import { GuestShell } from "@/components/GuestShell";
 import type { Locale } from "@/i18n/locales";
 import { cookies } from "next/headers";
 import { DEFAULT_THEME, THEME_COOKIE, isTheme } from "@/lib/theme";
@@ -58,8 +59,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </main>
           </div>
         ) : (
-          // 未登录（登录 / 找回密码）：没有导航可去，只留居中的内容
-          <main className="mx-auto w-full max-w-4xl px-6 py-12">{children}</main>
+          // 未登录：背后垫一张应用外壳（只是画，inert），登录页作为弹窗叠在上面 —— 参照 it-pass（2026-10-08 用户裁定）
+          <div className="relative min-h-screen">
+            <div className="fixed inset-0 overflow-hidden"><GuestShell /></div>
+            <div className="fixed inset-0 bg-black/35 backdrop-blur-[1.5px]" />
+            <main className="relative z-10 flex min-h-screen items-start justify-center px-4 py-10 md:items-center md:py-12">{children}</main>
+          </div>
         )}
         </NextIntlClientProvider>
       </body>
