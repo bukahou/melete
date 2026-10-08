@@ -1,37 +1,42 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
-import { ChevronRight, Search, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Search, X } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { usePathname, useRouter } from "next/navigation";
 import { localized, type TermSummary } from "@/lib/claims";
+import { termSub } from "@/lib/glossary";
+import { TermRow } from "@/components/TermRow";
 
 /**
- * 用语集目录（P9 第 6 步）—— 版式参照 it-pass「用語集」：检索框 + 按分组的术语列表。
+ * 用语集检索框（P9 第 6 步）。没输入时显示 children（服务端渲染的分类目录），输入后换成命中列表。
  *
- * ⭐ 全部术语一次给到浏览器（目录不带释义，几千条也只有几百 KB），检索在本地即时完成 ——
- *   每敲一个字就出结果，⛔ 不为每次按键打一次后端。
- * 分组顺序由服务端给（IPA 按考纲树的 大分類 › 中分類；AWS 按服务名）。
+ * ⭐ 全部术语一次给到浏览器，检索在本地即时完成 —— ⛔ 不为每次按键打一次后端。
+ * ⭐ 检索词同步进 URL（?q=，replace 不进历史）：从命中列表点进术语再返回，结果还在。
+ *   2026-10-08 用户反馈「返回丢失当前位置」—— 位置只存在内存里，离开页面就没了。
  */
-export type GlossaryGroup = { heading?: string; category: string; label: string };
-
-export function GlossaryBrowser({ slug, terms, groups, initialQuery }: {
-  slug: string; terms: TermSummary[]; groups: GlossaryGroup[]; initialQuery: string;
+export function GlossarySearch({ slug, terms, initialQuery, children }: {
+  slug: string; terms: TermSummary[]; initialQuery: string; children: React.ReactNode;
 }) {
   const t = useTranslations("glossary");
   const locale = t("locale");
   const [q, setQ] = useState(initialQuery);
 
-  const nameOf = (x: TermSummary) => localized(x.names, locale, x.slug);
-  const byCategory = useMemo(() => {
-    const m = new Map<string, TermSummary[]>();
-    for (const x of terms) m.set(x.category, [...(m.get(x.category) ?? []), x]);
-    for (const list of m.values()) list.sort((a, b) => nameOf(a).localeCompare(nameOf(b), locale));
-    return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [terms, locale]);
+  // ⚠️ 用 router.replace 而不是 history.replaceState：后者只改了地址栏，Next 路由仍记着旧 URL，
+  //    点进术语再返回时按旧 URL 还原 —— 检索词照样丢（实测）。停手 300ms 再同步，不为每次按键重渲染。
+  const router = useRouter();
+  const pathname = usePathname();
+  useEffect(() => {
+    const term = q.trim();
+    if (term === initialQuery.trim()) return;
+    const timer = setTimeout(() => {
+      router.replace(term ? `${pathname}?q=${encodeURIComponent(term)}` : pathname, { scroll: false });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [q, initialQuery, pathname, router]);
 
-  // 检索：正式名称 + 各语言名 + 读音，不分大小写、包含即命中；名字以检索词开头的排前面
+  const nameOf = (x: TermSummary) => localized(x.names, locale, x.slug);
+  // 正式名称 + 各语言名 + 读音，不分大小写、包含即命中；名字以检索词开头的排前面
   const needle = q.trim().toLowerCase();
   const hits = useMemo(() => {
     if (!needle) return [];
@@ -46,25 +51,11 @@ export function GlossaryBrowser({ slug, terms, groups, initialQuery }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [needle, terms, locale]);
 
-  const Row = ({ x }: { x: TermSummary }) => (
-    <Link href={`/banks/${slug}/glossary/${x.id}`}
-          className="group flex items-center gap-3 px-5 py-2.5 transition-colors hover:bg-accent-soft">
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[0.92rem]">{nameOf(x)}</span>
-        {(x.reading || nameOf(x) !== x.slug) && (
-          <span className="block truncate text-[0.72rem] text-muted">{x.reading ?? x.slug}</span>
-        )}
-      </span>
-      {x.questionCount > 0 && <span className="shrink-0 text-[0.72rem] text-muted tabular-nums">{t("inQuestions", { n: x.questionCount })}</span>}
-      <ChevronRight size={15} className="shrink-0 text-muted group-hover:text-accent-ink" />
-    </Link>
-  );
-
   return (
     <div className="grid gap-4">
       <label className="flex items-center gap-3 rounded-full border border-[color-mix(in_oklab,var(--color-accent-ink)_55%,transparent)] bg-tile px-5 py-3 focus-within:border-accent-ink">
         <Search size={17} className="text-muted" />
-        <input value={q} onChange={(e) => setQ(e.target.value)} autoFocus
+        <input value={q} onChange={(e) => setQ(e.target.value)}
                placeholder={t("searchPlaceholder", { n: terms.length })}
                className="min-w-0 flex-1 bg-transparent text-[0.95rem] outline-none placeholder:text-muted" />
         {q && <button type="button" onClick={() => setQ("")} aria-label={t("clear")} className="text-muted hover:text-ink"><X size={16} /></button>}
@@ -73,30 +64,16 @@ export function GlossaryBrowser({ slug, terms, groups, initialQuery }: {
       {needle ? (
         <section className="card overflow-hidden py-1.5">
           <div className="px-5 py-2 text-[0.78rem] text-muted">{t("hits", { n: hits.length })}</div>
-          <div className="divide-y divide-line-2">{hits.slice(0, 200).map((x) => <Row key={x.id} x={x} />)}</div>
+          <div className="divide-y divide-line-2">
+            {hits.slice(0, 200).map((x) => {
+              const name = nameOf(x);
+              return <TermRow key={x.id} href={`/banks/${slug}/glossary/${x.id}`} name={name} sub={termSub(x, name)}
+                              count={x.questionCount > 0 ? t("inQuestions", { n: x.questionCount }) : undefined} />;
+            })}
+          </div>
           {hits.length === 0 && <p className="px-5 pb-4 text-sm text-muted">{t("noHit")}</p>}
         </section>
-      ) : (
-        groups.map((g, i) => {
-          const list = byCategory.get(g.category) ?? [];
-          if (list.length === 0) return null;
-          return (
-            <section key={g.category} className="grid gap-2">
-              {g.heading && (i === 0 || groups[i - 1].heading !== g.heading) && (
-                <h2 className="px-1 pt-2 text-[0.95rem] font-semibold">{g.heading}</h2>
-              )}
-              <details className="card overflow-hidden [&[open]_.chev]:rotate-90">
-                <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-3 hover:bg-accent-soft">
-                  <ChevronRight size={15} className="chev text-muted transition-transform" />
-                  <span className="flex-1 font-semibold">{g.label}</span>
-                  <span className="text-[0.78rem] text-muted tabular-nums">{t("count", { n: list.length })}</span>
-                </summary>
-                <div className="divide-y divide-line-2 border-t border-line-2">{list.map((x) => <Row key={x.id} x={x} />)}</div>
-              </details>
-            </section>
-          );
-        })
-      )}
+      ) : children}
     </div>
   );
 }

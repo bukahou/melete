@@ -5,12 +5,14 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { ApiError, getBank, getTerm, type TermDetail } from "@/lib/api";
 import { localized } from "@/lib/claims";
 import { sessionLabel } from "@/lib/drillLabel";
+import { categoryHref, categoryLabel } from "@/lib/glossary";
 
 export const revalidate = 0;
 
 /**
  * 术语详情（参照 it-pass 的用語詳細）：读音 → 名称 → 释义 → 分组 → 出题历史。
  * ⭐ 出题历史是本页的价值所在 —— 「这个词在哪些题考过」，点进去看原题。
+ * 面包屑带分类：上一层是这个术语所在的分类页，⛔ 不是目录首页（用户反馈「返回丢失当前位置」）。
  */
 export default async function TermPage({ params }: { params: Promise<{ slug: string; id: string }> }) {
   const { slug, id } = await params;
@@ -26,6 +28,8 @@ export default async function TermPage({ params }: { params: Promise<{ slug: str
   const bank = await getBank(slug);
   const name = localized(term.names, locale, term.slug);
   const sub = term.reading ?? (name !== term.slug ? term.slug : undefined);
+  const catLabel = categoryLabel(term.category, t("general"));
+  const catHref = categoryHref(slug, term.category);
   const otherNames = Object.entries(term.names).filter(([l, v]) => l !== locale && v !== name && v !== sub);
 
   return (
@@ -33,7 +37,9 @@ export default async function TermPage({ params }: { params: Promise<{ slug: str
       <nav className="flex items-center gap-2 text-[0.82rem] text-muted">
         <Link href="/" className="hover:text-ink">{t("home")}</Link>
         <span className="opacity-50">›</span>
-        <Link href={`/banks/${slug}/glossary`} className="hover:text-ink">{t("title")}</Link>
+        <Link href={`/banks/${slug}/glossary`} className="shrink-0 hover:text-ink">{t("title")}</Link>
+        <span className="opacity-50">›</span>
+        <Link href={catHref} className="shrink-0 hover:text-ink">{catLabel}</Link>
         <span className="opacity-50">›</span>
         <span className="truncate text-ink">{name}</span>
       </nav>
@@ -48,7 +54,7 @@ export default async function TermPage({ params }: { params: Promise<{ slug: str
         <p className="text-[0.95rem] leading-[1.9]">{localized(term.definition, locale)}</p>
         <dl className="mt-5 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[0.82rem]">
           <dt className="text-muted">{t("category")}</dt>
-          <dd>{term.category === "General" ? t("general") : term.category}</dd>
+          <dd><Link href={catHref} className="text-accent-ink hover:underline">{catLabel}</Link></dd>
         </dl>
       </section>
 

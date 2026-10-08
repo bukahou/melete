@@ -25,6 +25,7 @@
       "enrichment_field": "services"
     }
   },
+  "topic_families": "../_shared/aws-service-families.json",
   "pass_score": 750,
   "exam_questions": 75,
   "group_size": 100,

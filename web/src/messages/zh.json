@@ -314,6 +314,9 @@
     "inQuestions": "{n} 题",
     "empty": "这个题库还没有用语集",
     "category": "分组",
-    "history": "出题历史"
+    "history": "出题历史",
+    "all": "全部",
+    "allTerms": "全部术语",
+    "other": "其他"
   }
 }

@@ -314,6 +314,9 @@
     "inQuestions": "{n} 問",
     "empty": "この問題集にはまだ用語集がありません",
     "category": "分類",
-    "history": "出題歴"
+    "history": "出題歴",
+    "all": "全て",
+    "allTerms": "全ての用語",
+    "other": "その他"
   }
 }
