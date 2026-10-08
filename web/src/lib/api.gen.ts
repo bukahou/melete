@@ -758,6 +758,8 @@ export interface components {
             reading?: string;
             /** @description 分组 = 知识对象轴（AWS 服务 / IPA 中分類） */
             category: string;
+            /** @description 分类的主条目（分类本身那一条，如 EC2 分类里的 Amazon EC2）；分类页置顶 */
+            lead: boolean;
             /** @description 在多少道题里出现过 */
             questionCount: number;
         };

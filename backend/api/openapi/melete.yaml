@@ -983,7 +983,7 @@ components:
 
     TermSummary:
       type: object
-      required: [id, slug, names, category, questionCount]
+      required: [id, slug, names, category, lead, questionCount]
       properties:
         id:            { type: integer, format: int64 }
         slug:          { type: string, description: 正式名称（AWS 官方英文名 / IPA 日文标准用语） }
@@ -993,6 +993,7 @@ components:
           additionalProperties: { type: string }
         reading:       { type: string, description: 读音（IPA 平假名）；AWS 缺省 }
         category:      { type: string, description: 分组 = 知识对象轴（AWS 服务 / IPA 中分類） }
+        lead:          { type: boolean, description: 分类的主条目（分类本身那一条，如 EC2 分类里的 Amazon EC2）；分类页置顶 }
         questionCount: { type: integer, description: 在多少道题里出现过 }
 
     TermDetail:

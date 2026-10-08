@@ -154,6 +154,7 @@ CREATE TABLE IF NOT EXISTS term (
   reading     VARCHAR(191)  NULL,                   -- 读音（IPA 平假名）
   definition  JSON          NOT NULL,               -- {"zh","ja"} 一两句通用释义
   category    VARCHAR(128)  NOT NULL DEFAULT '',    -- 分组 = 知识对象轴（AWS 服务 / IPA 中分類）
+  is_lead     BOOLEAN       NOT NULL DEFAULT FALSE,  -- 分类的主条目（2026-10-08-term-lead.sql）
   search_text VARCHAR(1024) NOT NULL DEFAULT '',    -- 检索用小写拼接，⛔ 不在 SQL 里拆 JSON
   created_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at  DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

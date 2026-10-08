@@ -1094,6 +1094,9 @@ type TermDetail struct {
 	Definition map[string]string `json:"definition"`
 	Id         int64             `json:"id"`
 
+	// Lead 分类的主条目（分类本身那一条，如 EC2 分类里的 Amazon EC2）；分类页置顶
+	Lead bool `json:"lead"`
+
 	// Names locale → 显示名（IPA 只有 ja）
 	Names map[string]string `json:"names"`
 
@@ -1122,6 +1125,9 @@ type TermSummary struct {
 	// Category 分组 = 知识对象轴（AWS 服务 / IPA 中分類）
 	Category string `json:"category"`
 	Id       int64  `json:"id"`
+
+	// Lead 分类的主条目（分类本身那一条，如 EC2 分类里的 Amazon EC2）；分类页置顶
+	Lead bool `json:"lead"`
 
 	// Names locale → 显示名（IPA 只有 ja）
 	Names map[string]string `json:"names"`

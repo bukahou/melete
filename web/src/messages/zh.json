@@ -317,6 +317,9 @@
     "history": "出题历史",
     "all": "全部",
     "allTerms": "全部术语",
-    "other": "其他"
+    "other": "其他",
+    "leadMore": "详情与出题历史（{n} 题）",
+    "rest": "其他相关术语 · {n} 个",
+    "restNote": "各只在 1 道题里出现过"
   }
 }

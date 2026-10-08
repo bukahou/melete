@@ -26,6 +26,7 @@ type Summary struct {
 	NamesRaw      []byte            `db:"names"`
 	Reading       *string           `db:"reading"`
 	Category      string            `db:"category"`
+	Lead          bool              `db:"is_lead"` // 分类的主条目（EC2 分类里的「Amazon EC2」）
 	QuestionCount int               `db:"question_count"`
 }
 
@@ -60,7 +61,7 @@ func NewService(db *sqlx.DB) Service { return &service{db: db} }
 func (s *service) ListTerms(ctx context.Context, bankID int64) ([]Summary, error) {
 	out := []Summary{}
 	err := s.db.SelectContext(ctx, &out, `
-		SELECT t.id, t.slug, t.names, t.reading, t.category,
+		SELECT t.id, t.slug, t.names, t.reading, t.category, t.is_lead,
 		       (SELECT COUNT(*) FROM term_question tq WHERE tq.term_id = t.id) AS question_count
 		FROM term t WHERE t.bank_id = ?
 		ORDER BY t.category, t.slug`, bankID)
@@ -76,7 +77,7 @@ func (s *service) ListTerms(ctx context.Context, bankID int64) ([]Summary, error
 func (s *service) GetTerm(ctx context.Context, id int64, locale string) (*Detail, error) {
 	var d Detail
 	err := s.db.GetContext(ctx, &d, `
-		SELECT t.id, t.slug, t.names, t.reading, t.category, t.definition, b.slug AS bank_slug,
+		SELECT t.id, t.slug, t.names, t.reading, t.category, t.is_lead, t.definition, b.slug AS bank_slug,
 		       (SELECT COUNT(*) FROM term_question tq WHERE tq.term_id = t.id) AS question_count
 		FROM term t JOIN bank b ON b.id = t.bank_id WHERE t.id = ?`, id)
 	if errors.Is(err, sql.ErrNoRows) {
