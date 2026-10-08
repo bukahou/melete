@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BookmarkToggle } from "@/components/BookmarkToggle";
 import { notFound } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { ApiError, getQuestion } from "@/lib/api";
@@ -54,6 +55,7 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
         <span className="text-xs text-muted">
           {q.kind === "multi" ? t("multi", { n: q.pickCount }) : t("single")}
         </span>
+        <span className="ml-auto self-center"><BookmarkToggle questionId={q.id} initial={q.bookmarked ?? false} /></span>
       </header>
 
       {(q.dataIssue || (q.warnings?.length ?? 0) > 0) && (

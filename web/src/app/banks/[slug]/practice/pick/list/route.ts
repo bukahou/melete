@@ -29,6 +29,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
           // 只给一行摘要：列表是用来「认出这道题」的，⛔ 不是用来读题的
           stem: it.stem.replace(/\s+/g, " ").slice(0, 90),
           last: it.lastCorrect ?? null,
+          bookmarked: it.bookmarked ?? false,
         })),
       },
       { headers: { "cache-control": "no-store" } },

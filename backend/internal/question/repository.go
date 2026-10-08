@@ -162,12 +162,15 @@ func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f Lis
 
 	// ⚠️ 占位符顺序陷阱又一处：last_correct 的 user_id 在 SELECT 列里，排在 i18n JOIN 与 WHERE 【之前】。
 	lastExpr, lastArgs := "NULL", []any{}
+	bookmarkExpr := "FALSE"
 	if f.AccountID != "" {
-		lastExpr, lastArgs = fmt.Sprintf(lastAttemptExpr, "correct"), []any{f.AccountID}
+		lastExpr = fmt.Sprintf(lastAttemptExpr, "correct")
+		bookmarkExpr = "EXISTS (SELECT 1 FROM bookmark bk WHERE bk.user_id = ? AND bk.question_id = q.id)"
+		lastArgs = []any{f.AccountID, f.AccountID} // 依次对应 last_correct、bookmarked 两列
 	}
 	listQuery := `SELECT q.id, q.external_no, ` + stemExpr + ` AS stem, q.kind, q.pick_count,
 		` + contestedExpr + ` AS contested, ` + enrichedExpr + ` AS enriched,
-		` + localizedExpr + ` AS localized, ` + lastExpr + ` AS last_correct
+		` + localizedExpr + ` AS localized, ` + lastExpr + ` AS last_correct, ` + bookmarkExpr + ` AS bookmarked
 		FROM question q` + i18nJoin + join + where
 	if having != "" {
 		listQuery += " GROUP BY q.id" + having

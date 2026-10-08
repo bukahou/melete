@@ -1,8 +1,14 @@
-import { getTranslations } from "next-intl/server";
-import { ComingSoon } from "@/components/ComingSoon";
+import { redirect } from "next/navigation";
+import { getMyBank } from "@/lib/api";
 
-/** 侧栏「书签」—— 即将开放（P9 第 5 步）。 */
+export const revalidate = 0;
+
+/**
+ * 侧栏「书签」→ 当前题库的「自选条件 · 收藏」（P9 #20）。
+ * 收藏的题本来就是 4.3 列表的一个筛选 —— 同一份列表（可打乱、可再叠加考纲域、点哪题从哪题开始），
+ * ⛔ 不另做一个只会列题的书签页。没有当前题库就回首页（那里会引导去设置选）。
+ */
 export default async function BookmarksPage() {
-  const t = await getTranslations("nav");
-  return <ComingSoon title={t("bookmarks")} body={t("bookmarksBody")} soon={t("soon")} back={t("backHome")} />;
+  const cur = await getMyBank();
+  redirect(cur.bankSlug ? `/banks/${cur.bankSlug}/practice/pick?st=bookmarked` : "/");
 }

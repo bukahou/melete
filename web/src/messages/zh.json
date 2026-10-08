@@ -16,7 +16,6 @@
     "bookmarks": "书签",
     "soon": "即将开放",
     "glossaryBody": "按术语查释义，并能看到「这个词在哪些题里考过」。术语表正在整理中。",
-    "bookmarksBody": "刷题时把想回头再看的题收藏起来，在这里集中复习；在「自选条件」里也能只做收藏的题。",
     "backHome": "回首页"
   },
   "brand": {
@@ -106,7 +105,6 @@
     "rowStat": "已答 {answered} / {total} · 答对 {correct}",
     "rowRate": "已答 {answered} · 掌握率 {rate}%",
     "domainSub": "从官方{domain}里选一块。进去后按题号全部出",
-    "pickBookmarkNote": "收藏按钮即将上线，目前「收藏」条件下没有题",
     "pickRange": "范围",
     "pickRangeAll": "全部题目",
     "randomSub": "从整个题库随机出题，做完给这一轮的小结",
@@ -324,5 +322,12 @@
     "retry": "重试",
     "relogin": "重新登录",
     "digestTitle": "服务器日志里用它定位"
+  },
+  "bookmark": {
+    "add": "收藏这题（不熟、靠猜的题，留着回头再看）",
+    "remove": "取消收藏",
+    "on": "已收藏",
+    "off": "收藏",
+    "failed": "没保存上，再点一次"
   }
 }

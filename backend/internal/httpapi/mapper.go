@@ -86,7 +86,7 @@ func toAPISummary(q question.Summary) api.QuestionSummary {
 		Id: q.ID, ExternalNo: q.ExternalNo, Stem: q.Stem,
 		Kind: api.QuestionSummaryKind(q.Kind), PickCount: q.PickCount,
 		Contested: q.Contested, Enriched: q.Enriched,
-		Localized: &q.Localized, LastCorrect: q.LastCorrect,
+		Localized: &q.Localized, LastCorrect: q.LastCorrect, Bookmarked: &q.Bookmarked,
 	}
 }
 

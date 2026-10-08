@@ -792,9 +792,12 @@ type Progress struct {
 
 // QuestionDetail defines model for QuestionDetail.
 type QuestionDetail struct {
-	BankSlug string        `json:"bankSlug"`
-	Choices  []Choice      `json:"choices"`
-	Claims   []AnswerClaim `json:"claims"`
+	BankSlug string `json:"bankSlug"`
+
+	// Bookmarked 我是否收藏了这题（P9
+	Bookmarked *bool         `json:"bookmarked,omitempty"`
+	Choices    []Choice      `json:"choices"`
+	Claims     []AnswerClaim `json:"claims"`
 
 	// Contested 题库标注与社区投票是否不一致
 	Contested bool `json:"contested"`
@@ -849,6 +852,9 @@ type QuestionPage struct {
 
 // QuestionSummary defines model for QuestionSummary.
 type QuestionSummary struct {
+	// Bookmarked 我是否收藏了这题（P9
+	Bookmarked *bool `json:"bookmarked,omitempty"`
+
 	// Contested 题库标注与社区投票是否不一致
 	Contested bool `json:"contested"`
 
@@ -1421,6 +1427,12 @@ type ServerInterface interface {
 	// 切换当前题库（设置页）
 	// (PUT /me/bank)
 	ChooseMyBank(w http.ResponseWriter, r *http.Request)
+	// 取消收藏（幂等：本来没收藏也是 204）
+	// (DELETE /me/bookmarks/{questionId})
+	RemoveBookmark(w http.ResponseWriter, r *http.Request, questionId int64)
+	// 收藏一题（P9
+	// (PUT /me/bookmarks/{questionId})
+	AddBookmark(w http.ResponseWriter, r *http.Request, questionId int64)
 	// 跨题库总览（今天 / 连续天数 / 累计）
 	// (GET /me/overview)
 	GetMyOverview(w http.ResponseWriter, r *http.Request)
@@ -1574,6 +1586,18 @@ func (_ Unimplemented) GetMyBank(w http.ResponseWriter, r *http.Request) {
 // 切换当前题库（设置页）
 // (PUT /me/bank)
 func (_ Unimplemented) ChooseMyBank(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 取消收藏（幂等：本来没收藏也是 204）
+// (DELETE /me/bookmarks/{questionId})
+func (_ Unimplemented) RemoveBookmark(w http.ResponseWriter, r *http.Request, questionId int64) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 收藏一题（P9
+// (PUT /me/bookmarks/{questionId})
+func (_ Unimplemented) AddBookmark(w http.ResponseWriter, r *http.Request, questionId int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2395,6 +2419,70 @@ func (siw *ServerInterfaceWrapper) ChooseMyBank(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// RemoveBookmark operation middleware
+func (siw *ServerInterfaceWrapper) RemoveBookmark(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "questionId" -------------
+	var questionId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "questionId", chi.URLParam(r, "questionId"), &questionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "questionId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveBookmark(w, r, questionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddBookmark operation middleware
+func (siw *ServerInterfaceWrapper) AddBookmark(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "questionId" -------------
+	var questionId int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "questionId", chi.URLParam(r, "questionId"), &questionId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "questionId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddBookmark(w, r, questionId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMyOverview operation middleware
 func (siw *ServerInterfaceWrapper) GetMyOverview(w http.ResponseWriter, r *http.Request) {
 
@@ -2807,6 +2895,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/me/bank", wrapper.ChooseMyBank)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/me/bookmarks/{questionId}", wrapper.RemoveBookmark)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/me/bookmarks/{questionId}", wrapper.AddBookmark)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/overview", wrapper.GetMyOverview)
@@ -3599,6 +3693,52 @@ func (response ChooseMyBank404JSONResponse) VisitChooseMyBankResponse(w http.Res
 	return err
 }
 
+type RemoveBookmarkRequestObject struct {
+	QuestionId int64 `json:"questionId"`
+}
+
+type RemoveBookmarkResponseObject interface {
+	VisitRemoveBookmarkResponse(w http.ResponseWriter) error
+}
+
+type RemoveBookmark204Response struct {
+}
+
+func (response RemoveBookmark204Response) VisitRemoveBookmarkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AddBookmarkRequestObject struct {
+	QuestionId int64 `json:"questionId"`
+}
+
+type AddBookmarkResponseObject interface {
+	VisitAddBookmarkResponse(w http.ResponseWriter) error
+}
+
+type AddBookmark204Response struct {
+}
+
+func (response AddBookmark204Response) VisitAddBookmarkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type AddBookmark404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AddBookmark404JSONResponse) VisitAddBookmarkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMyOverviewRequestObject struct {
 }
 
@@ -3812,6 +3952,12 @@ type StrictServerInterface interface {
 	// 切换当前题库（设置页）
 	// (PUT /me/bank)
 	ChooseMyBank(ctx context.Context, request ChooseMyBankRequestObject) (ChooseMyBankResponseObject, error)
+	// 取消收藏（幂等：本来没收藏也是 204）
+	// (DELETE /me/bookmarks/{questionId})
+	RemoveBookmark(ctx context.Context, request RemoveBookmarkRequestObject) (RemoveBookmarkResponseObject, error)
+	// 收藏一题（P9
+	// (PUT /me/bookmarks/{questionId})
+	AddBookmark(ctx context.Context, request AddBookmarkRequestObject) (AddBookmarkResponseObject, error)
 	// 跨题库总览（今天 / 连续天数 / 累计）
 	// (GET /me/overview)
 	GetMyOverview(ctx context.Context, request GetMyOverviewRequestObject) (GetMyOverviewResponseObject, error)
@@ -4493,6 +4639,58 @@ func (sh *strictHandler) ChooseMyBank(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ChooseMyBankResponseObject); ok {
 		if err := validResponse.VisitChooseMyBankResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveBookmark operation middleware
+func (sh *strictHandler) RemoveBookmark(w http.ResponseWriter, r *http.Request, questionId int64) {
+	var request RemoveBookmarkRequestObject
+
+	request.QuestionId = questionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveBookmark(ctx, request.(RemoveBookmarkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveBookmark")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveBookmarkResponseObject); ok {
+		if err := validResponse.VisitRemoveBookmarkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AddBookmark operation middleware
+func (sh *strictHandler) AddBookmark(w http.ResponseWriter, r *http.Request, questionId int64) {
+	var request AddBookmarkRequestObject
+
+	request.QuestionId = questionId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AddBookmark(ctx, request.(AddBookmarkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AddBookmark")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AddBookmarkResponseObject); ok {
+		if err := validResponse.VisitAddBookmarkResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

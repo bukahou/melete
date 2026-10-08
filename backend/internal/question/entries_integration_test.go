@@ -66,6 +66,16 @@ func TestDrillEntriesIntegration(t *testing.T) {
 	mustExec(t, db, `INSERT INTO bookmark (user_id,question_id,created_at) VALUES (?,?,UTC_TIMESTAMP())`, me, q["s1#3"])
 	mustExec(t, db, `INSERT INTO bookmark (user_id,question_id,created_at) VALUES (?,?,UTC_TIMESTAMP())`, other, q["s2#3"])
 	want("收藏", ids(ListFilter{OnlyBookmarked: true}), "s1#3")
+	// 列表上的「已收藏」标记（刷题页 / 4.3 列表的书签图标）：我只收藏了 s1#3
+	if p, err := svc.ListQuestions(ctx, bankID, ListFilter{AccountID: me, Session: &s2, Limit: 10}); err != nil {
+		t.Fatal(err)
+	} else {
+		for _, it := range p.Items {
+			if it.Bookmarked {
+				t.Fatalf("s2 里我没有收藏任何题，#%d 却标成已收藏 —— 串号了（s2#3 是另一个账号收藏的）", it.ExternalNo)
+			}
+		}
+	}
 	if _, err := svc.ListQuestions(ctx, bankID, ListFilter{OnlyBookmarked: true}); err != ErrModeNeedsAccount {
 		t.Fatalf("未认证查收藏应被拒，得到 %v", err)
 	}

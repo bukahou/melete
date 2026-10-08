@@ -6,6 +6,7 @@ import { Check, ChevronDown, Play, Shuffle, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { drillHref } from "@/lib/drillSpec";
 import { pickContextFromForm } from "@/lib/pickForm";
+import { BookmarkToggle } from "./BookmarkToggle";
 
 /**
  * 4.3 自选条件 —— 照 it-pass「絞り込んで出題」：标签栏 + 题目列表（2026-10-08 用户裁定方案 b）。
@@ -21,7 +22,7 @@ import { pickContextFromForm } from "@/lib/pickForm";
 export type PickOption = { value: string; label: string };
 export type PickNode = PickOption & { count: number; children: Array<PickOption & { count: number }> };
 
-type Item = { id: number; no: number; stem: string; last: boolean | null };
+type Item = { id: number; no: number; stem: string; last: boolean | null; bookmarked: boolean };
 type Sheet = "tags" | "range" | null;
 
 function Pill({ on, onClick, children, caret }: { on: boolean; onClick: () => void; children: React.ReactNode; caret?: boolean }) {
@@ -138,8 +139,7 @@ export function PickBrowser({ slug, initial, statuses, tree, ranges, labels }: {
           </button>
         )}
       </div>
-      {status === "bookmarked" && <p className="-mt-2 text-xs text-muted">{t("pickBookmarkNote")}</p>}
-
+      
       {/* 题目列表：点哪题从哪题开始 */}
       <section className={`card overflow-hidden transition-opacity ${loading ? "opacity-60" : ""}`}>
         {failed ? (
@@ -149,14 +149,18 @@ export function PickBrowser({ slug, initial, statuses, tree, ranges, labels }: {
         ) : (
           <ol>
             {items.map((it, i) => (
-              <li key={it.id}>
-                <Link href={drillHref(slug, ctx, { i })}
-                      className="flex items-center gap-4 border-b border-line-2 px-5 py-3 transition-colors last:border-b-0 hover:bg-accent-soft">
+              <li key={it.id} className="flex items-center border-b border-line-2 pr-3 last:border-b-0 hover:bg-accent-soft">
+                <Link href={drillHref(slug, ctx, { i })} className="flex min-w-0 flex-1 items-center gap-4 py-3 pl-5">
                   <span className="w-14 shrink-0 font-semibold tabular-nums">#{it.no}</span>
                   <span className="min-w-0 flex-1 truncate text-[0.88rem] text-muted">{it.stem}</span>
-                  {it.last === true && <Check size={16} className="shrink-0" style={{ color: "var(--color-ok)" }} aria-label={t("pickLastOk")} />}
-                  {it.last === false && <X size={16} className="shrink-0" style={{ color: "var(--color-warn)" }} aria-label={t("pickLastNg")} />}
+                  {/* 上次对错：固定宽度占位，两列图标才对得齐 */}
+                  <span className="flex w-4 shrink-0 justify-center">
+                    {it.last === true && <Check size={16} style={{ color: "var(--color-ok)" }} aria-label={t("pickLastOk")} />}
+                    {it.last === false && <X size={16} style={{ color: "var(--color-warn)" }} aria-label={t("pickLastNg")} />}
+                  </span>
                 </Link>
+                {/* 同 it-pass：列表里直接收藏 / 取消（不进题也能整理） */}
+                <BookmarkToggle key={`${it.id}-${it.bookmarked}`} questionId={it.id} initial={it.bookmarked} compact />
               </li>
             ))}
           </ol>
