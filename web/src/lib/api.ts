@@ -18,20 +18,21 @@ export type {
   Bank, BankDetail, Tag, QuestionSummary, QuestionDetail, QuestionPage,
   AnswerClaim, Choice, Reference, AttemptResult, ScheduleResult, DrillMode,
   Progress, TagStat, Resume, FocusCursor, DrillContext, Overview, StudySession,
-  SessionInfo, PasswordChanged, CurrentBank,
+  SessionInfo, PasswordChanged, CurrentBank, SetSummary, DrillCursor, BankSession,
 } from "./claims";
 export { voteDistribution, hasDisagreement, DRILL_MODES, parseDrillMode } from "./claims";
 
 import type {
   Bank, BankDetail, Tag, QuestionDetail, QuestionPage, AttemptResult, DrillMode,
   Progress, TagStat, Resume, DrillContext, Overview, StudySession,
-  SessionInfo, PasswordChanged, CurrentBank,
+  SessionInfo, PasswordChanged, CurrentBank, SetSummary,
 } from "./claims";
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { hasRenewMark, logAuth, readAccessToken, safeReturnPath } from "./session";
 import { resolveLocale } from "@/i18n/resolve";
+import type { ListParams } from "./drillSpec";
 
 const BASE = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
 
@@ -107,26 +108,44 @@ export const getQuestion = (id: number) => get<QuestionDetail>(`/questions/${id}
 export const listBankTags = (slug: string, type?: Tag["type"]) =>
   get<Tag[]>(`/banks/${slug}/tags${type ? `?type=${type}` : ""}`);
 
+/**
+ * 出题入口用的两轴标签（domain + topic）。
+ * ⚠️ 不带 type 的 listBankTags 会连全局 concept 一起返回（AWS 题库数百个）——
+ *   入口与刷题页只需要两轴，⛔ 别为一个标签名把几百行拉过来。
+ */
+export const listAxisTags = async (slug: string) =>
+  (await Promise.all([listBankTags(slug, "domain"), listBankTags(slug, "topic")])).flat();
+
 export function listQuestions(
   slug: string,
-  opts: {
-    tags?: number[];
-    contested?: boolean;
-    enriched?: boolean;
-    mode?: DrillMode;
-    limit?: number;
-    offset?: number;
-  } = {},
+  opts: ListParams & { enriched?: boolean; limit?: number; offset?: number } = {},
 ) {
-  const q = new URLSearchParams();
-  opts.tags?.forEach((t) => q.append("tag", String(t)));
-  if (opts.contested) q.set("contested", "true");
+  const q = drillQuery(opts);
   if (opts.enriched) q.set("enriched", "true");
-  if (opts.mode) q.set("mode", opts.mode);
   if (opts.limit != null) q.set("limit", String(opts.limit));
   if (opts.offset != null) q.set("offset", String(opts.offset));
-  // 个人化模式（错题本等）走 no-store：结果因人而异
-  return get<QuestionPage>(`/banks/${slug}/questions?${q}`, 60, Boolean(opts.mode));
+  // 个人化条件（错题本 / 收藏等）走 no-store：结果因人而异
+  return get<QuestionPage>(`/banks/${slug}/questions?${q}`, 60, Boolean(opts.mode || opts.bookmarked));
+}
+
+/** 一个题目集合的本轮小结（P9 #19）：多大、做过几道、最近一次答对几道。条件与 listQuestions 同一套。 */
+export const summarizeQuestions = (slug: string, opts: ListParams) =>
+  get<SetSummary>(`/banks/${slug}/questions/summary?${drillQuery(opts)}`, 0, true);
+
+/** ListParams → 查询串。⚠️ 两个标签参数：tag = 交集（旧入口），anyTag = 并集（P9）。 */
+function drillQuery(o: ListParams): URLSearchParams {
+  const q = new URLSearchParams();
+  o.tags?.forEach((t) => q.append("tag", String(t)));
+  o.anyTag?.forEach((t) => q.append("anyTag", String(t)));
+  if (o.contested) q.set("contested", "true");
+  if (o.bookmarked) q.set("bookmarked", "true");
+  if (o.mode) q.set("mode", o.mode);
+  if (o.session != null) q.set("session", o.session);
+  if (o.noFrom) q.set("noFrom", String(o.noFrom));
+  if (o.noTo) q.set("noTo", String(o.noTo));
+  if (o.seed != null) q.set("seed", String(o.seed));
+  if (o.take) q.set("take", String(o.take));
+  return q;
 }
 
 /**

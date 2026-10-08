@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/bukahou/melete/backend/internal/userid"
 )
@@ -79,4 +80,32 @@ func (s *service) ChooseCurrentBank(ctx context.Context, accountID userid.UserID
 		return fmt.Errorf("写当前题库: %w", err)
 	}
 	return nil
+}
+
+// LastAttempt 是某题库里最近一次作答（P9 #13 单一继续槽位的来源）。
+type LastAttempt struct {
+	QuestionID int64     `db:"question_id"`
+	Context    *string   `db:"context"`
+	At         time.Time `db:"created_at"`
+}
+
+// LoadLastAttempt 取这个题库里最近一次作答；从没作答过返回 nil。
+// ⚠️ 与 LoadCurrentBank 同理按 created_at 排（TiDB 的 id 不保证单调）。
+func (s *service) LoadLastAttempt(ctx context.Context, accountID userid.UserID, slug string) (*LastAttempt, error) {
+	var la LastAttempt
+	err := s.db.GetContext(ctx, &la, `
+		SELECT a.question_id, a.context, a.created_at
+		FROM attempt a
+		JOIN question q ON q.id = a.question_id
+		JOIN bank b     ON b.id = q.bank_id
+		WHERE a.user_id = ? AND b.slug = ?
+		ORDER BY a.created_at DESC, a.id DESC
+		LIMIT 1`, accountID, slug)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("读取最近一次作答: %w", err)
+	}
+	return &la, nil
 }

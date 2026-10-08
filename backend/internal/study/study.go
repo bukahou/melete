@@ -88,6 +88,7 @@ type Service interface {
 	// 当前题库（P9）：首页显示哪一个，跟着账号走。见 current_bank.go。
 	LoadCurrentBank(ctx context.Context, accountID userid.UserID) (*CurrentBank, error)
 	ChooseCurrentBank(ctx context.Context, accountID userid.UserID, slug string) error
+	LoadLastAttempt(ctx context.Context, accountID userid.UserID, slug string) (*LastAttempt, error)
 }
 
 type service struct {

@@ -520,6 +520,8 @@ def main() -> None:
         "examQuestions": spec.get("exam_questions"),   # 判断前至少要做满一场考试的题数
         "groupSize": spec.get("group_size"),           # 顺序练习按多少题一组
         "topicTree": topic_tree(spec),
+        # 卷子（question.session）的显示名：session 是给机器的键（2026r08），人要看「令和8年度」
+        "sessionLabels": spec.get("session_labels"),
     }, display_locale)
     qmap = ld.upsert_questions(bank_id, qs)
     n_ch = ld.upsert_choices(qmap, qs)

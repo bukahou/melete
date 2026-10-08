@@ -107,31 +107,16 @@ func (s *Server) ListQuestions(ctx context.Context, req api.ListQuestionsRequest
 		return nil, s.fail("ListQuestions.bank", err)
 	}
 
-	f := question.ListFilter{}
-	if p := req.Params; true {
-		if p.Tag != nil {
-			f.TagIDs = *p.Tag
-		}
-		if p.Contested != nil {
-			f.OnlyContested = *p.Contested
-		}
-		if p.Enriched != nil {
-			f.OnlyEnriched = *p.Enriched
-		}
-		if p.Limit != nil {
-			f.Limit = *p.Limit
-		}
-		if p.Offset != nil {
-			f.Offset = *p.Offset
-		}
-		if p.Mode != nil {
-			f.Mode = string(*p.Mode)
-		}
-	}
+	p := req.Params
 	// 账号来自已验签的会话 JWT，不是请求参数 —— 无从伪造
-	if id, ok := httpauth.AccountID(ctx); ok {
-		f.AccountID = userid.UserID(id)
-	}
+	f := drillQuery{
+		Tag: deref(p.Tag), AnyTag: deref(p.AnyTag),
+		Contested: deref(p.Contested), Bookmarked: deref(p.Bookmarked),
+		Mode: string(deref(p.Mode)), Session: p.Session,
+		NoFrom: deref(p.NoFrom), NoTo: deref(p.NoTo), Seed: p.Seed, Take: deref(p.Take),
+	}.filter(accountOf(ctx))
+	f.OnlyEnriched = deref(p.Enriched)
+	f.Limit, f.Offset = deref(p.Limit), deref(p.Offset)
 	// ⭐ 请求的语言就是题库源语言时不查 i18n 表 —— 那张表里本来就没有源语言的行，
 	// 查了必然全部 COALESCE 回退。省的不是那一次 join，是「localized 恒为 false」
 	// 这个会让界面到处标注「暂无译文」的假信号。
@@ -153,6 +138,33 @@ func (s *Server) ListQuestions(ctx context.Context, req api.ListQuestionsRequest
 	return api.ListQuestions200JSONResponse{
 		Items: items, Total: page.Total, Limit: page.Limit, Offset: page.Offset,
 	}, nil
+}
+
+// SummarizeQuestions 是一个题目集合的本轮小结（P9 #19）。过滤条件与 ListQuestions 同一套。
+func (s *Server) SummarizeQuestions(ctx context.Context, req api.SummarizeQuestionsRequestObject) (api.SummarizeQuestionsResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "SummarizeQuestions")
+	if err != nil {
+		return nil, err
+	}
+	b, err := s.banks.FindBank(ctx, req.Slug)
+	if errors.Is(err, bank.ErrNotFound) {
+		return api.SummarizeQuestions404JSONResponse{NotFoundJSONResponse: notFound("题库不存在: " + req.Slug)}, nil
+	}
+	if err != nil {
+		return nil, s.fail("SummarizeQuestions.bank", err)
+	}
+	p := req.Params
+	f := drillQuery{
+		Tag: deref(p.Tag), AnyTag: deref(p.AnyTag),
+		Contested: deref(p.Contested), Bookmarked: deref(p.Bookmarked),
+		Mode: string(deref(p.Mode)), Session: p.Session,
+		NoFrom: deref(p.NoFrom), NoTo: deref(p.NoTo), Seed: p.Seed, Take: deref(p.Take),
+	}.filter(accountID)
+	sum, err := s.questions.SummarizeSet(ctx, b.ID, f)
+	if err != nil {
+		return nil, s.fail("SummarizeQuestions", err)
+	}
+	return api.SummarizeQuestions200JSONResponse{Total: sum.Total, Answered: sum.Answered, Correct: sum.Correct}, nil
 }
 
 func (s *Server) GetQuestion(ctx context.Context, req api.GetQuestionRequestObject) (api.GetQuestionResponseObject, error) {
@@ -229,13 +241,6 @@ func toTokenPair(p *auth.Pair) api.TokenPair {
 		AccountId:    p.AccountID,
 		Display:      p.Display,
 	}
-}
-
-func deref(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }
 
 func (s *Server) RecordAttempt(ctx context.Context, req api.RecordAttemptRequestObject) (api.RecordAttemptResponseObject, error) {
@@ -455,7 +460,11 @@ func (s *Server) GetMyResume(ctx context.Context, req api.GetMyResumeRequestObje
 	if err != nil {
 		return nil, s.fail("GetMyResume", err)
 	}
-	return api.GetMyResume200JSONResponse(toAPIResume(r)), nil
+	out := toAPIResume(r)
+	if out.Cursor, err = s.loadCursor(ctx, accountID, slug); err != nil {
+		return nil, s.fail("GetMyResume.cursor", err)
+	}
+	return api.GetMyResume200JSONResponse(out), nil
 }
 
 func (s *Server) GetMyOverview(ctx context.Context, _ api.GetMyOverviewRequestObject) (api.GetMyOverviewResponseObject, error) {

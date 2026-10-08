@@ -134,6 +134,20 @@ type ListFilter struct {
 	OnlyEnriched  bool
 	Mode          string
 	AccountID     userid.UserID
+
+	// ---- P9 出题入口（第 4 步）----
+	// Session 非 nil = 只要这一套卷子（单套题库是空串，所以必须用指针区分「没给」）。
+	Session *string
+	// NoFrom / NoTo 原题号区间（含两端），0 = 不限。
+	NoFrom, NoTo int
+	// AnyTagIDs 命中任意一个即可（并集）。⚠️ 与 TagIDs（交集）是两回事。
+	AnyTagIDs []int64
+	// OnlyBookmarked 只要该账号收藏了的题（个人化，需要 AccountID）。
+	OnlyBookmarked bool
+	// Seed 非 nil = 按种子固定打乱。与 Mode=due 互斥（复习队列按到期时间排）。
+	Seed *int64
+	// Take > 0 = 集合只取排序后的前 Take 题（4.4 一轮 10 题）。
+	Take int
 	// Locale 是希望拿到的语言。空串 = 只要源语言，⛔ 不查 i18n 表。
 	Locale string
 	Limit  int

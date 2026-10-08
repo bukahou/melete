@@ -41,8 +41,17 @@ func toAPIBankDetail(b *bank.Bank, s *bank.Stats) api.BankDetail {
 			QuestionCount:  s.QuestionCount,
 			EnrichedCount:  s.EnrichedCount,
 			ContestedCount: s.ContestedCount,
+			Sessions:       toAPISessions(s.Sessions),
 		},
 	}
+}
+
+func toAPISessions(in []bank.SessionStat) *[]api.BankSession {
+	out := make([]api.BankSession, len(in))
+	for i, x := range in {
+		out[i] = api.BankSession{Session: x.Session, QuestionCount: x.QuestionCount, NoFrom: x.NoFrom, NoTo: x.NoTo}
+	}
+	return &out
 }
 
 // parseI18n 把数据库里的 i18n JSON 列翻成 map。

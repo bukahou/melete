@@ -688,7 +688,13 @@ paths:
             两者混进一个数字会让「今天要复习 300 题」失去意义。
             ⚠️ due 按【到期时间】升序返回，其余模式按原题号 —— 复习队列不是浏览列表。
           schema: { type: string, enum: [wrong, unsure, unseen, due] }
-
+        - $ref: "#/components/parameters/SessionQuery"
+        - $ref: "#/components/parameters/NoFromQuery"
+        - $ref: "#/components/parameters/NoToQuery"
+        - $ref: "#/components/parameters/AnyTagQuery"
+        - $ref: "#/components/parameters/BookmarkedQuery"
+        - $ref: "#/components/parameters/SeedQuery"
+        - $ref: "#/components/parameters/TakeQuery"
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
@@ -701,6 +707,41 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/QuestionPage" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /banks/{slug}/questions/summary:
+    get:
+      tags: [question]
+      summary: 一个题目集合的本轮小结（P9 #19）
+      description: |
+        条件与 `GET /banks/{slug}/questions` 完全相同（同一套过滤，⛔ 不另写一份）。
+        answered / correct 按**每题最近一次作答**算 —— 回答的是「这一组我现在会多少」，
+        ⛔ 不存「一轮」这个状态（学习侧只存事实）。需要会话。
+      operationId: summarizeQuestions
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - name: tag
+          in: query
+          schema: { type: array, items: { type: integer, format: int64 } }
+        - name: contested
+          in: query
+          schema: { type: boolean }
+        - name: mode
+          in: query
+          schema: { type: string, enum: [wrong, unsure, unseen, due] }
+        - $ref: "#/components/parameters/SessionQuery"
+        - $ref: "#/components/parameters/NoFromQuery"
+        - $ref: "#/components/parameters/NoToQuery"
+        - $ref: "#/components/parameters/AnyTagQuery"
+        - $ref: "#/components/parameters/BookmarkedQuery"
+        - $ref: "#/components/parameters/SeedQuery"
+        - $ref: "#/components/parameters/TakeQuery"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SetSummary" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /questions/{id}:
@@ -732,6 +773,47 @@ components:
         过期后用 refresh token 调 /auth/refresh 换新的。
 
   parameters:
+    SessionQuery:
+      name: session
+      in: query
+      description: 只要这一套卷子（question.session）。单套题库的 session 是空串
+      schema: { type: string }
+    NoFromQuery:
+      name: noFrom
+      in: query
+      description: 原题号下限（含）。4.1 无年度的题库按题号分组用
+      schema: { type: integer, minimum: 1 }
+    NoToQuery:
+      name: noTo
+      in: query
+      description: 原题号上限（含）
+      schema: { type: integer, minimum: 1 }
+    AnyTagQuery:
+      name: anyTag
+      in: query
+      description: |
+        标签 id，可重复；**命中任意一个即可（并集）**。
+        ⚠️ 与 `tag`（交集）是两个参数：选一个大分類 = 它下面几个中分類的并集。
+      schema:
+        type: array
+        items: { type: integer, format: int64 }
+    BookmarkedQuery:
+      name: bookmarked
+      in: query
+      description: 只要我收藏了的题（需要会话）
+      schema: { type: boolean }
+    SeedQuery:
+      name: seed
+      in: query
+      description: |
+        给了就按种子**固定打乱**（同一个种子永远同一个顺序 —— 每题一次页面跳转，刷新/后退不能换题）。
+        ⚠️ 与 mode=due 互斥：复习队列按到期时间排。
+      schema: { type: integer, format: int64, minimum: 0 }
+    TakeQuery:
+      name: take
+      in: query
+      description: 集合只取（排序后的）前 N 题 —— 4.4 随机一轮 10 题就是 seed + take=10
+      schema: { type: integer, minimum: 1 }
     BankQuery:
       name: bank
       in: query
@@ -819,6 +901,32 @@ components:
         bankSlug:   { type: string }
         sequential: { $ref: "#/components/schemas/SequentialCursor" }
         focus:      { $ref: "#/components/schemas/FocusCursor" }
+        cursor:     { $ref: "#/components/schemas/DrillCursor" }
+
+    DrillCursor:
+      type: object
+      description: |
+        P9 #13 单一继续槽位：这个题库里**最近一次作答**的入口，以及该从第几题接着做。
+        最后一次的入口覆盖之前的。从没作答过时缺省。
+      required: [context, lastAt, offset, total, finished]
+      properties:
+        context: { $ref: "#/components/schemas/DrillContext" }
+        lastAt:  { type: string, format: date-time }
+        offset:
+          type: integer
+          description: |
+            接着做的位置（该入口集合里的 offset）。
+            按题号 / 按种子的集合 = 上次那题的下一题；会缩短的集合（wrong / unseen / due）恒为 0。
+        total:    { type: integer, description: 该入口集合现在的大小 }
+        finished: { type: boolean, description: 按顺序的集合已经做到最后一题（「继续」应给本轮小结而不是下一题） }
+
+    SetSummary:
+      type: object
+      required: [total, answered, correct]
+      properties:
+        total:    { type: integer, description: 集合大小 }
+        answered: { type: integer, description: 其中做过的题数 }
+        correct:  { type: integer, description: 其中最近一次作答为对的题数 }
 
     Overview:
       type: object
@@ -869,11 +977,33 @@ components:
 
     DrillContext:
       type: object
-      description: 一次作答的出处 —— 用户是从哪个入口做的这道题
+      description: |
+        一次作答的出处 —— 用户是从哪个入口做的这道题。
+        ⭐ 它必须足以**重建那个入口**：首页「继续」只从最近一条作答推出来（P9 #13），不存游标表。
+
+        P9 的四个入口（mode）：
+        · year   —— 4.1 一套卷子（session）或一组题号（noFrom–noTo），按题号全部出
+        · domain —— 4.2 一个考纲域 / 分组 / topic（tagIds 并集），按题号全部出
+        · pick   —— 4.3 状态 ∧ 标签并集 ∧ 卷子/题号段
+        · random —— 4.4 seed 固定打乱，取前 count 题
+        其余 mode（all / unseen / wrong / unsure / contested / tag / due）是 P9 之前的入口，旧记录照常解析。
       required: [mode]
       properties:
-        mode:  { type: string, enum: [all, unseen, wrong, unsure, contested, tag, due] }
-        tagId: { type: integer, format: int64, description: mode=tag 时必填 }
+        mode:    { type: string, enum: [all, unseen, wrong, unsure, contested, tag, due, year, domain, pick, random] }
+        tagId:   { type: integer, format: int64, description: mode=tag 时必填（旧入口） }
+        tagIds:
+          type: array
+          description: 标签并集（domain / pick）
+          items: { type: integer, format: int64 }
+        session: { type: string, description: 卷子（year / pick） }
+        noFrom:  { type: integer, description: 题号下限（year / pick） }
+        noTo:    { type: integer, description: 题号上限（year / pick） }
+        status:
+          type: string
+          enum: [all, wrong, unseen, bookmarked, contested]
+          description: pick 的状态条件。wrong / unseen 是【会缩短】的集合 —— 做完就离开
+        seed:    { type: integer, format: int64, description: random 的打乱种子 }
+        count:   { type: integer, description: random 一轮的题数 }
 
     AttemptInput:
       type: object
@@ -1077,6 +1207,12 @@ components:
         groupSize:
           type: integer
           description: 顺序练习每组多少题
+        sessionLabels:
+          type: object
+          description: session → { locale → 显示名 }（如 2026r08 → 令和8年度）。没有则显示 session 原文
+          additionalProperties:
+            type: object
+            additionalProperties: { type: string }
         topicTree:
           type: array
           description: |
@@ -1130,6 +1266,19 @@ components:
         questionCount:  { type: integer, description: 题目总数 }
         enrichedCount:  { type: integer, description: 已完成 AI 富化的题数 }
         contestedCount: { type: integer, description: 题库标注与社区投票不一致的题数 }
+        sessions:
+          type: array
+          description: 卷子（question.session）及各自题数。单套题库只有一项且 session 为空串
+          items: { $ref: "#/components/schemas/BankSession" }
+
+    BankSession:
+      type: object
+      required: [session, questionCount, noFrom, noTo]
+      properties:
+        session:       { type: string }
+        questionCount: { type: integer }
+        noFrom:        { type: integer, description: 最小原题号 }
+        noTo:          { type: integer, description: 最大原题号 }
 
     Tag:
       type: object

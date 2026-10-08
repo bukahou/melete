@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/jmoiron/sqlx"
+
+	"github.com/bukahou/melete/backend/internal/userid"
 )
 
 var ErrNotFound = errors.New("question not found")
@@ -23,6 +25,10 @@ type Repository interface {
 	// LoadTextLength 只取题面字数（题干 + 全部选项）。
 	// study 域用它判断「这个用时根本读不完题面」，同样是窄路径 —— 不拉正文。
 	LoadTextLength(ctx context.Context, questionID int64) (int, error)
+	// ListQuestionIDs 返回整个集合的 id，顺序与 ListQuestions 完全一致。
+	ListQuestionIDs(ctx context.Context, bankID int64, f ListFilter) ([]int64, error)
+	// SummarizeAnswers 统计这些题里该账号做过几道、最近一次答对几道。
+	SummarizeAnswers(ctx context.Context, account userid.UserID, ids []int64) (answered, correct int, err error)
 }
 
 type mysqlRepository struct{ db *sqlx.DB }
@@ -75,6 +81,30 @@ func buildFilter(bankID int64, f ListFilter) (where string, having string, args 
 	}
 	if f.OnlyEnriched {
 		conds = append(conds, enrichedExpr)
+	}
+	if f.Session != nil {
+		conds = append(conds, "q.session = ?")
+		args = append(args, *f.Session)
+	}
+	if f.NoFrom > 0 {
+		conds = append(conds, "q.external_no >= ?")
+		args = append(args, f.NoFrom)
+	}
+	if f.NoTo > 0 {
+		conds = append(conds, "q.external_no <= ?")
+		args = append(args, f.NoTo)
+	}
+	if len(f.AnyTagIDs) > 0 {
+		// 并集用 EXISTS 而不是 JOIN：JOIN 会让命中两个标签的题出现两次，分页与计数都会错。
+		conds = append(conds, "EXISTS (SELECT 1 FROM question_tag qa WHERE qa.question_id = q.id AND qa.tag_id IN (?"+
+			strings.Repeat(",?", len(f.AnyTagIDs)-1)+"))")
+		for _, id := range f.AnyTagIDs {
+			args = append(args, id)
+		}
+	}
+	if f.OnlyBookmarked {
+		conds = append(conds, "EXISTS (SELECT 1 FROM bookmark bm WHERE bm.user_id = ? AND bm.question_id = q.id)")
+		args = append(args, f.AccountID)
 	}
 	switch f.Mode {
 	case "wrong":
@@ -141,19 +171,101 @@ func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f Lis
 	// ⚠️ 排序参数必须插在 LIMIT/OFFSET 【之前】—— 占位符是按出现顺序绑定的，
 	// 顺序错了不会报错，只会把 user_id 当成 LIMIT。
 	listArgs := append(append([]any{}, localeArgs...), args...)
-	if f.Mode == "due" {
-		listQuery += " ORDER BY " + dueOrderExpr + " ASC"
-		listArgs = append(listArgs, f.AccountID)
-	} else {
-		listQuery += " ORDER BY q.external_no"
-	}
+	order, orderArgs := orderBy(f)
+	listQuery += order
+	listArgs = append(listArgs, orderArgs...)
 	listQuery += " LIMIT ? OFFSET ?"
 
+	// Take：集合 = 排序后的前 Take 题。total 与可取的 limit 都要跟着收窄，
+	// 否则「第 11 题」会从集合外面拿 —— 排序是确定的，所以「前 Take 题」也是确定的。
+	limit := f.Limit
+	if f.Take > 0 {
+		if total > f.Take {
+			total = f.Take
+		}
+		if f.Offset >= total {
+			return &Page{Items: []Summary{}, Total: total, Limit: f.Limit, Offset: f.Offset}, nil
+		}
+		if f.Offset+limit > total {
+			limit = total - f.Offset
+		}
+	}
+
 	items := []Summary{}
-	if err := r.db.SelectContext(ctx, &items, listQuery, append(listArgs, f.Limit, f.Offset)...); err != nil {
+	if err := r.db.SelectContext(ctx, &items, listQuery, append(listArgs, limit, f.Offset)...); err != nil {
 		return nil, fmt.Errorf("查询题目列表: %w", err)
 	}
 	return &Page{Items: items, Total: total, Limit: f.Limit, Offset: f.Offset}, nil
+}
+
+// orderBy 是题目集合的唯一排序规则 —— 列表、定位（PositionAfter）、小结都用它，
+// ⛔ 不各写一份：三处排序不一致，「继续」就会落到别的题上而且不报错。
+//
+//   - due：按到期时间（复习队列，最该复习的在前）
+//   - seed：按种子固定打乱。CRC32 两边（MySQL / TiDB）都有且结果一致；
+//     同哈希再按 id 排，保证顺序完全确定
+//   - 其余：按 (卷子, 原题号) —— 多套卷子的题库里题号会重复，只按题号会把各套交错在一起
+func orderBy(f ListFilter) (string, []any) {
+	switch {
+	case f.Mode == "due":
+		return " ORDER BY " + dueOrderExpr + " ASC, q.id", []any{f.AccountID}
+	case f.Seed != nil:
+		return " ORDER BY CRC32(CONCAT(?, ':', q.id)), q.id", []any{*f.Seed}
+	default:
+		return " ORDER BY q.session, q.external_no", nil
+	}
+}
+
+// ListQuestionIDs 按 orderBy 返回整个集合的题目 id（已按 Take 截断）。
+// 只取 id，一个题库一千来题也只是几 KB —— 定位与小结在应用层做，比把同一套过滤再写成 SQL 窗口函数简单可靠。
+func (r *mysqlRepository) ListQuestionIDs(ctx context.Context, bankID int64, f ListFilter) ([]int64, error) {
+	where, having, args := buildFilter(bankID, f)
+	join := ""
+	if len(f.TagIDs) > 0 {
+		join = " JOIN question_tag qt ON qt.question_id = q.id"
+	}
+	query := `SELECT q.id FROM question q` + join + where
+	if having != "" {
+		query += " GROUP BY q.id" + having
+	}
+	order, orderArgs := orderBy(f)
+	query += order
+	args = append(args, orderArgs...)
+	if f.Take > 0 {
+		query += " LIMIT ?"
+		args = append(args, f.Take)
+	}
+	ids := []int64{}
+	if err := r.db.SelectContext(ctx, &ids, query, args...); err != nil {
+		return nil, fmt.Errorf("查询题目集合: %w", err)
+	}
+	return ids, nil
+}
+
+// SummarizeAnswers 统计这些题里该账号做过几道、最近一次答对几道。
+func (r *mysqlRepository) SummarizeAnswers(ctx context.Context, account userid.UserID, ids []int64) (answered, correct int, err error) {
+	for i := 0; i < len(ids); i += 500 { // 分批：IN 列表别无限长
+		chunk := ids[i:min(i+500, len(ids))]
+		q, args, err := sqlx.In(`
+			SELECT COUNT(*) AS answered, COALESCE(SUM(a.correct = 1), 0) AS correct
+			FROM attempt a
+			JOIN (SELECT question_id, MAX(id) AS max_id FROM attempt
+			      WHERE user_id = ? AND question_id IN (?) GROUP BY question_id) m
+			  ON m.max_id = a.id`, account, chunk)
+		if err != nil {
+			return 0, 0, err
+		}
+		var row struct {
+			Answered int `db:"answered"`
+			Correct  int `db:"correct"`
+		}
+		if err := r.db.GetContext(ctx, &row, r.db.Rebind(q), args...); err != nil {
+			return 0, 0, fmt.Errorf("统计作答: %w", err)
+		}
+		answered += row.Answered
+		correct += row.Correct
+	}
+	return answered, correct, nil
 }
 
 // FindQuestionByID 拉取单题的全部关联数据。

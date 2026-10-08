@@ -8,6 +8,8 @@ type Service interface {
 	ListBanks(ctx context.Context) ([]Bank, error)
 	GetBankDetail(ctx context.Context, slug string) (*Bank, *Stats, error)
 	ListTags(ctx context.Context, slug, tagType string) ([]Tag, error)
+	// FindBank 只取题库行，不算统计 —— 给只需要 bank_id 的路径用。
+	FindBank(ctx context.Context, slug string) (*Bank, error)
 }
 
 type service struct{ repo Repository }
@@ -36,4 +38,8 @@ func (s *service) ListTags(ctx context.Context, slug, tagType string) ([]Tag, er
 		return nil, err
 	}
 	return s.repo.ListTags(ctx, b.ID, tagType)
+}
+
+func (s *service) FindBank(ctx context.Context, slug string) (*Bank, error) {
+	return s.repo.FindBankBySlug(ctx, slug)
 }
