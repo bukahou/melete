@@ -1017,6 +1017,15 @@ components:
           additionalProperties: { $ref: "#/components/schemas/TagTypeMeta" }
         passScore: { type: integer, description: 官方及格分（无则不显示及格线） }
         maxScore:  { type: integer, description: 满分 }
+        safetyRate:
+          type: integer
+          description: 合格判断的安全线（正确率 %）= 及格线换算成正确率 + 10 个点。无则不做合格判断
+        examQuestions:
+          type: integer
+          description: 一场正式考试的题数。作答不足这个数之前不给合格判断
+        groupSize:
+          type: integer
+          description: 顺序练习每组多少题
 
     TagTypeMeta:
       type: object

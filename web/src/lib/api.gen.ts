@@ -836,6 +836,12 @@ export interface components {
             passScore?: number;
             /** @description 满分 */
             maxScore?: number;
+            /** @description 合格判断的安全线（正确率 %）= 及格线换算成正确率 + 10 个点。无则不做合格判断 */
+            safetyRate?: number;
+            /** @description 一场正式考试的题数。作答不足这个数之前不给合格判断 */
+            examQuestions?: number;
+            /** @description 顺序练习每组多少题 */
+            groupSize?: number;
         };
         TagTypeMeta: {
             /** @description locale → 该标签轴的显示名 */

@@ -286,6 +286,8 @@
   "concept_seeds": [],
   "_note_no_concept": "⛔ 本轮【不产 concept】（用户 2026-09-05 拍板）。concept 是跨题库共享轴，而它现在本身就是烂账（1075 个待归并，见 tracker 技术债）—— 在归并完成前再往里加只会让账更难还。P5 迁入 atlantis 时统一处理。",
   "pass_score": 600,
+  "exam_questions": 100,
+  "group_size": 100,
   "max_score": 1000,
   "_note_score": "IPA 官方：総合評価点 1000 点満点・600 点以上で合格，かつ 分野別評価点 各 300 点以上（1000 点満点）。⚠️ 分野別的及格线本 schema 表达不了（bank.meta 只有单一 passScore），界面上只显示总分线。",
   "authoritative_answer_source": "bank_label",

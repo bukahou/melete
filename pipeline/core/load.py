@@ -270,6 +270,21 @@ class Loader:
         return len(rows)
 
 
+def safety_rate(spec: dict) -> int | None:
+    """
+    合格判断的「安全线」（正确率 %）= 官方及格线换算成正确率 + 10 个点（2026-10-08 用户裁定）。
+
+    为什么不直接用及格线：官方分数是加权 / 标定过的，素朴正确率只是它的近似，
+    卡在及格线上的正确率不等于能过。多出来的 10 个点就是给这层近似留的余量。
+    题库可在 spec 里写 safety_rate 覆盖（⛔ 不写就按公式，不另设默认值）。
+    """
+    if spec.get("safety_rate") is not None:
+        return spec["safety_rate"]
+    if not spec.get("pass_score") or not spec.get("max_score"):
+        return None      # 没有官方及格线 ⇒ 界面不做合格判断
+    return round(spec["pass_score"] / spec["max_score"] * 100) + 10
+
+
 def qid(qmap: dict, q: dict) -> int:
     """取一道题在库里的 id。
 
@@ -477,6 +492,10 @@ def main() -> None:
         "passScore": spec.get("pass_score"),
         "maxScore": spec.get("max_score"),
         "domains": spec.get("domains", {}),
+        # P9 首页的「合格判断」与「过去问演练」要的三个数（2026-10-08 裁定）：
+        "safetyRate": safety_rate(spec),
+        "examQuestions": spec.get("exam_questions"),   # 判断前至少要做满一场考试的题数
+        "groupSize": spec.get("group_size"),           # 顺序练习按多少题一组
     }, display_locale)
     qmap = ld.upsert_questions(bank_id, qs)
     n_ch = ld.upsert_choices(qmap, qs)
