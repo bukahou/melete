@@ -88,7 +88,11 @@
     "startFirstHint": "从第一组题开始，按题号做",
     "passYours": "你的合格判断",
     "passMasteryIs": "当前掌握率 {rate}%",
-    "searchPlaceholder": "搜索术语（回车）"
+    "searchPlaceholder": "搜索术语（回车）",
+    "banksTitle": "题库一览",
+    "banksHint": "点一下切换",
+    "banksCurrent": "学习中",
+    "banksDone": "已答 {done} / {total}"
   },
   "history": {
     "home": "首页",

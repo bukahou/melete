@@ -6,6 +6,8 @@ import {
   getMyProgress,
   getMyResume,
   listAxisTags,
+  listBanks,
+  type Bank,
   type BankDetail,
   type Progress,
   type Resume,
@@ -171,6 +173,53 @@ function Drills({ t, bank, resume, kit, code }: { t: T; bank: BankDetail; resume
 }
 
 /**
+ * 题库一览（2026-10-08 用户提出）—— 位置对应 it-pass 首页底部的「製品一覧」：
+ * 那里放产品，这里放题库。当前题库标「学习中」，其余整张卡片就是切换按钮（复用设置页的表单路由，成功回首页）。
+ * ⭐ 设置页的题库一节【保留】—— 用户裁定两处都留（2026-10-08）。
+ * 每张卡片带「已答 X / Y」：切之前就看得到那边做到哪了。
+ */
+function Banks({ t, banks, current, progressOf }: {
+  t: T; banks: Bank[]; current: string; progressOf: Map<string, Progress>;
+}) {
+  if (banks.length < 2) return null;
+  return (
+    <section id="banks" className="card scroll-mt-6 px-5 py-4">
+      <CardTitle side={t("banksHint")}>{t("banksTitle")}</CardTitle>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {banks.map((b) => {
+          const p = progressOf.get(b.slug);
+          const total = p?.questionCount ?? 0;
+          const done = p?.seenCount ?? 0;
+          const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+          const body = (
+            <>
+              <span className="flex items-start gap-2">
+                <span className="min-w-0 flex-1 text-left text-[0.9rem] font-medium leading-snug">{b.name}</span>
+                {b.slug === current && (
+                  <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[0.68rem] font-semibold text-accent-ink">{t("banksCurrent")}</span>
+                )}
+              </span>
+              <span className="mt-auto block pt-3 text-left text-[0.74rem] text-muted tabular-nums">{t("banksDone", { done, total })}</span>
+              <span className="mt-1.5 block h-1 rounded-full bg-line-2">
+                <span className="block h-full rounded-full bg-accent-ink" style={{ width: `${pct}%` }} />
+              </span>
+            </>
+          );
+          return b.slug === current ? (
+            <div key={b.slug} className="tile flex flex-col px-4 py-3 ring-1 ring-[var(--color-accent-ink)]">{body}</div>
+          ) : (
+            <form key={b.slug} method="POST" action="/settings/bank" className="contents">
+              <input type="hidden" name="bank" value={b.slug} />
+              <button type="submit" className="tile flex flex-col px-4 py-3">{body}</button>
+            </form>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/**
  * 顶部检索框（P9 #5：只搜术语）—— 回车即进用语集并带上检索词（那里是本地即时检索）。
  * 普通 GET 表单：⛔ 不在首页引入客户端状态，首页只负责把人送到对的地方。
  */
@@ -212,9 +261,12 @@ export default async function HomePage() {
   if (current.source === "none" || !current.bankSlug) return <NoBank t={t} />;
 
   const slug = current.bankSlug;
-  const [bank, progress, resume, tags] = await Promise.all([
-    getBank(slug), getMyProgress(slug), getMyResume(slug), listAxisTags(slug),
+  const [bank, progress, resume, tags, banks] = await Promise.all([
+    getBank(slug), getMyProgress(slug), getMyResume(slug), listAxisTags(slug), listBanks(),
   ]);
+  // 题库一览的进度（含总题数）：每个题库一次，量小（现在 3 个）；当前题库复用上面那份
+  const progressOf = new Map(await Promise.all(banks.map(async (b) =>
+    [b.slug, b.slug === slug ? progress : await getMyProgress(b.slug)] as const)));
   const kit: LabelKit = {
     meta: bank.meta, tags, locale,
     t: (k, v) => t(k as never, v as never),
@@ -230,6 +282,7 @@ export default async function HomePage() {
         <PassCheck t={t} bank={bank} progress={progress} />
       </div>
       <Drills t={t} bank={bank} resume={resume} kit={kit} code={code} />
+      <Banks t={t} banks={banks} current={slug} progressOf={progressOf} />
     </div>
   );
 }
