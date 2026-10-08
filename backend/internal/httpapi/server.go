@@ -177,7 +177,43 @@ func (s *Server) GetQuestion(ctx context.Context, req api.GetQuestionRequestObje
 	if err != nil {
 		return nil, s.fail("GetQuestion", err)
 	}
-	return api.GetQuestion200JSONResponse(toAPIDetail(d)), nil
+	out := toAPIDetail(d)
+	// 收藏状态是个人的：登录了才查（详情接口本身不要求登录）
+	if id, ok := httpauth.AccountID(ctx); ok {
+		on, err := s.studies.IsBookmarked(ctx, userid.UserID(id), d.ID)
+		if err != nil {
+			return nil, s.fail("GetQuestion.bookmark", err)
+		}
+		out.Bookmarked = &on
+	}
+	return api.GetQuestion200JSONResponse(out), nil
+}
+
+// AddBookmark / RemoveBookmark：收藏是「答题时不懂、靠猜」的自选标记（P9 #20）。两个方向都幂等。
+func (s *Server) AddBookmark(ctx context.Context, req api.AddBookmarkRequestObject) (api.AddBookmarkResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "AddBookmark")
+	if err != nil {
+		return nil, err
+	}
+	err = s.studies.SetBookmark(ctx, accountID, req.QuestionId, true)
+	if errors.Is(err, study.ErrQuestionNotFound) {
+		return api.AddBookmark404JSONResponse{NotFoundJSONResponse: notFound("题目不存在")}, nil
+	}
+	if err != nil {
+		return nil, s.fail("AddBookmark", err)
+	}
+	return api.AddBookmark204Response{}, nil
+}
+
+func (s *Server) RemoveBookmark(ctx context.Context, req api.RemoveBookmarkRequestObject) (api.RemoveBookmarkResponseObject, error) {
+	accountID, err := s.requireAccount(ctx, "RemoveBookmark")
+	if err != nil {
+		return nil, err
+	}
+	if err := s.studies.SetBookmark(ctx, accountID, req.QuestionId, false); err != nil {
+		return nil, s.fail("RemoveBookmark", err)
+	}
+	return api.RemoveBookmark204Response{}, nil
 }
 
 func (s *Server) PasswordLogin(ctx context.Context, req api.PasswordLoginRequestObject) (api.PasswordLoginResponseObject, error) {

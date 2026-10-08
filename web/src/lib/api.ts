@@ -179,6 +179,15 @@ export const getMyTagStats = (type: Tag["type"], minAttempts = 3, bank?: string)
 export const getMyOverview = () => get<Overview>("/me/overview", 0, true);
 export const getMyRecent = (limit = 5) => get<StudySession[]>(`/me/recent?limit=${limit}`, 0, true);
 
+/** 服务端调用：收藏 / 取消收藏（P9 #20）。两个方向都幂等。 */
+export async function setBookmark(questionId: number, on: boolean): Promise<{ ok: boolean; status: number }> {
+  const res = await fetch(`${BASE}/me/bookmarks/${questionId}`, {
+    method: on ? "PUT" : "DELETE",
+    headers: await authHeaders(),
+  });
+  return { ok: res.ok, status: res.status };
+}
+
 /** 当前题库（P9）：chosen 设置里选的 · recent 按最近作答推出 · none 都没有。 */
 export const getMyBank = () => get<CurrentBank>("/me/bank", 0, true);
 

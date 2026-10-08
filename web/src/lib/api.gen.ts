@@ -404,6 +404,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/bookmarks/{questionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                questionId: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 收藏一题（P9
+         * @description 幂等：已收藏再 PUT 仍是 204。收藏是「答题时不懂、靠猜」的自选标记 ——
+         *     去掉自评之后，「蒙对的题」系统看不出来，靠它补。可选，不用的人不受任何影响。
+         */
+        put: operations["addBookmark"];
+        post?: never;
+        /** 取消收藏（幂等：本来没收藏也是 204） */
+        delete: operations["removeBookmark"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/tag-stats": {
         parameters: {
             query?: never;
@@ -1078,6 +1102,8 @@ export interface components {
             externalNo: number;
             /** @description 我最近一次作答这题是否答对；没做过（或未登录）时缺省。列表据此打 ✓ / ✕ */
             lastCorrect?: boolean;
+            /** @description 我是否收藏了这题（P9 */
+            bookmarked?: boolean;
             stem: string;
             /** @enum {string} */
             kind: "single" | "multi";
@@ -1782,6 +1808,47 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    addBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                questionId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已收藏 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removeBookmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                questionId: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已取消 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     getMyTagStats: {

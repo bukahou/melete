@@ -529,6 +529,29 @@ paths:
         "204": { description: 已切换 }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /me/bookmarks/{questionId}:
+    parameters:
+      - name: questionId
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    put:
+      tags: [study]
+      summary: 收藏一题（P9 #20）
+      description: |
+        幂等：已收藏再 PUT 仍是 204。收藏是「答题时不懂、靠猜」的自选标记 ——
+        去掉自评之后，「蒙对的题」系统看不出来，靠它补。可选，不用的人不受任何影响。
+      operationId: addBookmark
+      responses:
+        "204": { description: 已收藏 }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [study]
+      summary: 取消收藏（幂等：本来没收藏也是 204）
+      operationId: removeBookmark
+      responses:
+        "204": { description: 已取消 }
+
   /me/tag-stats:
     get:
       tags: [study]
@@ -1351,6 +1374,9 @@ components:
         lastCorrect:
           type: boolean
           description: 我最近一次作答这题是否答对；没做过（或未登录）时缺省。列表据此打 ✓ / ✕
+        bookmarked:
+          type: boolean
+          description: 我是否收藏了这题（P9 #20）；未登录时缺省
         stem:       { type: string }
         kind:       { type: string, enum: [single, multi] }
         pickCount:  { type: integer }

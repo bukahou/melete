@@ -18,6 +18,8 @@ type Summary struct {
 	// LastCorrect 是该账号对这题【最近一次】作答的对错；没做过 / 未认证为 nil。
 	// P9 4.3 的题目列表用它打 ✓ / ✕（参照 it-pass 的絞り込み列表）。
 	LastCorrect *bool `db:"last_correct"`
+	// Bookmarked 是该账号是否收藏了这题（P9 #20）；未认证为 false。
+	Bookmarked bool `db:"bookmarked"`
 	// Localized 说明 Stem 是不是请求语言的译文。
 	//
 	// ⭐ false = 没有该语言的译文，上面给的是【源语言】原文。

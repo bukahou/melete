@@ -27,7 +27,10 @@ const MAIN = [
   { href: "/", icon: House, key: "home", match: (p: string) => p === "/" },
   { href: "/history", icon: LineChart, key: "history", match: (p: string) => p.startsWith("/history") || /^\/banks\/[^/]+$/.test(p) },
   { href: "/glossary", icon: BookOpen, key: "glossary", soon: true, match: (p: string) => p.startsWith("/glossary") },
-  { href: "/bookmarks", icon: Bookmark, key: "bookmarks", soon: true, match: (p: string) => p.startsWith("/bookmarks") },
+  // 书签 = 当前题库「自选条件 · 收藏」（P9 #20）—— 同一份列表，⛔ 不另做一页
+  // ⚠️ 只按路径判断：/bookmarks 会跳到 4.3 列表，那里不高亮「书签」。
+  //   想按 ?st=bookmarked 高亮就得在渲染时读 URL 查询串，服务端与浏览器算出的结果不一致（水合警告）
+  { href: "/bookmarks", icon: Bookmark, key: "bookmarks", match: (p: string) => p.startsWith("/bookmarks") },
 ] as const;
 
 function Item({ href, icon: Icon, label, active, soon, soonLabel, compact }: {

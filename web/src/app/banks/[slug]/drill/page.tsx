@@ -8,6 +8,7 @@ import { ClaimsPanel } from "@/components/ClaimsPanel";
 import { DrillCard } from "@/components/DrillCard";
 import { Markdown } from "@/components/Markdown";
 import { TagChip } from "@/components/TagChip";
+import { BookmarkToggle } from "@/components/BookmarkToggle";
 import { getLocale, getTranslations } from "next-intl/server";
 import { needsSourceNotice } from "@/i18n/locales";
 
@@ -193,6 +194,8 @@ export default async function DrillPage({
             刷题位置全丢。⚠️ 一个内容为零、代价是丢失位置的出口 = 陷阱。
             详情页本身保留（错题本 / 标签列表 / 分享单题的固定链接要用），
             只是不该出现在刷题过程中。2026-09-05 用户实测报告。 */}
+        {/* ⭐ 收藏（P9 #20）：安静的图标按钮靠右 ——「不懂、靠猜」的题想留着就点，不想用的人看不见它的存在感 */}
+        <span className="ml-auto self-center"><BookmarkToggle key={q.id} questionId={q.id} initial={q.bookmarked ?? false} /></span>
       </header>
 
       {/* 进度条：hairline 轨道 + 墨色进度（dataviz：数据是唯一允许大声的东西） */}

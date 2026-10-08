@@ -89,6 +89,9 @@ type Service interface {
 	LoadCurrentBank(ctx context.Context, accountID userid.UserID) (*CurrentBank, error)
 	ChooseCurrentBank(ctx context.Context, accountID userid.UserID, slug string) error
 	LoadLastAttempt(ctx context.Context, accountID userid.UserID, slug string) (*LastAttempt, error)
+	// 收藏（P9 #20）：见 bookmark.go
+	SetBookmark(ctx context.Context, accountID userid.UserID, questionID int64, on bool) error
+	IsBookmarked(ctx context.Context, accountID userid.UserID, questionID int64) (bool, error)
 }
 
 type service struct {
