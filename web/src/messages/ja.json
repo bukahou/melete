@@ -88,7 +88,11 @@
     "startFirstHint": "最初のグループから番号順に解きます",
     "passYours": "あなたの合格判定",
     "passMasteryIs": "現在の習得率 {rate}%",
-    "searchPlaceholder": "用語を検索（Enter）"
+    "searchPlaceholder": "用語を検索（Enter）",
+    "banksTitle": "問題集一覧",
+    "banksHint": "クリックで切り替え",
+    "banksCurrent": "学習中",
+    "banksDone": "{total} 問中 {done} 問解答"
   },
   "history": {
     "home": "ホーム",
