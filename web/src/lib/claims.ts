@@ -13,7 +13,6 @@ import type { components } from "./api.gen";
 export type Bank = components["schemas"]["Bank"];
 // 账号设置用（阶段 5 的端点，2026-09-07 接前端）
 export type SessionInfo = components["schemas"]["SessionInfo"];
-export type PasswordChanged = components["schemas"]["PasswordChanged"];
 export type BankMeta = components["schemas"]["BankMeta"];
 export type BankDetail = components["schemas"]["BankDetail"];
 export type Tag = components["schemas"]["Tag"];

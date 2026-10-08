@@ -6,13 +6,16 @@ import { getTranslations } from "next-intl/server";
 
 /**
  * 登录页 —— 全站唯一在墙外的页面。
- * 双入口：本地密码（melete 自持的账号体系）+ Akasha 联邦。
- * Akasha 按其定案不做密码认证，密码归各接入应用自持，与 geass-v3 同模式。
+ *
+ * ⭐ 2026-10-08 用户裁定：登录只用第三方（Akasha）。首次登录自动注册，之后账号信息不可改，
+ *   只能登出再登录 / 换账号。
+ *   ⚠️ 撤下的只是【网页上】的密码表单：后端 /auth/password 仍在 —— iOS 调试账号与 dev 测试账号用它，
+ *   待确认 iOS 不用后与注册 / 找回 / 改邮箱等端点一起删（见 tracker）。
  */
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; oidc_error?: string; return?: string }>;
+  searchParams: Promise<{ oidc_error?: string; return?: string }>;
 }) {
   const sp = await searchParams;
   const t = await getTranslations("login");
@@ -40,63 +43,17 @@ export default async function LoginPage({
         {t.rich("creed", { em: (c) => <em className="mark-em text-ink">{c}</em> })}
       </p>
 
-      <form method="POST" action="/auth/password" className="mt-10 w-full space-y-3">
-        <input type="hidden" name="return" value={returnTo} />
-        <input
-          name="username"
-          required
-          autoComplete="username"
-          placeholder={t("username")}
-          className="w-full rounded-md border border-line bg-raise px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-muted focus:border-muted"
-        />
-        <input
-          name="password"
-          type="password"
-          required
-          autoComplete="current-password"
-          placeholder={t("password")}
-          className="w-full rounded-md border border-line bg-raise px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-muted focus:border-muted"
-        />
-        {sp.error && (
-          <p className="text-xs" style={{ color: "var(--color-warn)" }}>
-            {t("badCredentials")}
-          </p>
-        )}
-        <button
-          type="submit"
-          className="w-full rounded-md py-2.5 text-sm font-medium"
-          style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
-        >
-          {t("submit")}
-        </button>
-      </form>
-
-      {/* ⛔ 找回密码入口【暂时撤下】(2026-09-07)：生产的发信通道尚是 log 型
-          (验证码不经安全信道投递)，在有真实邮件通道之前，找回流程不对外开放
-          —— 后端也已把 /auth/recovery/* 移出免认证白名单，两处同时改。
-          ⭐ 恢复时：这里放回 <Link href="/auth/forgot">，并在 publicPaths 加回两个 recovery 端点。
-      <p className="mt-4 w-full text-right text-xs">
-        <Link href="/auth/forgot" className="text-muted underline underline-offset-4 transition-colors hover:text-ink">
-          忘记密码？
-        </Link>
-      </p> */}
-
-      <div className="my-7 flex w-full items-center gap-4 text-xs text-muted">
-        <span className="h-px flex-1 bg-line" />
-        {t("or")}
-        <span className="h-px flex-1 bg-line" />
-      </div>
-
       {oidcMessage && (
-        <p className="mb-3 w-full text-xs" style={{ color: "var(--color-warn)" }}>
+        <p className="mb-3 mt-10 w-full text-xs" style={{ color: "var(--color-warn)" }}>
           {oidcMessage}
         </p>
       )}
       <Link
         href={`/auth/akasha?return=${encodeURIComponent(returnTo)}`}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-line bg-raise py-2.5 text-sm transition-colors hover:border-muted"
+        className={`inline-flex w-full items-center justify-center gap-2 rounded-md py-2.5 text-sm font-medium transition-opacity hover:opacity-90 ${oidcMessage ? "" : "mt-10"}`}
+        style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
       >
-        <KeyRound size={14} className="text-src-ai" />
+        <KeyRound size={14} />
         {t("akasha")}
       </Link>
 
