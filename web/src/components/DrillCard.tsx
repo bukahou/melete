@@ -4,46 +4,25 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Check, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { Choice, DrillContext, Reference, ScheduleResult } from "@/lib/claims";
+import type { Choice, DrillContext, Reference } from "@/lib/claims";
 import { QuestionBody } from "./QuestionBody";
 
 /**
- * 刷题卡片：作答 → 揭晓（**此刻即落库**）→ 四键自评（可选）。
+ * 刷题卡片：作答 → 揭晓（**此刻即落库**）→ 答案主张 + 解析 → 下一题。
  *
- * ## ⭐ 2026-09-08：保存从「自评」解绑到「揭晓」
+ * ## ⭐ 2026-10-08（P9 #15）：去掉自评
  *
- * 旧版是「点了自评才落记录」，理由是「作答+自评是一条完整的 attempt，不拆两次写」。
- * ⚠️ 那条理由在数据上被证伪了：一个用户连续多天在用，attempt 表一条都没有 ——
- * 她答完看一眼答案就翻页，从不点自评。界面上她看到的是「每天打开都从头开始」，
- * 库里是 0 行，两边都不报错。
+ * 用户裁定：「不再需要判断懂不懂。因此没有人会用。」—— 9/8 那次已实证：
+ * 一个用户连续多天在用却从不点自评。界面上的四键自评就此移除。
  *
- * ⇒ **作答本身就是事实**（答对没、用了多久、从哪个入口来），
- *   它不该依赖一个可选的后续动作才能存活。
- *   自评是增强（驱动 FSRS 调度），⛔ 不是保存的前提。
+ * FSRS 搁置但算法保留：后端在记录作答时按对错代为打分（对 Good / 错 Again），
+ * 卡片照常在后台推进，界面上什么都不显示（见 backend study.RecordAttempt）。
  *
- * 现在：揭晓 → POST /api/attempts（rating 留空）→ 拿到 attemptId；
- *       点自评 → PATCH /api/attempts/{id} → 排卡片、返回「下次何时再见」。
+ * ## 2026-09-08 起不变的一条：作答本身就是事实
+ *
+ * 揭晓那一刻就 POST /api/attempts 落库，⛔ 不依赖任何后续动作才能存活。
+ * 记录失败与会话过期**必须**显示出来 —— 那是「这题没记上」的唯一信号。
  */
-
-// ⚠️ label 走 messages 的 `rating.<value>`；hint 是 FSRS 的**术语**（Again/Hard/Good/Easy），
-// ⛔ 不翻译 —— 它是与文献、与其它 SRS 工具对齐的标识，翻掉就对不上了。
-const RATINGS: Array<{ value: number; hint: string; color: string }> = [
-  { value: 1, hint: "Again", color: "var(--color-warn)" },
-  { value: 2, hint: "Hard", color: "var(--color-src-bank)" },
-  { value: 3, hint: "Good", color: "var(--color-ok)" },
-  { value: 4, hint: "Easy", color: "var(--color-src-community)" },
-];
-
-/** nextLine 把「下次什么时候再见」说成人话。 */
-function nextLine(s: ScheduleResult, t: ReturnType<typeof useTranslations<"drill">>): string {
-  const ms = new Date(s.due).getTime() - Date.now();
-  if (ms <= 0) return t("nextNow");
-  const mins = Math.round(ms / 60_000);
-  if (mins < 60) return t("nextMinutes", { n: mins });
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return t("nextHours", { n: hours });
-  return t("nextDays", { n: Math.round(hours / 24) });
-}
 
 export function DrillCard({
   questionId,
@@ -77,23 +56,15 @@ export function DrillCard({
   children: React.ReactNode;
 }) {
   const t = useTranslations("drill");
-  // ⚠️ 叫 ratingLabel 而不是 rating —— 下面 rate(rating: number) 的形参会遮蔽同名变量
-  const ratingLabel = useTranslations("rating");
   const source = useTranslations("source");
   const [picked, setPicked] = useState<string[]>([]);
-  const [rated, setRated] = useState<number | null>(null);
-  const [schedule, setSchedule] = useState<ScheduleResult | null>(null);
   // ⚠️ expired 与 failed 分开：会话过期时重试【永远不会成功】，
   // 而原来两者都显示「记录失败了，可以重试」—— 用户会反复点，
   // 每一题都记不上，且完全不知道原因（刷了半小时白刷）。
   //
-  // ⭐ saveState 现在描述的是【这次作答有没有被记下来】（揭晓时决定），
-  //    ⛔ 不再是「自评有没有提交成功」。
+  // ⭐ saveState 描述的是【这次作答有没有被记下来】（揭晓时决定）。
   const [saveState, setSaveState] =
     useState<"idle" | "saving" | "saved" | "failed" | "expired">("idle");
-  // 自评是可选的第二步，单独一套状态 —— 自评失败⛔不代表作答没记下来。
-  const [rateState, setRateState] = useState<"idle" | "saving" | "done" | "failed">("idle");
-  const attemptId = useRef<number | null>(null);
   const startedAt = useRef(Date.now());
 
   const chosen = picked.join("");
@@ -139,14 +110,12 @@ export function DrillCard({
         body: JSON.stringify({
           questionId,
           chosen,
-          // ⛔ 不带 rating：这一步只记录「答了什么、对不对」
+          // ⛔ 不带 rating：自评已从界面移除，FSRS 由后端按对错代打
           durationMs: Date.now() - startedAt.current,
           context,
         }),
       });
       if (res.ok) {
-        const body = (await res.json().catch(() => null)) as { attemptId?: number } | null;
-        attemptId.current = body?.attemptId ?? null;
         setSaveState("saved");
       } else {
         // 401 = 会话过期（BFF 在转发前先查了会话）。重试无用，只能重新登录。
@@ -154,31 +123,6 @@ export function DrillCard({
       }
     } catch {
       setSaveState("failed");
-    }
-  }
-
-  /** 自评：给已记录的作答补 rating，换回 FSRS 调度结果。⛔ 失败不影响作答已被记录。 */
-  async function rate(rating: number) {
-    if (rateState === "saving" || rateState === "done") return;
-    setRated(rating);
-    // 作答还没记上（还在飞 / 失败 / 过期）就没有可补的对象
-    if (saveState !== "saved" || attemptId.current == null) return;
-    setRateState("saving");
-    try {
-      const res = await fetch(`/api/attempts/${attemptId.current}`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ rating }),
-      });
-      if (res.ok) {
-        const body = (await res.json().catch(() => null)) as { schedule?: ScheduleResult } | null;
-        setSchedule(body?.schedule ?? null);
-        setRateState("done");
-      } else {
-        setRateState("failed");
-      }
-    } catch {
-      setRateState("failed");
     }
   }
 
@@ -250,86 +194,30 @@ export function DrillCard({
             </div>
           )}
 
-          {/* 四键自评 —— ⭐ 可选。作答在揭晓那一刻已经记下来了。 */}
-          <div className="rounded-md border border-line bg-raise p-4">
-            <p className="text-xs text-muted">
-              {saveState === "expired"
-                ? t("saveExpired")
-                : saveState === "failed"
-                  ? t("saveFailed")
-                  : saveState === "saving"
-                    ? t("saving")
-                    : schedule
-                      ? nextLine(schedule, t)
-                      : rateState === "failed"
-                        ? t("rateFailed")
-                        : t("savedAskRate")}
+          {/* ⭐ 记录成功时什么都不显示。⛔ 但失败与过期必须显示 ——
+              那是「这题没记上」的唯一信号，去掉它就回到「刷了半天白刷、两边都不报错」的形状。 */}
+          {saveState === "failed" && (
+            <p className="rounded-md border border-line bg-raise px-4 py-3 text-xs text-muted"
+               style={{ boxShadow: "inset 3px 0 0 var(--color-warn)" }}>
+              {t("saveFailed")}
             </p>
-            {saveState === "expired" && (
-              <div
-                className="mt-3 rounded-md border px-3 py-2.5 text-[0.8rem]"
-                style={{ borderColor: "var(--color-warn)",
-                         background: "color-mix(in oklab, var(--color-warn) 8%, transparent)" }}
-              >
-                <div className="font-semibold text-ink">{t("reloginTitle")}</div>
-                <p className="mt-1 text-muted">
-                  {t("reloginHint")}
-                  <Link href="/auth/login" className="ml-1 underline underline-offset-4"
-                        style={{ color: "var(--color-src-community)" }}>
-                    {t("goLogin")}
-                  </Link>
-                </p>
-              </div>
-            )}
-            {/* ⭐ 自评被下调时把理由摆出来，⛔ 不偷偷改调度。
-                与三方答案主张并列展示是同一条哲学：不替学习者下结论，把分歧摆出来。 */}
-            {schedule && schedule.effectiveRating !== schedule.rating && (
-              <div
-                className="mt-3 rounded-md border px-3 py-2.5 text-[0.8rem]"
-                style={{ borderColor: "var(--color-warn)", background: "color-mix(in oklab, var(--color-warn) 8%, transparent)" }}
-              >
-                <div className="font-semibold text-ink">
-                  {t("downgraded", {
-                    picked: ratingLabel(String(schedule.rating)),
-                    effective: ratingLabel(String(schedule.effectiveRating)),
-                  })}
-                </div>
-                <ul className="mt-1 space-y-0.5 text-muted">
-                  {schedule.reasons.map((r) => (
-                    <li key={r}>· {r}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <div className="mt-3 grid grid-cols-4 gap-2">
-              {RATINGS.map((r) => {
-                const active = rated === r.value;
-                return (
-                  <button
-                    key={r.value}
-                    type="button"
-                    disabled={saveState !== "saved" || rateState === "saving" || rateState === "done"}
-                    onClick={() => rate(r.value)}
-                    className="rounded-md border py-2.5 text-center transition-all disabled:cursor-default"
-                    style={{
-                      borderColor: active ? r.color : "var(--color-line)",
-                      background: active
-                        ? `color-mix(in oklab, ${r.color} 12%, transparent)`
-                        : "transparent",
-                      opacity: rateState === "done" && !active ? 0.35 : 1,
-                    }}
-                  >
-                    <span className="block text-sm font-medium" style={active ? { color: r.color } : undefined}>
-                      {ratingLabel(String(r.value))}
-                    </span>
-                    <span className="mt-0.5 block font-mono text-[0.62rem] uppercase tracking-wider text-muted">
-                      {r.hint}
-                    </span>
-                  </button>
-                );
-              })}
+          )}
+          {saveState === "expired" && (
+            <div
+              className="rounded-md border px-4 py-3 text-[0.8rem]"
+              style={{ borderColor: "var(--color-warn)",
+                       background: "color-mix(in oklab, var(--color-warn) 8%, transparent)" }}
+            >
+              <div className="font-semibold text-ink">{t("saveExpired")}</div>
+              <p className="mt-1 text-muted">
+                {t("reloginHint")}
+                <Link href="/auth/login" className="ml-1 underline underline-offset-4"
+                      style={{ color: "var(--color-src-community)" }}>
+                  {t("goLogin")}
+                </Link>
+              </p>
             </div>
-          </div>
+          )}
 
           {children}
         </>

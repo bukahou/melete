@@ -441,16 +441,19 @@ func mkUser(t *testing.T, db *sqlx.DB, name string) userid.UserID {
 // （揭晓即记录，自评可选）。测试固件里给的都是「确实评了分」的场景。
 func ratingPtr(r int) *int { return &r }
 
-// TestUnratedAttemptPersistsIntegration 锁住 2026-09-08 的行为变更：
-// **答完不评分，作答也必须落库**。
+// TestUnratedAttemptPersistsIntegration 锁住两次行为变更：
 //
-// ⚠️ 这条测试对应一次真实的数据缺失，不是假想的边界：
-// 一个用户连续多天在用，attempt 表里一条记录都没有 —— 因为她答完直接翻页、
-// 从不点自评，而当时「保存」整个挂在自评那个动作上。界面上她看到的是
-// 「每天打开都从头开始」，库里看到的是 0 行，两边都没有任何报错。
+// ① 2026-09-08：**答完不评分，作答也必须落库**。
 //
-// ⭐ 同时锁住反面：未评分【不排卡片】。没有 rating 就没有记忆信号，
-// 排出来的间隔是假的；未评分的题不该进「到期复习」队列。
+//	⚠️ 对应一次真实的数据缺失：一个用户连续多天在用，attempt 表一条都没有 ——
+//	她答完直接翻页、从不点自评，而当时「保存」整个挂在自评那个动作上。
+//
+// ② 2026-10-08（P9 #15 #16）：界面去掉自评，FSRS 搁置但算法保留 ⇒
+//
+//	**不评分也按对错代打分并排卡片**（答对 Good、答错 Again），后台继续积累。
+//	⚠️ 这条推翻了①时写下的「未评分不排卡片」—— 那时自评还在界面上，
+//	不排是为了不制造假信号；现在自评不存在了，不排就等于永远断了 FSRS 的输入。
+//	⭐ 但代打的分【不写进 attempt.rating】：那一列是用户自己的评价，用户确实没评。
 func TestUnratedAttemptPersistsIntegration(t *testing.T) {
 	db := openTestDB(t)
 	ctx := context.Background()
@@ -463,72 +466,97 @@ func TestUnratedAttemptPersistsIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("记录未评分的作答: %v", err)
 	}
-
 	if res.AttemptID == 0 {
-		t.Error("⛔ 未返回 AttemptID —— 客户端补自评时无从指认是哪一条")
+		t.Error("⛔ 未返回 AttemptID")
 	}
 	if !res.Correct {
 		t.Error("⛔ 选了 A（参考答案 A）却判为错")
 	}
-	if res.Scheduled {
-		t.Error("⛔ 未评分却报告已排卡片 —— 没有 rating 就没有记忆信号")
+	if !res.Scheduled {
+		t.Error("⛔ 判得了对错却没排卡片 —— 去掉自评后 FSRS 就再也收不到输入")
 	}
 
-	// 落库了吗，且 rating 确实是 NULL
+	// 落库了吗，且 rating 确实是 NULL（代打分没有冒充用户的评价）
 	var got struct {
 		ID     int64 `db:"id"`
 		Rating *int  `db:"rating"`
 	}
 	if err := db.GetContext(ctx, &got,
 		`SELECT id, rating FROM attempt WHERE user_id=? AND question_id=?`, acct, qid); err != nil {
-		t.Fatalf("⛔ 未评分的作答没有落库 —— 这正是那次数据缺失的形状: %v", err)
+		t.Fatalf("⛔ 未评分的作答没有落库 —— 这正是 9/8 那次数据缺失的形状: %v", err)
 	}
 	if got.ID != res.AttemptID {
 		t.Errorf("⛔ 返回的 AttemptID=%d 与库中 id=%d 不符", res.AttemptID, got.ID)
 	}
 	if got.Rating != nil {
-		t.Errorf("⛔ rating 应为 NULL，实为 %d", *got.Rating)
+		t.Errorf("⛔ attempt.rating 应为 NULL（用户没评），实为 %d —— 代打分冒充了用户的评价", *got.Rating)
+	}
+	if c := readCard(t, db, acct, qid); c.Reps != 1 {
+		t.Errorf("⛔ 代打分后 reps=%d，应为 1", c.Reps)
 	}
 
-	// 反面：不该有卡片
-	var cards int
-	if err := db.GetContext(ctx, &cards,
-		`SELECT COUNT(*) FROM card WHERE user_id=? AND question_id=?`, acct, qid); err != nil {
-		t.Fatal(err)
-	}
-	if cards != 0 {
-		t.Errorf("⛔ 未评分却排了 %d 张卡片", cards)
-	}
+	t.Run("答错 → 代打 Again，同样排卡片", func(t *testing.T) {
+		acct2 := mkUser(t, db, fmt.Sprintf("wrong-%d", time.Now().UnixNano()%1e9))
+		r, err := svc.RecordAttempt(ctx, Attempt{AccountID: acct2, QuestionID: qid, Chosen: "B"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Correct || !r.Scheduled {
+			t.Errorf("⛔ 选 B 应判错且排卡片，实为 correct=%v scheduled=%v", r.Correct, r.Scheduled)
+		}
+		if c := readCard(t, db, acct2, qid); c.Reps != 1 {
+			t.Errorf("⛔ reps=%d，应为 1", c.Reps)
+		}
+	})
 
-	t.Run("补自评 → 同一条记录被更新，并排出卡片", func(t *testing.T) {
+	t.Run("⛔ 判不了对错的题不排卡片 —— 没有信号就不制造信号", func(t *testing.T) {
+		acct3, qid3, _ := fixture(t, db, "没有参考答案")
+		if _, err := db.Exec(`DELETE FROM answer_claim WHERE question_id=?`, qid3); err != nil {
+			t.Fatal(err)
+		}
+		r, err := svc.RecordAttempt(ctx, Attempt{AccountID: acct3, QuestionID: qid3, Chosen: "A"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Scheduled {
+			t.Error("⛔ 无参考答案却排了卡片 —— 代打分的前提是判得了对错")
+		}
+		var n int
+		if err := db.GetContext(ctx, &n, `SELECT COUNT(*) FROM card WHERE user_id=? AND question_id=?`, acct3, qid3); err != nil {
+			t.Fatal(err)
+		}
+		if n != 0 {
+			t.Errorf("⛔ 无参考答案却有 %d 张卡片", n)
+		}
+	})
+
+	t.Run("补自评 → 只记录评价，⛔ 不再推进卡片", func(t *testing.T) {
 		rated, err := svc.RateAttempt(ctx, acct, res.AttemptID, scheduler.RatingGood)
 		if err != nil {
 			t.Fatalf("补自评: %v", err)
 		}
-		if !rated.Scheduled {
-			t.Error("⛔ 补了自评却没排卡片")
+		if rated.Scheduled {
+			t.Error("⛔ 补自评又推进了卡片 —— 卡片在记录时已推进过，同一次作答会被算两遍")
 		}
-
-		// ⭐ 关键：是 UPDATE 不是 INSERT —— 否则一次作答会变成两条记录，
-		// 正确率与「最近一次作答」全部算错。
+		// ⭐ 关键一：是 UPDATE 不是 INSERT
 		var n int
 		if err := db.GetContext(ctx, &n,
 			`SELECT COUNT(*) FROM attempt WHERE user_id=? AND question_id=?`, acct, qid); err != nil {
 			t.Fatal(err)
 		}
 		if n != 1 {
-			t.Errorf("⛔ 补自评后作答记录变成 %d 条，应仍为 1 条（UPDATE 而非 INSERT）", n)
+			t.Errorf("⛔ 补自评后作答记录变成 %d 条，应仍为 1 条", n)
 		}
 		var r *int
-		if err := db.GetContext(ctx, &r,
-			`SELECT rating FROM attempt WHERE id=?`, res.AttemptID); err != nil {
+		if err := db.GetContext(ctx, &r, `SELECT rating FROM attempt WHERE id=?`, res.AttemptID); err != nil {
 			t.Fatal(err)
 		}
 		if r == nil || *r != scheduler.RatingGood {
 			t.Errorf("⛔ rating 未被补上: %v", r)
 		}
+		// ⭐ 关键二：卡片仍只走了一步
 		if c := readCard(t, db, acct, qid); c.Reps != 1 {
-			t.Errorf("⛔ 补自评后 reps=%d，应为 1", c.Reps)
+			t.Errorf("⛔ 补自评后 reps=%d，应仍为 1 —— FSRS 被同一次作答推进了两次", c.Reps)
 		}
 	})
 
