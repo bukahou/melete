@@ -160,9 +160,14 @@ func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f Lis
 		stemExpr, localizedExpr = "COALESCE(qi.stem, q.stem)", "(qi.stem IS NOT NULL)"
 	}
 
+	// ⚠️ 占位符顺序陷阱又一处：last_correct 的 user_id 在 SELECT 列里，排在 i18n JOIN 与 WHERE 【之前】。
+	lastExpr, lastArgs := "NULL", []any{}
+	if f.AccountID != "" {
+		lastExpr, lastArgs = fmt.Sprintf(lastAttemptExpr, "correct"), []any{f.AccountID}
+	}
 	listQuery := `SELECT q.id, q.external_no, ` + stemExpr + ` AS stem, q.kind, q.pick_count,
 		` + contestedExpr + ` AS contested, ` + enrichedExpr + ` AS enriched,
-		` + localizedExpr + ` AS localized
+		` + localizedExpr + ` AS localized, ` + lastExpr + ` AS last_correct
 		FROM question q` + i18nJoin + join + where
 	if having != "" {
 		listQuery += " GROUP BY q.id" + having
@@ -170,7 +175,7 @@ func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f Lis
 	// 排序：复习队列按到期时间，其余按原题号（让「第 N 题」在界面上可预期）。
 	// ⚠️ 排序参数必须插在 LIMIT/OFFSET 【之前】—— 占位符是按出现顺序绑定的，
 	// 顺序错了不会报错，只会把 user_id 当成 LIMIT。
-	listArgs := append(append([]any{}, localeArgs...), args...)
+	listArgs := append(append(append([]any{}, lastArgs...), localeArgs...), args...)
 	order, orderArgs := orderBy(f)
 	listQuery += order
 	listArgs = append(listArgs, orderArgs...)
@@ -202,15 +207,17 @@ func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f Lis
 // ⛔ 不各写一份：三处排序不一致，「继续」就会落到别的题上而且不报错。
 //
 //   - due：按到期时间（复习队列，最该复习的在前）
-//   - seed：按种子固定打乱。CRC32 两边（MySQL / TiDB）都有且结果一致；
-//     同哈希再按 id 排，保证顺序完全确定
+//   - seed：按种子固定打乱。MD5 两边（MySQL / TiDB）都有且结果一致；同哈希再按 id 排，保证顺序完全确定。
+//     ⚠️ 2026-10-08 由 CRC32 改为 MD5：CRC32 是【线性】的 —— 对等长输入，换种子只等于把所有哈希
+//     异或上同一个常数，不同种子的排序强相关（实测种子 11 / 12 在 6 题上一半概率给出完全相同的顺序）。
+//     在 SAA 千题规模、随机大种子下没观察到「换一批还是同一批」，但打乱质量不该靠运气。
 //   - 其余：按 (卷子, 原题号) —— 多套卷子的题库里题号会重复，只按题号会把各套交错在一起
 func orderBy(f ListFilter) (string, []any) {
 	switch {
 	case f.Mode == "due":
 		return " ORDER BY " + dueOrderExpr + " ASC, q.id", []any{f.AccountID}
 	case f.Seed != nil:
-		return " ORDER BY CRC32(CONCAT(?, ':', q.id)), q.id", []any{*f.Seed}
+		return " ORDER BY MD5(CONCAT(?, ':', q.id)), q.id", []any{*f.Seed}
 	default:
 		return " ORDER BY q.session, q.external_no", nil
 	}

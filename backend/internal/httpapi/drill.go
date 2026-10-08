@@ -66,6 +66,7 @@ func drillQueryFromContext(c api.DrillContext) (drillQuery, bool) {
 		d.AnyTag = *c.TagIds
 	case api.DrillContextModePick:
 		d.AnyTag = deref(c.TagIds)
+		d.Seed = c.Seed // 4.3 列表的「打乱顺序」：同一筛选结果按种子固定打乱
 		switch deref(c.Status) {
 		case api.DrillContextStatusWrong:
 			d.Mode = "wrong"

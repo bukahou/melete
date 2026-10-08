@@ -778,7 +778,7 @@ export interface components {
             status?: "all" | "wrong" | "unseen" | "bookmarked" | "contested";
             /**
              * Format: int64
-             * @description random 的打乱种子
+             * @description random / pick 的打乱种子（pick 可选：4.3 列表「打乱顺序」）
              */
             seed?: number;
             /** @description random 一轮的题数 */
@@ -1076,6 +1076,8 @@ export interface components {
             id: number;
             /** @description 原题号，用于溯源 */
             externalNo: number;
+            /** @description 我最近一次作答这题是否答对；没做过（或未登录）时缺省。列表据此打 ✓ / ✕ */
+            lastCorrect?: boolean;
             stem: string;
             /** @enum {string} */
             kind: "single" | "multi";

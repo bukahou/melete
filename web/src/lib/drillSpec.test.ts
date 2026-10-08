@@ -17,6 +17,7 @@ describe("URL ⇄ 出处 往返不丢东西", () => {
     ["4.2 标签并集", { mode: "domain", tagIds: [3, 4, 5] }],
     ["4.3 错题 ∧ 标签 ∧ 卷子", { mode: "pick", status: "wrong", tagIds: [7], session: "s1" }],
     ["4.3 全部（status 缺省回 all）", { mode: "pick", status: "all" }],
+    ["4.3 打乱顺序", { mode: "pick", status: "unseen", tagIds: [3], seed: 42 }],
     ["4.4 随机", { mode: "random", seed: 12345, count: 10 }],
     ["旧：标签", { mode: "tag", tagId: 9 }],
     ["旧：有分歧", { mode: "contested" }],

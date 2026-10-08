@@ -30,6 +30,8 @@ func TestDrillQueryFromContext(t *testing.T) {
 		{"domain 没有标签", api.DrillContext{Mode: "domain"}, false, nil},
 		{"pick 错题 ∧ 标签", api.DrillContext{Mode: "pick", Status: st("wrong"), TagIds: ids}, true,
 			func(d drillQuery) bool { return d.Mode == "wrong" && len(d.AnyTag) == 2 }},
+		{"pick 打乱", api.DrillContext{Mode: "pick", Seed: p(9)}, true,
+			func(d drillQuery) bool { return d.Seed != nil && *d.Seed == 9 && d.Take == 0 }},
 		{"pick 收藏", api.DrillContext{Mode: "pick", Status: st("bookmarked")}, true,
 			func(d drillQuery) bool { return d.Bookmarked && d.Mode == "" }},
 		{"pick 有分歧", api.DrillContext{Mode: "pick", Status: st("contested")}, true,

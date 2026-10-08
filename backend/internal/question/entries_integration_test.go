@@ -70,7 +70,9 @@ func TestDrillEntriesIntegration(t *testing.T) {
 		t.Fatalf("未认证查收藏应被拒，得到 %v", err)
 	}
 
-	// 种子：同一个种子永远同一个顺序；换种子顺序不同（CRC32 是确定的，这条要么永远过、要么永远不过）
+	// 种子：同一个种子永远同一个顺序；换种子顺序不同。
+	// ⚠️ 题目 id 每次运行都不同，所以「换种子顺序不同」不是确定性的 —— 6 题的随机排列撞车概率 1/720。
+	//   CRC32 时代这条一半概率失败（线性哈希，换种子几乎不改变顺序），那正是它要抓的 bug。
 	seed1, seed2 := int64(11), int64(12)
 	a1, a2 := ids(ListFilter{Seed: &seed1}), ids(ListFilter{Seed: &seed1})
 	if !slices.Equal(a1, a2) {
@@ -125,6 +127,34 @@ func TestDrillEntriesIntegration(t *testing.T) {
 	if err != nil || *sum != (SetSummary{Total: 3, Answered: 2, Correct: 1}) {
 		t.Fatalf("s1 小结应为 3/2/1，得到 %+v %v", sum, err)
 	}
+	// 列表上的「最近一次对错」（4.3 列表的 ✓ / ✕）：s1#1 先错后对 ⇒ true，s1#2 ⇒ false，s1#3 我没做过 ⇒ nil
+	// ⭐ s1#3 另一个账号做对过 —— 漏了 user_id 它就会显示成 true
+	lastOf := func(who userid.UserID) []string {
+		t.Helper()
+		p, err := svc.ListQuestions(ctx, bankID, ListFilter{AccountID: who, Session: &s1, Limit: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := []string{}
+		for _, it := range p.Items {
+			switch {
+			case it.LastCorrect == nil:
+				out = append(out, "-")
+			case *it.LastCorrect:
+				out = append(out, "✓")
+			default:
+				out = append(out, "✕")
+			}
+		}
+		return out
+	}
+	if got := lastOf(me); !slices.Equal(got, []string{"✓", "✕", "-"}) {
+		t.Fatalf("我的最近一次对错应为 [✓ ✕ -]，得到 %v", got)
+	}
+	if got := lastOf(other); !slices.Equal(got, []string{"-", "-", "✓"}) {
+		t.Fatalf("另一个账号应为 [- - ✓]，得到 %v —— 串号了", got)
+	}
+
 	// 会缩短的集合：定位恒为 0（做完的题已离开集合）
 	locate("未解答（会缩短）", ListFilter{Session: &s1, Mode: "unseen"}, q["s1#3"], 0, 1)
 }

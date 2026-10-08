@@ -1002,7 +1002,7 @@ components:
           type: string
           enum: [all, wrong, unseen, bookmarked, contested]
           description: pick 的状态条件。wrong / unseen 是【会缩短】的集合 —— 做完就离开
-        seed:    { type: integer, format: int64, description: random 的打乱种子 }
+        seed:    { type: integer, format: int64, description: random / pick 的打乱种子（pick 可选：4.3 列表「打乱顺序」） }
         count:   { type: integer, description: random 一轮的题数 }
 
     AttemptInput:
@@ -1348,6 +1348,9 @@ components:
       properties:
         id:         { type: integer, format: int64 }
         externalNo: { type: integer, description: 原题号，用于溯源 }
+        lastCorrect:
+          type: boolean
+          description: 我最近一次作答这题是否答对；没做过（或未登录）时缺省。列表据此打 ✓ / ✕
         stem:       { type: string }
         kind:       { type: string, enum: [single, multi] }
         pickCount:  { type: integer }
