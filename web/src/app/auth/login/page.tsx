@@ -7,6 +7,8 @@ import { getTranslations } from "next-intl/server";
 /**
  * 登录页 —— 全站唯一在墙外的页面。
  *
+ * ⭐ 2026-10-09 用户：界面上 ⛔ 不写「Akasha」—— 没有人知道它是什么，统一叫「第三方账号登录」。
+ *   （Akasha 只是实现：自研的 OIDC 身份中枢；代码与日志里照旧叫它的名字。）
  * ⭐ 2026-10-08 用户裁定：登录只用第三方（Akasha）。首次登录自动注册，之后账号信息不可改，
  *   只能登出再登录 / 换账号。
  *   ⚠️ 撤下的只是【网页上】的密码表单：后端 /auth/password 仍在 —— iOS 调试账号与 dev 测试账号用它，
@@ -60,7 +62,7 @@ export default async function LoginPage({
         style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
       >
         <KeyRound size={15} />
-        {t("akasha")}
+        {t("thirdParty")}
       </Link>
       <p className="mt-3 text-center text-[0.74rem] text-muted">{t("autoRegister")}</p>
 
