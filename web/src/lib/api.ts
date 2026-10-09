@@ -18,14 +18,14 @@ export type {
   Bank, BankDetail, Tag, QuestionSummary, QuestionDetail, QuestionPage,
   AnswerClaim, Choice, Reference, AttemptResult, ScheduleResult, DrillMode,
   Progress, TagStat, Resume, FocusCursor, DrillContext, Overview, StudySession,
-  SessionInfo, CurrentBank, SetSummary, DrillCursor, BankSession, TermSummary, TermDetail,
+  SessionInfo, MyAccess, MyProfile, AdminUser, AdminUserPage, Tier, CurrentBank, SetSummary, DrillCursor, BankSession, TermSummary, TermDetail,
 } from "./claims";
 export { voteDistribution, hasDisagreement, DRILL_MODES, parseDrillMode } from "./claims";
 
 import type {
   Bank, BankDetail, Tag, QuestionDetail, QuestionPage, AttemptResult, DrillMode,
   Progress, TagStat, Resume, DrillContext, Overview, StudySession,
-  SessionInfo, CurrentBank, SetSummary, TermSummary, TermDetail,
+  SessionInfo, MyAccess, MyProfile, AdminUserPage, CurrentBank, SetSummary, TermSummary, TermDetail,
 } from "./claims";
 
 import { headers } from "next/headers";
@@ -194,12 +194,47 @@ export async function setBookmark(questionId: number, on: boolean): Promise<{ ok
 /** 当前题库（P9）：chosen 设置里选的 · recent 按最近作答推出 · none 都没有。 */
 export const getMyBank = () => get<CurrentBank>("/me/bank", 0, true);
 
+/**
+ * 首页与各入口（用语集 / 学习履历 / 书签）用的「现在学哪个题库」：
+ * 当前题库；没有（新用户 / 被降级后原来的看不到了）且看得到的题库只有一个 ⇒ 就是它；否则 undefined（引导去选）。
+ * ⭐ App Store 来的陌生人注册完打开就该是公开题库（P9 #27）。
+ */
+export async function resolveStudyBank(): Promise<string | undefined> {
+  const cur = await getMyBank();
+  if (cur.source !== "none" && cur.bankSlug) return cur.bankSlug;
+  const visible = await listBanks();
+  return visible.length === 1 ? visible[0].slug : undefined;
+}
+
 /** 服务端调用：切换当前题库（设置页表单 → BFF 路由 → 这里）。 */
 export async function chooseMyBank(bankSlug: string): Promise<{ ok: true } | { ok: false; status: number }> {
   const res = await fetch(`${BASE}/me/bank`, {
     method: "PUT",
     headers: { "content-type": "application/json", ...(await authHeaders()) },
     body: JSON.stringify({ bankSlug }),
+  });
+  return res.ok ? { ok: true } : { ok: false, status: res.status };
+}
+
+// ---- 档位与用户管理（P9 #27，设计见 docs/design/active/bank-access.md）----
+//
+// ⚠️ 全部 personalized=true（no-store）：档位因人而异，升降级要立刻生效。
+
+/** 我的档位：普通 / 高级 / admin。界面只用它决定显不显示管理入口 —— 门在后端。 */
+export const getMyAccess = () => get<MyAccess>("/me/access", 0, true);
+
+/** 我的资料（「我的」页面、侧栏头像）：显示名 · 邮箱 · 头像 · 档位 · 注册 / 最后登录。来自第三方账号，Melete 里不能改。 */
+export const getMyProfile = () => get<MyProfile>("/me/profile", 0, true);
+
+/** admin：用户列表。非 admin 拿到 404。 */
+export const listAdminUsers = (page = 1) => get<AdminUserPage>(`/admin/users?page=${page}&pageSize=50`, 0, true);
+
+/** 服务端调用：升级 / 降级（admin 页面表单 → BFF 路由 → 这里）。409 = 目标是 admin。 */
+export async function setUserTier(userId: string, tier: "basic" | "advanced"): Promise<{ ok: true } | { ok: false; status: number }> {
+  const res = await fetch(`${BASE}/admin/users/${encodeURIComponent(userId)}/tier`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", ...(await authHeaders()) },
+    body: JSON.stringify({ tier }),
   });
   return res.ok ? { ok: true } : { ok: false, status: res.status };
 }

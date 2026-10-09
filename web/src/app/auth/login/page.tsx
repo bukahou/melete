@@ -7,6 +7,8 @@ import { getTranslations } from "next-intl/server";
 /**
  * 登录页 —— 全站唯一在墙外的页面。
  *
+ * ⭐ 2026-10-09 用户：界面上 ⛔ 不写「Akasha」—— 没有人知道它是什么，统一叫「第三方账号登录」。
+ *   （Akasha 只是实现：自研的 OIDC 身份中枢；代码与日志里照旧叫它的名字。）
  * ⭐ 2026-10-08 用户裁定：登录只用第三方（Akasha）。首次登录自动注册，之后账号信息不可改，
  *   只能登出再登录 / 换账号。
  *   ⚠️ 撤下的只是【网页上】的密码表单：后端 /auth/password 仍在 —— iOS 调试账号与 dev 测试账号用它，
@@ -33,33 +35,40 @@ export default async function LoginPage({
     : null;
 
   return (
-    <div className="mx-auto flex max-w-sm flex-col items-center pt-14">
-      <Image src={logo} alt="" width={56} height={56} priority />
-      <h1 className="display mt-5 text-2xl tracking-wide">Melete</h1>
-      <p className="mt-2 text-xs tracking-wide text-muted">{t("tagline")}</p>
+    // 弹窗：背后的应用外壳由 layout 垫（GuestShell）。⛔ 没有关闭按钮 —— 登录仍是必须的（用户裁定）
+    <section role="dialog" aria-modal="true" aria-labelledby="login-title"
+             className="w-full max-w-[440px] rounded-2xl bg-raise px-7 pb-7 pt-6 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.35)]">
+      <h1 id="login-title" className="text-[1.15rem] font-semibold">{t("modalTitle")}</h1>
+
+      <div className="mt-6 flex items-center gap-3">
+        <Image src={logo} alt="" width={40} height={40} priority />
+        <div>
+          <p className="display text-[1.15rem] leading-tight">Melete</p>
+          <p className="text-[0.72rem] text-muted">{t("tagline")}</p>
+        </div>
+      </div>
 
       {/* 产品理念只在这里出现：登录后的人不需要每天读一遍 */}
-      <p className="mt-8 max-w-[19rem] text-center text-[0.8rem] leading-[1.9] text-muted">
+      <p className="mt-4 text-[0.82rem] leading-[1.85] text-muted">
         {t.rich("creed", { em: (c) => <em className="mark-em text-ink">{c}</em> })}
       </p>
 
       {oidcMessage && (
-        <p className="mb-3 mt-10 w-full text-xs" style={{ color: "var(--color-warn)" }}>
-          {oidcMessage}
-        </p>
+        <p className="mt-5 text-xs" style={{ color: "var(--color-warn)" }}>{oidcMessage}</p>
       )}
       <Link
         href={`/auth/akasha?return=${encodeURIComponent(returnTo)}`}
-        className={`inline-flex w-full items-center justify-center gap-2 rounded-md py-2.5 text-sm font-medium transition-opacity hover:opacity-90 ${oidcMessage ? "" : "mt-10"}`}
+        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg py-3 text-[0.92rem] font-semibold transition-opacity hover:opacity-90"
         style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}
       >
-        <KeyRound size={14} />
-        {t("akasha")}
+        <KeyRound size={15} />
+        {t("thirdParty")}
       </Link>
+      <p className="mt-3 text-center text-[0.74rem] text-muted">{t("autoRegister")}</p>
 
-      <p className="mt-10 max-w-[17rem] text-center text-xs leading-relaxed text-muted">
+      <p className="mt-6 border-t border-line pt-4 text-center text-[0.72rem] leading-relaxed text-muted">
         {t("copyright")}
       </p>
-    </div>
+    </section>
   );
 }

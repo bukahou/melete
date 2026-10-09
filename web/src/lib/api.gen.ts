@@ -380,6 +380,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 我的档位
+         * @description P9 #27：普通（只看公开题库）· 高级（公开 + 全部私有题库）· admin（全部，并能升降级普通 / 高级用户）。
+         *     界面据此决定显不显示管理入口 —— ⚠️ 那只是方便，真正的门在各接口自己。
+         */
+        get: operations["getMyAccess"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 我的资料（「我的」页面）
+         * @description 资料来自第三方账号（Akasha），每次登录同步；Melete 里 ⛔ 没有修改资料的入口（P9 #25）。
+         *     邮箱只用于展示，⛔ 不用于认证。
+         */
+        get: operations["getMyProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 用户列表（含档位）
+         * @description 按注册时间倒序分页。⛔ 非 admin 一律 404 —— 不暴露「有这个接口」。
+         */
+        get: operations["listAdminUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/users/{userId}/tier": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 升级 / 降级（普通 ⇄ 高级）
+         * @description 幂等。⛔ 只接受 basic / advanced —— 应用里没有授予 admin 的入口（由超级用户直接写库）。
+         *     目标是 admin（包括自己）⇒ 409：admin 不能操作任何 admin（P9 #29）。
+         */
+        put: operations["setUserTier"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/bank": {
         parameters: {
             query?: never;
@@ -1037,6 +1120,52 @@ export interface components {
             /** @enum {string} */
             kind: "cert" | "custom";
             meta: components["schemas"]["BankMeta"];
+            /**
+             * @description public = 任何登录用户都能看；private = 只有高级用户与 admin 能看（P9 #27）。
+             *     普通用户永远只会拿到 public 的题库 —— 看不到的题库在所有接口里都当作不存在。
+             * @enum {string}
+             */
+            visibility: "public" | "private";
+        };
+        /**
+         * @description 普通 · 高级 · admin（P9
+         * @enum {string}
+         */
+        Tier: "basic" | "advanced" | "admin";
+        MyAccess: {
+            tier: components["schemas"]["Tier"];
+        };
+        MyProfile: {
+            displayName: string;
+            /** @description 第三方账号的邮箱。只用于展示 */
+            email?: string;
+            avatarUrl?: string;
+            tier: components["schemas"]["Tier"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastLoginAt?: string;
+        };
+        AdminUser: {
+            /** @description 账号 id */
+            id: string;
+            /** @description Akasha 带来的显示名（没有则为用户名）。只用于辨认 */
+            displayName: string;
+            /** @description Akasha 带来的邮箱。只用于辨认，⛔ 不用于认证 */
+            email?: string;
+            /** @description Akasha 带来的头像地址 */
+            avatarUrl?: string;
+            tier: components["schemas"]["Tier"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastLoginAt?: string;
+        };
+        AdminUserPage: {
+            items: components["schemas"]["AdminUser"][];
+            total: number;
+            page: number;
+            pageSize: number;
         };
         /**
          * @description 题库的**自描述展示元数据**。前端不得写死任何题库特有的词：
@@ -1848,6 +1977,108 @@ export interface operations {
                     "application/json": components["schemas"]["Progress"];
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getMyAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyAccess"];
+                };
+            };
+        };
+    };
+    getMyProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyProfile"];
+                };
+            };
+        };
+    };
+    listAdminUsers: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserPage"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setUserTier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    tier: "basic" | "advanced";
+                };
+            };
+        };
+        responses: {
+            /** @description 已设定 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+            /** @description 目标是 admin */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getMyBank: {
@@ -1934,6 +2165,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            404: components["responses"]["NotFound"];
         };
     };
     getMyTagStats: {
@@ -1960,6 +2192,7 @@ export interface operations {
                     "application/json": components["schemas"]["TagStat"][];
                 };
             };
+            404: components["responses"]["NotFound"];
         };
     };
     getMyOverview: {
@@ -2025,6 +2258,7 @@ export interface operations {
                     "application/json": components["schemas"]["Resume"];
                 };
             };
+            404: components["responses"]["NotFound"];
         };
     };
     listBanks: {

@@ -63,6 +63,24 @@ func (e BankKind) Valid() bool {
 	}
 }
 
+// Defines values for BankVisibility.
+const (
+	BankVisibilityPrivate BankVisibility = "private"
+	BankVisibilityPublic  BankVisibility = "public"
+)
+
+// Valid indicates whether the value is a known member of the BankVisibility enum.
+func (e BankVisibility) Valid() bool {
+	switch e {
+	case BankVisibilityPrivate:
+		return true
+	case BankVisibilityPublic:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BankDetailKind.
 const (
 	BankDetailKindCert   BankDetailKind = "cert"
@@ -75,6 +93,24 @@ func (e BankDetailKind) Valid() bool {
 	case BankDetailKindCert:
 		return true
 	case BankDetailKindCustom:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BankDetailVisibility.
+const (
+	BankDetailVisibilityPrivate BankDetailVisibility = "private"
+	BankDetailVisibilityPublic  BankDetailVisibility = "public"
+)
+
+// Valid indicates whether the value is a known member of the BankDetailVisibility enum.
+func (e BankDetailVisibility) Valid() bool {
+	switch e {
+	case BankDetailVisibilityPrivate:
+		return true
+	case BankDetailVisibilityPublic:
 		return true
 	default:
 		return false
@@ -321,6 +357,45 @@ func (e TagStatType) Valid() bool {
 	}
 }
 
+// Defines values for Tier.
+const (
+	TierAdmin    Tier = "admin"
+	TierAdvanced Tier = "advanced"
+	TierBasic    Tier = "basic"
+)
+
+// Valid indicates whether the value is a known member of the Tier enum.
+func (e Tier) Valid() bool {
+	switch e {
+	case TierAdmin:
+		return true
+	case TierAdvanced:
+		return true
+	case TierBasic:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SetUserTierJSONBodyTier.
+const (
+	SetUserTierJSONBodyTierAdvanced SetUserTierJSONBodyTier = "advanced"
+	SetUserTierJSONBodyTierBasic    SetUserTierJSONBodyTier = "basic"
+)
+
+// Valid indicates whether the value is a known member of the SetUserTierJSONBodyTier enum.
+func (e SetUserTierJSONBodyTier) Valid() bool {
+	switch e {
+	case SetUserTierJSONBodyTierAdvanced:
+		return true
+	case SetUserTierJSONBodyTierBasic:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListQuestionsParamsMode.
 const (
 	ListQuestionsParamsModeDue    ListQuestionsParamsMode = "due"
@@ -411,6 +486,34 @@ func (e GetMyTagStatsParamsType) Valid() bool {
 	}
 }
 
+// AdminUser defines model for AdminUser.
+type AdminUser struct {
+	// AvatarUrl Akasha 带来的头像地址
+	AvatarUrl *string   `json:"avatarUrl,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DisplayName Akasha 带来的显示名（没有则为用户名）。只用于辨认
+	DisplayName string `json:"displayName"`
+
+	// Email Akasha 带来的邮箱。只用于辨认，⛔ 不用于认证
+	Email *string `json:"email,omitempty"`
+
+	// Id 账号 id
+	Id          string     `json:"id"`
+	LastLoginAt *time.Time `json:"lastLoginAt,omitempty"`
+
+	// Tier 普通 · 高级 · admin（P9
+	Tier Tier `json:"tier"`
+}
+
+// AdminUserPage defines model for AdminUserPage.
+type AdminUserPage struct {
+	Items    []AdminUser `json:"items"`
+	Page     int         `json:"page"`
+	PageSize int         `json:"pageSize"`
+	Total    int         `json:"total"`
+}
+
 // AnswerClaim 一条带来源的答案主张。同一道题可以有多条，**故意不做合并**。
 // `bank_label` 与 `community_vote` 不一致的情况占 38%，
 // 并列展示分歧并给出 AI 的裁决理由，正是本项目的核心价值。
@@ -497,10 +600,18 @@ type Bank struct {
 	Meta BankMeta `json:"meta"`
 	Name string   `json:"name"`
 	Slug string   `json:"slug"`
+
+	// Visibility public = 任何登录用户都能看；private = 只有高级用户与 admin 能看（P9 #27）。
+	// 普通用户永远只会拿到 public 的题库 —— 看不到的题库在所有接口里都当作不存在。
+	Visibility BankVisibility `json:"visibility"`
 }
 
 // BankKind defines model for Bank.Kind.
 type BankKind string
+
+// BankVisibility public = 任何登录用户都能看；private = 只有高级用户与 admin 能看（P9 #27）。
+// 普通用户永远只会拿到 public 的题库 —— 看不到的题库在所有接口里都当作不存在。
+type BankVisibility string
 
 // BankDetail defines model for BankDetail.
 type BankDetail struct {
@@ -518,10 +629,18 @@ type BankDetail struct {
 
 	// Stats 题库的内容侧统计（与用户无关）
 	Stats BankStats `json:"stats"`
+
+	// Visibility public = 任何登录用户都能看；private = 只有高级用户与 admin 能看（P9 #27）。
+	// 普通用户永远只会拿到 public 的题库 —— 看不到的题库在所有接口里都当作不存在。
+	Visibility BankDetailVisibility `json:"visibility"`
 }
 
 // BankDetailKind defines model for BankDetail.Kind.
 type BankDetailKind string
+
+// BankDetailVisibility public = 任何登录用户都能看；private = 只有高级用户与 admin 能看（P9 #27）。
+// 普通用户永远只会拿到 public 的题库 —— 看不到的题库在所有接口里都当作不存在。
+type BankDetailVisibility string
 
 // BankMeta 题库的**自描述展示元数据**。前端不得写死任何题库特有的词：
 // 标签轴叫什么（AWS 是「服务」、LPIC 是「命令与工具」）、考纲权重、及格线，
@@ -723,6 +842,26 @@ type FocusCursor struct {
 
 	// Total 集合当前大小
 	Total int `json:"total"`
+}
+
+// MyAccess defines model for MyAccess.
+type MyAccess struct {
+	// Tier 普通 · 高级 · admin（P9
+	Tier Tier `json:"tier"`
+}
+
+// MyProfile defines model for MyProfile.
+type MyProfile struct {
+	AvatarUrl   *string   `json:"avatarUrl,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	DisplayName string    `json:"displayName"`
+
+	// Email 第三方账号的邮箱。只用于展示
+	Email       *string    `json:"email,omitempty"`
+	LastLoginAt *time.Time `json:"lastLoginAt,omitempty"`
+
+	// Tier 普通 · 高级 · admin（P9
+	Tier Tier `json:"tier"`
 }
 
 // Overview defines model for Overview.
@@ -1142,6 +1281,9 @@ type TermSummary struct {
 	Slug string `json:"slug"`
 }
 
+// Tier 普通 · 高级 · admin（P9
+type Tier string
+
 // TokenPair access 是 JWT（不落库，TTL 1h）；refresh 是不透明随机串（落库，可吊销）。
 // 对齐 geass-v3：refresh 不做成 JWT —— 生命周期以月计的凭证必须能撤回。
 type TokenPair struct {
@@ -1213,6 +1355,20 @@ type TooManyRequests = Error
 
 // accessTokenContextKey is the context key for accessToken security scheme
 type accessTokenContextKey string
+
+// ListAdminUsersParams defines parameters for ListAdminUsers.
+type ListAdminUsersParams struct {
+	Page     *int `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+}
+
+// SetUserTierJSONBody defines parameters for SetUserTier.
+type SetUserTierJSONBody struct {
+	Tier SetUserTierJSONBodyTier `json:"tier"`
+}
+
+// SetUserTierJSONBodyTier defines parameters for SetUserTier.
+type SetUserTierJSONBodyTier string
 
 // SendEmailChangeCodeJSONBody defines parameters for SendEmailChangeCode.
 type SendEmailChangeCodeJSONBody struct {
@@ -1389,6 +1545,9 @@ type GetMyTagStatsParams struct {
 // GetMyTagStatsParamsType defines parameters for GetMyTagStats.
 type GetMyTagStatsParamsType string
 
+// SetUserTierJSONRequestBody defines body for SetUserTier for application/json ContentType.
+type SetUserTierJSONRequestBody SetUserTierJSONBody
+
 // RecordAttemptJSONRequestBody defines body for RecordAttempt for application/json ContentType.
 type RecordAttemptJSONRequestBody = AttemptInput
 
@@ -1433,6 +1592,12 @@ type ChooseMyBankJSONRequestBody ChooseMyBankJSONBody
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// 用户列表（含档位）
+	// (GET /admin/users)
+	ListAdminUsers(w http.ResponseWriter, r *http.Request, params ListAdminUsersParams)
+	// 升级 / 降级（普通 ⇄ 高级）
+	// (PUT /admin/users/{userId}/tier)
+	SetUserTier(w http.ResponseWriter, r *http.Request, userId string)
 	// 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
 	// (POST /attempts)
 	RecordAttempt(w http.ResponseWriter, r *http.Request)
@@ -1496,6 +1661,9 @@ type ServerInterface interface {
 	// 用语集目录（P9 第 6 步）
 	// (GET /banks/{slug}/terms)
 	ListTerms(w http.ResponseWriter, r *http.Request, slug Slug)
+	// 我的档位
+	// (GET /me/access)
+	GetMyAccess(w http.ResponseWriter, r *http.Request)
 	// 当前题库（首页显示哪一个）
 	// (GET /me/bank)
 	GetMyBank(w http.ResponseWriter, r *http.Request)
@@ -1511,6 +1679,9 @@ type ServerInterface interface {
 	// 跨题库总览（今天 / 连续天数 / 累计）
 	// (GET /me/overview)
 	GetMyOverview(w http.ResponseWriter, r *http.Request)
+	// 我的资料（「我的」页面）
+	// (GET /me/profile)
+	GetMyProfile(w http.ResponseWriter, r *http.Request)
 	// 我的学习进度总览
 	// (GET /me/progress)
 	GetMyProgress(w http.ResponseWriter, r *http.Request, params GetMyProgressParams)
@@ -1534,6 +1705,18 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// 用户列表（含档位）
+// (GET /admin/users)
+func (_ Unimplemented) ListAdminUsers(w http.ResponseWriter, r *http.Request, params ListAdminUsersParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 升级 / 降级（普通 ⇄ 高级）
+// (PUT /admin/users/{userId}/tier)
+func (_ Unimplemented) SetUserTier(w http.ResponseWriter, r *http.Request, userId string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
 // (POST /attempts)
@@ -1661,6 +1844,12 @@ func (_ Unimplemented) ListTerms(w http.ResponseWriter, r *http.Request, slug Sl
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// 我的档位
+// (GET /me/access)
+func (_ Unimplemented) GetMyAccess(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // 当前题库（首页显示哪一个）
 // (GET /me/bank)
 func (_ Unimplemented) GetMyBank(w http.ResponseWriter, r *http.Request) {
@@ -1688,6 +1877,12 @@ func (_ Unimplemented) AddBookmark(w http.ResponseWriter, r *http.Request, quest
 // 跨题库总览（今天 / 连续天数 / 累计）
 // (GET /me/overview)
 func (_ Unimplemented) GetMyOverview(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 我的资料（「我的」页面）
+// (GET /me/profile)
+func (_ Unimplemented) GetMyProfile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1735,6 +1930,90 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListAdminUsers operation middleware
+func (siw *ServerInterfaceWrapper) ListAdminUsers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAdminUsersParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "pageSize"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pageSize", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAdminUsers(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetUserTier operation middleware
+func (siw *ServerInterfaceWrapper) SetUserTier(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "userId" -------------
+	var userId string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "userId", chi.URLParam(r, "userId"), &userId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "userId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetUserTier(w, r, userId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // RecordAttempt operation middleware
 func (siw *ServerInterfaceWrapper) RecordAttempt(w http.ResponseWriter, r *http.Request) {
@@ -2501,6 +2780,26 @@ func (siw *ServerInterfaceWrapper) ListTerms(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetMyAccess operation middleware
+func (siw *ServerInterfaceWrapper) GetMyAccess(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyAccess(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMyBank operation middleware
 func (siw *ServerInterfaceWrapper) GetMyBank(w http.ResponseWriter, r *http.Request) {
 
@@ -2616,6 +2915,26 @@ func (siw *ServerInterfaceWrapper) GetMyOverview(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetMyOverview(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetMyProfile operation middleware
+func (siw *ServerInterfaceWrapper) GetMyProfile(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyProfile(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2985,6 +3304,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/users", wrapper.ListAdminUsers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/admin/users/{userId}/tier", wrapper.SetUserTier)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/attempts", wrapper.RecordAttempt)
 	})
 	r.Group(func(r chi.Router) {
@@ -3048,6 +3373,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/banks/{slug}/terms", wrapper.ListTerms)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/access", wrapper.GetMyAccess)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/bank", wrapper.GetMyBank)
 	})
 	r.Group(func(r chi.Router) {
@@ -3061,6 +3389,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/overview", wrapper.GetMyOverview)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/profile", wrapper.GetMyProfile)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/progress", wrapper.GetMyProgress)
@@ -3087,6 +3418,87 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 type NotFoundJSONResponse Error
 
 type TooManyRequestsJSONResponse Error
+
+type ListAdminUsersRequestObject struct {
+	Params ListAdminUsersParams
+}
+
+type ListAdminUsersResponseObject interface {
+	VisitListAdminUsersResponse(w http.ResponseWriter) error
+}
+
+type ListAdminUsers200JSONResponse AdminUserPage
+
+func (response ListAdminUsers200JSONResponse) VisitListAdminUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAdminUsers404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListAdminUsers404JSONResponse) VisitListAdminUsersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetUserTierRequestObject struct {
+	UserId string `json:"userId"`
+	Body   *SetUserTierJSONRequestBody
+}
+
+type SetUserTierResponseObject interface {
+	VisitSetUserTierResponse(w http.ResponseWriter) error
+}
+
+type SetUserTier204Response struct {
+}
+
+func (response SetUserTier204Response) VisitSetUserTierResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SetUserTier404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response SetUserTier404JSONResponse) VisitSetUserTierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetUserTier409JSONResponse Error
+
+func (response SetUserTier409JSONResponse) VisitSetUserTierResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type RecordAttemptRequestObject struct {
 	Body *RecordAttemptJSONRequestBody
@@ -3838,6 +4250,27 @@ func (response ListTerms404JSONResponse) VisitListTermsResponse(w http.ResponseW
 	return err
 }
 
+type GetMyAccessRequestObject struct {
+}
+
+type GetMyAccessResponseObject interface {
+	VisitGetMyAccessResponse(w http.ResponseWriter) error
+}
+
+type GetMyAccess200JSONResponse MyAccess
+
+func (response GetMyAccess200JSONResponse) VisitGetMyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMyBankRequestObject struct {
 }
 
@@ -3905,6 +4338,20 @@ func (response RemoveBookmark204Response) VisitRemoveBookmarkResponse(w http.Res
 	return nil
 }
 
+type RemoveBookmark404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RemoveBookmark404JSONResponse) VisitRemoveBookmarkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type AddBookmarkRequestObject struct {
 	QuestionId int64 `json:"questionId"`
 }
@@ -3956,6 +4403,27 @@ func (response GetMyOverview200JSONResponse) VisitGetMyOverviewResponse(w http.R
 	return err
 }
 
+type GetMyProfileRequestObject struct {
+}
+
+type GetMyProfileResponseObject interface {
+	VisitGetMyProfileResponse(w http.ResponseWriter) error
+}
+
+type GetMyProfile200JSONResponse MyProfile
+
+func (response GetMyProfile200JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMyProgressRequestObject struct {
 	Params GetMyProgressParams
 }
@@ -3974,6 +4442,20 @@ func (response GetMyProgress200JSONResponse) VisitGetMyProgressResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyProgress404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetMyProgress404JSONResponse) VisitGetMyProgressResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4022,6 +4504,20 @@ func (response GetMyResume200JSONResponse) VisitGetMyResumeResponse(w http.Respo
 	return err
 }
 
+type GetMyResume404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetMyResume404JSONResponse) VisitGetMyResumeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMyTagStatsRequestObject struct {
 	Params GetMyTagStatsParams
 }
@@ -4040,6 +4536,20 @@ func (response GetMyTagStats200JSONResponse) VisitGetMyTagStatsResponse(w http.R
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyTagStats404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetMyTagStats404JSONResponse) VisitGetMyTagStatsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -4118,6 +4628,12 @@ func (response GetTerm404JSONResponse) VisitGetTermResponse(w http.ResponseWrite
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// 用户列表（含档位）
+	// (GET /admin/users)
+	ListAdminUsers(ctx context.Context, request ListAdminUsersRequestObject) (ListAdminUsersResponseObject, error)
+	// 升级 / 降级（普通 ⇄ 高级）
+	// (PUT /admin/users/{userId}/tier)
+	SetUserTier(ctx context.Context, request SetUserTierRequestObject) (SetUserTierResponseObject, error)
 	// 记录一次作答（揭晓即记录；对错由服务端按参考答案判定）
 	// (POST /attempts)
 	RecordAttempt(ctx context.Context, request RecordAttemptRequestObject) (RecordAttemptResponseObject, error)
@@ -4181,6 +4697,9 @@ type StrictServerInterface interface {
 	// 用语集目录（P9 第 6 步）
 	// (GET /banks/{slug}/terms)
 	ListTerms(ctx context.Context, request ListTermsRequestObject) (ListTermsResponseObject, error)
+	// 我的档位
+	// (GET /me/access)
+	GetMyAccess(ctx context.Context, request GetMyAccessRequestObject) (GetMyAccessResponseObject, error)
 	// 当前题库（首页显示哪一个）
 	// (GET /me/bank)
 	GetMyBank(ctx context.Context, request GetMyBankRequestObject) (GetMyBankResponseObject, error)
@@ -4196,6 +4715,9 @@ type StrictServerInterface interface {
 	// 跨题库总览（今天 / 连续天数 / 累计）
 	// (GET /me/overview)
 	GetMyOverview(ctx context.Context, request GetMyOverviewRequestObject) (GetMyOverviewResponseObject, error)
+	// 我的资料（「我的」页面）
+	// (GET /me/profile)
+	GetMyProfile(ctx context.Context, request GetMyProfileRequestObject) (GetMyProfileResponseObject, error)
 	// 我的学习进度总览
 	// (GET /me/progress)
 	GetMyProgress(ctx context.Context, request GetMyProgressRequestObject) (GetMyProgressResponseObject, error)
@@ -4243,6 +4765,65 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListAdminUsers operation middleware
+func (sh *strictHandler) ListAdminUsers(w http.ResponseWriter, r *http.Request, params ListAdminUsersParams) {
+	var request ListAdminUsersRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAdminUsers(ctx, request.(ListAdminUsersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAdminUsers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAdminUsersResponseObject); ok {
+		if err := validResponse.VisitListAdminUsersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetUserTier operation middleware
+func (sh *strictHandler) SetUserTier(w http.ResponseWriter, r *http.Request, userId string) {
+	var request SetUserTierRequestObject
+
+	request.UserId = userId
+
+	var body SetUserTierJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetUserTier(ctx, request.(SetUserTierRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetUserTier")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetUserTierResponseObject); ok {
+		if err := validResponse.VisitSetUserTierResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // RecordAttempt operation middleware
@@ -4855,6 +5436,30 @@ func (sh *strictHandler) ListTerms(w http.ResponseWriter, r *http.Request, slug 
 	}
 }
 
+// GetMyAccess operation middleware
+func (sh *strictHandler) GetMyAccess(w http.ResponseWriter, r *http.Request) {
+	var request GetMyAccessRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyAccess(ctx, request.(GetMyAccessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyAccess")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyAccessResponseObject); ok {
+		if err := validResponse.VisitGetMyAccessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetMyBank operation middleware
 func (sh *strictHandler) GetMyBank(w http.ResponseWriter, r *http.Request) {
 	var request GetMyBankRequestObject
@@ -4979,6 +5584,30 @@ func (sh *strictHandler) GetMyOverview(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMyOverviewResponseObject); ok {
 		if err := validResponse.VisitGetMyOverviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyProfile operation middleware
+func (sh *strictHandler) GetMyProfile(w http.ResponseWriter, r *http.Request) {
+	var request GetMyProfileRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyProfile(ctx, request.(GetMyProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyProfileResponseObject); ok {
+		if err := validResponse.VisitGetMyProfileResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

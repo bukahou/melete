@@ -1,9 +1,9 @@
+import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
-import { Check, Languages, Library, LogOut, Monitor, Palette } from "lucide-react";
+import { Check, Languages, Library, Palette } from "lucide-react";
 import { cookies } from "next/headers";
 import { DEFAULT_THEME, THEMES, THEME_COOKIE, isTheme } from "@/lib/theme";
-import { getMyBank, getSessions, listBanks, type Bank, type CurrentBank, type SessionInfo } from "@/lib/api";
-import { timeAgo } from "@/lib/format";
+import { getMyBank, listBanks, type Bank, type CurrentBank } from "@/lib/api";
 import { getLocale, getTranslations } from "next-intl/server";
 import { LOCALES, LOCALE_LABEL } from "@/i18n/locales";
 
@@ -14,7 +14,8 @@ export async function generateMetadata() {
 }
 
 /**
- * 设置：题库 · 登录设备 · 语言 · 主题 · 登出。
+ * 设置：题库 · 语言 · 主题 —— 只管「这个应用的偏好」。
+ * ⭐ 2026-10-09 起「登录设备」与「登出」搬到「我的」：那里管「这个账号」（P9 #31）。
  *
  * ⭐ 2026-10-08 用户裁定：登录只用第三方（Akasha），自动注册后【不再能改账号信息】——
  *   改密码、改邮箱两节已撤下（后端端点暂留，待确认 iOS 不用后再删，见 tracker）。
@@ -79,7 +80,6 @@ function Submit({ children, tone = "cta" }: { children: React.ReactNode; tone?: 
 // ⛔ 仍然不回显任何来自 URL 的文字（与登录页同一条纪律）——
 // 白名单换成 key 白名单，性质没变。
 const NOTICE: Record<string, { key: string; tone: "ok" | "warn" }> = {
-  "sess-ok": { key: "noticeSessOk", tone: "ok" },
   "lang-ok": { key: "noticeLangOk", tone: "ok" },
   "theme-ok": { key: "noticeThemeOk", tone: "ok" },
   "rate": { key: "noticeRate", tone: "warn" },
@@ -95,20 +95,8 @@ export default async function SettingsPage({
   const themeCookie = (await cookies()).get(THEME_COOKIE)?.value;
   const theme = isTheme(themeCookie) ? themeCookie : DEFAULT_THEME;
 
-  let sessions: SessionInfo[] = [];
-  let sessionsFailed = false;
-  try {
-    sessions = await getSessions();
-  } catch (e) {
-    // ⛔ 先放行 Next 的内部信号（redirect / notFound）—— 否则 api.ts 在 401 时
-    //    发起的「去 /auth/renew 续期」会被这个 catch 吞掉，页面带着死 token 静静渲染，
-    //    用户只看到「会话列表取不到」，永远续不上期。裸 `catch {}` 正是这种形状。
-    unstable_rethrow(e);
-    // ⚠️ 其它失败不该让整页 500 —— 其余设置仍然可用。
-    sessionsFailed = true;
-  }
-
-  // 题库切换（P9 #1）：同上，取不到也不让整页 500 —— 其余设置照常可用。
+  // 题库切换（P9 #1）：取不到也不让整页 500 —— 其余设置照常可用。
+  // ⛔ 先放行 Next 的内部信号（redirect / notFound）—— 否则 api.ts 在 401 时发起的续期会被 catch 吞掉。
   let banks: Bank[] = [];
   let current: CurrentBank | null = null;
   try {
@@ -120,7 +108,12 @@ export default async function SettingsPage({
   return (
     <div className="mx-auto max-w-2xl space-y-6 pt-4">
       <header>
-        <p className="eyebrow">{t("title")}</p>
+        {/* 设置在「我的」之下（P9 #34）：面包屑一键回去 */}
+        <nav className="flex items-center gap-2 text-[0.82rem] text-muted">
+          <Link href="/me" className="hover:text-ink">{t("mine")}</Link>
+          <span className="opacity-50">›</span>
+          <span className="text-ink">{t("title")}</span>
+        </nav>
         <h1 className="display mt-3 text-2xl">{t("heading")}</h1>
       </header>
 
@@ -176,39 +169,6 @@ export default async function SettingsPage({
         </p>
       </Section>
 
-      <Section icon={<Monitor size={15} />} title={t("devTitle")}
-               hint={sessionsFailed ? t("devUnavailable") : t("devCount", { n: sessions.length })}>
-        {sessionsFailed ? (
-          <p className="text-sm text-muted">{t("devFailed")}</p>
-        ) : (
-          <>
-            <ul className="space-y-2 text-sm">
-              {sessions.map((s) => (
-                <li key={s.id} className="flex items-baseline gap-3">
-                  <span className={s.current ? "font-medium text-ink" : "text-muted"}>
-                    {s.deviceInfo?.slice(0, 60) || t("devUnknown")}
-                  </span>
-                  {s.current && (
-                    <span className="rounded-sm border border-line px-1.5 text-[0.68rem] text-muted">
-                      {t("devCurrent")}
-                    </span>
-                  )}
-                  <time className="ml-auto font-mono text-[0.74rem] text-muted">
-                    {timeAgo(s.lastActiveAt, locale)}
-                  </time>
-                </li>
-              ))}
-            </ul>
-            {sessions.length > 1 && (
-              <form method="POST" action="/settings/sessions" className="mt-5">
-                <Submit tone="warn">{t("devLogoutOthers")}</Submit>
-              </form>
-            )}
-          </>
-        )}
-        <p className="mt-3 text-xs leading-relaxed text-muted">{t("devNote")}</p>
-      </Section>
-
       {/* ⭐ 语言也放这里一份 —— 顶栏的切换器是「随手换」，这里是「账号的设置在哪」。
           两处写同一个 cookie，⛔ 不是两套状态。 */}
       <Section icon={<Languages size={15} />} title={t("langTitle")} hint={t("langHint")}>
@@ -242,12 +202,6 @@ export default async function SettingsPage({
         </form>
       </Section>
 
-      {/* ⭐ 手机上没有左侧栏（底部标签栏放不下「登出」），这个出口必须在这里 */}
-      <p className="flex items-center gap-5 text-xs text-muted">
-        <a href="/auth/logout" className="ml-auto inline-flex items-center gap-1 hover:text-ink">
-          <LogOut size={13} />{t("logout")}
-        </a>
-      </p>
     </div>
   );
 }

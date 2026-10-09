@@ -41,7 +41,9 @@ func (r *sentinelRepo) FindByUsername(context.Context, string) (*account.Account
 func (r *sentinelRepo) FindByID(context.Context, string) (*account.Account, error) {
 	return nil, account.ErrNotFound
 }
-func (r *sentinelRepo) EstablishFederated(context.Context, string, string, string) (*account.Account, error) {
+func (r *sentinelRepo) TouchLogin(context.Context, string) error { return nil }
+
+func (r *sentinelRepo) EstablishFederated(context.Context, string, account.FederatedProfile) (*account.Account, error) {
 	return nil, account.ErrNotFound
 }
 
@@ -77,7 +79,7 @@ func newSentinelServer(t *testing.T, acct *account.Account, hash string) *Server
 	})
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	svc := auth.NewService(guard, sessions, &sentinelRepo{acct: acct}, lookup, "test-secret", log)
-	return NewServer(nil, nil, nil, nil, svc, nil, log)
+	return NewServer(nil, nil, nil, nil, nil, svc, nil, log)
 }
 
 // outcome 把一次调用压成「对外可观察的那个二元组」。

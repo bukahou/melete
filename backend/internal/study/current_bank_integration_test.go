@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/bukahou/melete/backend/internal/access"
 	"github.com/bukahou/melete/backend/internal/question"
 	"github.com/bukahou/melete/backend/internal/userid"
 )
@@ -18,10 +19,12 @@ func TestCurrentBankIntegration(t *testing.T) {
 	me, qA, slugA := fixture(t, db, "当前题库 A")
 	other, qB, slugB := fixture(t, db, "当前题库 B")
 	svc := NewService(db, question.NewMySQLRepository(db))
+	// fixture 的题库缺省是 private —— 前面几步用「看得到全部」的 scope，专门测降级的那一步再换成普通
+	all, basic := access.ScopeFor(access.TierAdvanced), access.ScopeFor(access.TierBasic)
 
-	check := func(step, slug string, src CurrentBankSource) {
+	checkAs := func(scope access.Scope, step, slug string, src CurrentBankSource) {
 		t.Helper()
-		cur, err := svc.LoadCurrentBank(ctx, me)
+		cur, err := svc.LoadCurrentBank(ctx, me, scope)
 		if err != nil {
 			t.Fatalf("%s: %v", step, err)
 		}
@@ -29,6 +32,7 @@ func TestCurrentBankIntegration(t *testing.T) {
 			t.Fatalf("%s: 得到 (%q, %s)，期望 (%q, %s)", step, cur.Slug, cur.Source, slug, src)
 		}
 	}
+	check := func(step, slug string, src CurrentBankSource) { t.Helper(); checkAs(all, step, slug, src) }
 
 	// ① 新账号：没选过、没作答 ⇒ none
 	check("新账号", "", CurrentBankNone)
@@ -44,13 +48,25 @@ func TestCurrentBankIntegration(t *testing.T) {
 	check("有作答未选过", slugB, CurrentBankRecent)
 
 	// ③ 选了 A ⇒ chosen 压过 recent
-	if err := svc.ChooseCurrentBank(ctx, me, slugA); err != nil {
+	if err := svc.ChooseCurrentBank(ctx, me, all, slugA); err != nil {
 		t.Fatal(err)
 	}
 	check("选过 A", slugA, CurrentBankChosen)
 
+	// ③' 降级成普通（P9 #27）：A、B 都是私有 ⇒ chosen 与 recent 都看不到 ⇒ none；
+	//     ⛔ current_bank_id 不被改写 —— 换回能看私有的 scope，立刻回到 A
+	checkAs(basic, "降级后（两个都私有）", "", CurrentBankNone)
+	if err := svc.ChooseCurrentBank(ctx, me, basic, slugB); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("普通用户选私有题库应为 ErrNotFound（看不到 = 不存在），得到 %v", err)
+	}
+	if _, err := db.Exec(`UPDATE bank SET visibility = 'public' WHERE slug = ?`, slugB); err != nil {
+		t.Fatal(err)
+	}
+	checkAs(basic, "降级后（B 公开）", slugB, CurrentBankRecent)
+	check("再升级回来", slugA, CurrentBankChosen)
+
 	// ④ 选一个不存在的题库 ⇒ ErrNotFound，且原来的选择不变
-	if err := svc.ChooseCurrentBank(ctx, me, "no-such-bank-p9"); !errors.Is(err, ErrNotFound) {
+	if err := svc.ChooseCurrentBank(ctx, me, all, "no-such-bank-p9"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("不存在的题库应返回 ErrNotFound，得到 %v", err)
 	}
 	check("选不存在的题库之后", slugA, CurrentBankChosen)
@@ -62,7 +78,7 @@ func TestCurrentBankIntegration(t *testing.T) {
 	check("选中的题库下架", slugB, CurrentBankRecent)
 
 	// ⑥ 隔离：另一个账号既没选过也没作答 ⇒ none（⛔ 不能看到 me 的选择或作答）
-	cur, err := svc.LoadCurrentBank(ctx, other)
+	cur, err := svc.LoadCurrentBank(ctx, other, all)
 	if err != nil {
 		t.Fatal(err)
 	}

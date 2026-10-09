@@ -12,6 +12,8 @@ type Bank struct {
 	// Meta 是题库自描述的展示元数据（标签轴名 / 考纲权重 / 及格线），原样透传给 API。
 	// 领域层不解析它：这些词只有前端要用，后端不该认识「考纲域」。
 	Meta *string `db:"meta"`
+	// Visibility 是 public / private（P9 #27 #30）。能不能看由 access.Scope 判断，⛔ 不在这里判断。
+	Visibility string `db:"visibility"`
 }
 
 // Stats 是题库的内容侧统计，与具体用户无关。

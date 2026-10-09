@@ -6,7 +6,9 @@
     "retry": "再試行",
     "questions": "{n} 問",
     "back": "戻る",
-    "unknown": "—"
+    "unknown": "—",
+    "notFoundTitle": "ページが見つかりません",
+    "notFoundBody": "存在しないか、このアカウントでは閲覧できないページです。"
   },
   "nav": {
     "home": "ホーム",
@@ -14,7 +16,9 @@
     "glossary": "用語集",
     "bookmarks": "ブックマーク",
     "soon": "準備中",
-    "backHome": "ホームへ"
+    "backHome": "ホームへ",
+    "admin": "ユーザー管理",
+    "mine": "マイページ"
   },
   "brand": {
     "tagline": "練習と修習",
@@ -92,7 +96,9 @@
     "banksTitle": "問題集一覧",
     "banksHint": "クリックで切り替え",
     "banksCurrent": "学習中",
-    "banksDone": "{total} 問中 {done} 問解答"
+    "banksDone": "{total} 問中 {done} 問解答",
+    "guestDomain": "分野",
+    "banksPrivate": "非公開"
   },
   "history": {
     "home": "ホーム",
@@ -182,29 +188,22 @@
   "login": {
     "tagline": "Μελέτη — 練習と修習",
     "creed": "受け身の読書では身につかない。<em>思い出す行為</em>が学習をつくる。各問題は問題集の正解・コミュニティ投票・AI の判定を並べて保存します —— 見解の割れ自体が学習材料です。",
-    "akasha": "Akasha でログイン",
+    "thirdParty": "外部アカウントでログイン",
     "copyright": "問題集の内容は著作権に関わるため、アカウント保持者のみ閲覧できます。",
-    "oidcCancelled": "Akasha ログインをキャンセルしました",
+    "oidcCancelled": "外部アカウントでのログインをキャンセルしました",
     "oidcState": "ログインセッションが期限切れです。もう一度お試しください",
-    "oidcUpstream": "Akasha が一時的に利用できません。しばらくしてから、またはパスワードでログインしてください",
-    "oidcApplication": "ログイン時に問題が発生しました。もう一度お試しください"
+    "oidcUpstream": "外部アカウントでのログインが一時的に利用できません。しばらくしてから再度お試しください",
+    "oidcApplication": "ログイン時に問題が発生しました。もう一度お試しください",
+    "modalTitle": "ログイン／新規登録",
+    "autoRegister": "初回ログイン時に、Melete のアカウントが自動で作成されます。"
   },
   "settings": {
     "title": "設定",
-    "heading": "問題集・ログイン端末・表示",
-    "devTitle": "ログイン端末",
-    "devUnavailable": "一時的に取得できません",
-    "devCount": "{n} 台",
-    "devFailed": "一覧を取得できませんでした。他の機能には影響ありません。",
-    "devUnknown": "不明な端末",
-    "devCurrent": "現在",
-    "devLogoutOthers": "他の端末をログアウト",
-    "devNote": "⚠️ ここにトークンは表示しません —— それは失効用の資格情報であり、画面に出すことは画面を見られる人にセッションを渡すのと同じです。",
+    "heading": "問題集・言語・表示",
     "langTitle": "言語",
     "langHint": "画面と問題文",
     "langNote": "⚠️ 問題文の訳は 1 問ずつ追加しています。訳のない問題は原文を表示し、その旨を明記します —— ⛔ 黙って戻したりはしません。",
     "langSubmit": "言語を保存",
-    "noticeSessOk": "他の端末をログアウトしました。",
     "noticeLangOk": "言語を保存しました。",
     "noticeRate": "操作が頻繁すぎます。しばらくしてからお試しください。",
     "noticeFail": "操作に失敗しました。もう一度お試しください。",
@@ -222,7 +221,7 @@
     "theme_system": "システムに合わせる",
     "themeSubmit": "保存",
     "noticeThemeOk": "表示を更新しました",
-    "logout": "ログアウト"
+    "mine": "マイページ"
   },
   "error": {
     "title": "ページでエラーが発生しました",
@@ -262,5 +261,52 @@
     "showMore": "さらに {n} 問表示",
     "shownOf": "{total} 問中 {shown} 問を表示",
     "practice": "この {n} 問を練習する"
+  },
+  "admin": {
+    "title": "ユーザー管理",
+    "users": "ユーザー",
+    "total": "{n} 人",
+    "joined": "{when}に登録",
+    "tier_basic": "一般",
+    "tier_advanced": "上級",
+    "tier_admin": "admin",
+    "tierNote_basic": "登録するだけでこの区分。公開問題集のみ閲覧できます",
+    "tierNote_advanced": "すべての問題集（非公開を含む）を閲覧できます。admin が昇格させます",
+    "tierNote_admin": "すべて閲覧でき、一般・上級ユーザーを昇格／降格できます。スーパーユーザーのみが設定し、admin 同士は変更できません",
+    "upgrade": "上級に昇格",
+    "downgrade": "一般に降格",
+    "prev": "前へ",
+    "next": "次へ",
+    "noticeOk": "更新しました。相手が次に開いたときから反映されます",
+    "noticeAdmin": "admin アカウントは変更できません",
+    "noticeFail": "操作に失敗しました。もう一度お試しください",
+    "lastLogin": "{when}にログイン",
+    "neverLogin": "ログイン記録なし",
+    "mine": "マイページ"
+  },
+  "me": {
+    "title": "マイページ",
+    "home": "ホーム",
+    "joined": "{when}に登録",
+    "lastLogin": "{when}にログイン",
+    "neverLogin": "ログイン記録なし",
+    "profileNote": "プロフィールは外部アカウントから取得し、ログインのたびに同期されます。Melete では変更できません。",
+    "tier_basic": "一般",
+    "tier_advanced": "上級",
+    "tier_admin": "admin",
+    "banksTitle": "マイ問題集",
+    "private": "非公開",
+    "devTitle": "ログイン端末",
+    "devCount": "{n} 台",
+    "devFailed": "一覧を取得できませんでした。他の機能には影響ありません。",
+    "devUnknown": "不明な端末",
+    "devCurrent": "現在",
+    "devLogoutOthers": "他の端末をログアウト",
+    "devNote": "スマートフォンを紛失したときや、他人のパソコンでログアウトし忘れたときに、他の端末をまとめてログアウトできます。",
+    "noticeSessOk": "他の端末をログアウトしました。",
+    "noticeFail": "操作に失敗しました。もう一度お試しください",
+    "admin": "ユーザー管理",
+    "settings": "設定",
+    "logout": "ログアウト"
   }
 }

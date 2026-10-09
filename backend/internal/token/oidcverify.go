@@ -6,6 +6,8 @@ import (
 	"sync"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+
+	"github.com/bukahou/melete/backend/internal/account"
 )
 
 // OIDCVerifier 验证 Akasha 签发的 id_token。
@@ -28,31 +30,40 @@ func NewOIDCVerifier(issuer, clientID string) *OIDCVerifier {
 	return &OIDCVerifier{issuer: issuer, clientID: clientID}
 }
 
-// Verify 验签并返回 (sub, 展示名)。
-func (v *OIDCVerifier) Verify(ctx context.Context, rawIDToken string) (string, string, error) {
+// Verify 验签并返回上游带来的资料（sub · 展示名 · 邮箱 · 头像）。
+// ⚠️ 2026-10-08 之前只返回 (sub, 展示名)，邮箱与头像在这里就被丢掉了 —— 管理页因此认不出人。
+func (v *OIDCVerifier) Verify(ctx context.Context, rawIDToken string) (account.FederatedProfile, error) {
 	ver, err := v.get(ctx)
 	if err != nil {
-		return "", "", err
+		return account.FederatedProfile{}, err
 	}
 	// go-oidc 校验签名、issuer、audience、exp —— 缺一不可
 	idToken, err := ver.Verify(ctx, rawIDToken)
 	if err != nil {
-		return "", "", fmt.Errorf("id_token 验签失败: %w", err)
+		return account.FederatedProfile{}, fmt.Errorf("id_token 验签失败: %w", err)
 	}
 	var claims struct {
 		Name              string `json:"name"`
 		PreferredUsername string `json:"preferred_username"`
+		Email             string `json:"email"`
+		Picture           string `json:"picture"`
 	}
-	_ = idToken.Claims(&claims) // 展示名缺失不该让登录失败
+	_ = idToken.Claims(&claims) // 资料缺失不该让登录失败
+	return account.FederatedProfile{
+		Subject:   idToken.Subject,
+		Display:   DisplayName(claims.Name, claims.PreferredUsername),
+		Email:     claims.Email,
+		AvatarURL: claims.Picture,
+	}, nil
+}
 
-	display := claims.Name
-	if display == "" {
-		display = claims.PreferredUsername
+// DisplayName 展示名的取法：name → preferred_username；都没有返回空串。web（oidcrp）与 iOS（id_token）两条路共用。
+// ⚠️ 不在这里兜底成「学习者」：登录时要拿它同步老账号，兜底值会把原来的名字覆盖掉。兜底只在建号时做。
+func DisplayName(name, preferred string) string {
+	if name != "" {
+		return name
 	}
-	if display == "" {
-		display = "学习者"
-	}
-	return idToken.Subject, display, nil
+	return preferred
 }
 
 func (v *OIDCVerifier) get(ctx context.Context) (*oidc.IDTokenVerifier, error) {

@@ -10,9 +10,13 @@ import (
 	"github.com/bukahou/melete/backend/internal/httplocale"
 )
 
-// ListTerms 用语集目录（P9 第 6 步）。不需要登录 —— 与题库列表同一个可见性。
+// ListTerms 用语集目录（P9 第 6 步）。与题库同一个可见性：看不到题库 ⇒ 404（P9 #27）。
 func (s *Server) ListTerms(ctx context.Context, req api.ListTermsRequestObject) (api.ListTermsResponseObject, error) {
-	b, err := s.banks.FindBank(ctx, req.Slug)
+	_, scope, err := s.viewer(ctx, "ListTerms")
+	if err != nil {
+		return nil, err
+	}
+	b, err := s.visibleBank(ctx, scope, req.Slug)
 	if errors.Is(err, bank.ErrNotFound) {
 		return api.ListTerms404JSONResponse{NotFoundJSONResponse: notFound("题库不存在: " + req.Slug)}, nil
 	}
@@ -32,7 +36,19 @@ func (s *Server) ListTerms(ctx context.Context, req api.ListTermsRequestObject) 
 
 // GetTerm 术语详情：释义 + 出题历史（题干跟界面语言走）。
 func (s *Server) GetTerm(ctx context.Context, req api.GetTermRequestObject) (api.GetTermResponseObject, error) {
+	_, scope, err := s.viewer(ctx, "GetTerm")
+	if err != nil {
+		return nil, err
+	}
 	d, err := s.glossary.GetTerm(ctx, req.Id, httplocale.RequestLocale(ctx))
+	// ⚠️ 路径里没有题库名：取到术语后按它所属题库判断，看不到 ⇒ 与「不存在」同一个 404（P9 #27）
+	if err == nil {
+		if _, verr := s.visibleBank(ctx, scope, d.BankSlug); errors.Is(verr, bank.ErrNotFound) {
+			err = glossary.ErrNotFound
+		} else if verr != nil {
+			return nil, s.fail("GetTerm.access", verr)
+		}
+	}
 	if errors.Is(err, glossary.ErrNotFound) {
 		return api.GetTerm404JSONResponse{NotFoundJSONResponse: notFound("术语不存在")}, nil
 	}

@@ -3,9 +3,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Bookmark, BookOpen, House, LineChart, LogOut, Settings } from "lucide-react";
+import { Bookmark, BookOpen, House, LineChart, UserRound } from "lucide-react";
 import logo from "@/app/icon.png";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { UserAvatar } from "./UserAvatar";
 import type { Locale } from "@/i18n/locales";
 
 /**
@@ -20,8 +21,14 @@ import type { Locale } from "@/i18n/locales";
  */
 export type NavLabels = {
   home: string; history: string; glossary: string; bookmarks: string;
-  settings: string; logout: string; soon: string;
+  settings: string; logout: string; soon: string; admin: string; mine: string;
 };
+
+/** 「我的」及其下的分支（设置 / 用户管理）：在这些页面时高亮「我的」，让人知道自己在哪条路上。 */
+const inMine = (p: string) => p.startsWith("/me") || p.startsWith("/settings") || p.startsWith("/admin");
+
+/** 侧栏「我的」用的头像：有资料就画头像，没有（取不到）就退回通用图标。 */
+export type NavUser = { name: string; avatarUrl?: string | null };
 
 type NavItem = { href: string; icon: typeof House; key: keyof NavLabels; soon?: boolean; match: (p: string) => boolean };
 
@@ -36,8 +43,9 @@ const MAIN: NavItem[] = [
   { href: "/bookmarks", icon: Bookmark, key: "bookmarks", match: (p: string) => p.startsWith("/bookmarks") },
 ];
 
-function Item({ href, icon: Icon, label, active, soon, soonLabel, compact }: {
+function Item({ href, icon: Icon, label, active, soon, soonLabel, compact, user }: {
   href: string; icon: typeof House; label: string; active: boolean; soon?: boolean; soonLabel: string; compact?: boolean;
+  user?: NavUser;
 }) {
   return (
     <Link
@@ -48,14 +56,16 @@ function Item({ href, icon: Icon, label, active, soon, soonLabel, compact }: {
     >
       <span className={`flex h-8 w-12 items-center justify-center rounded-full transition-colors ${
         active ? "bg-tile text-accent-ink shadow-sm" : "text-ink group-hover:bg-tile/60"}`}>
-        <Icon size={18} strokeWidth={active ? 2.4 : 1.9} />
+        {user ? <UserAvatar name={user.name} url={user.avatarUrl} size={22} /> : <Icon size={18} strokeWidth={active ? 2.4 : 1.9} />}
       </span>
       <span className={`text-[0.68rem] leading-tight ${active ? "font-semibold text-accent-ink" : "text-ink"}`}>{label}</span>
     </Link>
   );
 }
 
-export function SideNav({ labels, locale, version }: { labels: NavLabels; locale: Locale; version: string }) {
+export function SideNav({ labels, locale, version, user }: {
+  labels: NavLabels; locale: Locale; version: string; user?: NavUser;
+}) {
   const path = usePathname() ?? "/";
   return (
     <>
@@ -72,23 +82,22 @@ export function SideNav({ labels, locale, version }: { labels: NavLabels; locale
           ))}
         </nav>
         <div className="mt-auto flex w-full flex-col items-center gap-3">
-          <Item href="/settings" icon={Settings} label={labels.settings} active={path.startsWith("/settings")} soonLabel={labels.soon} />
+          {/* 我的（P9 #31 #34）：图标就是自己的头像。用户管理 / 设置 / 登出都从「我的」进 ——
+              电脑与手机同一条路径（2026-10-09 用户裁定 b），⛔ 侧栏不再单列这几个 */}
+          <Item href="/me" icon={UserRound} label={labels.mine} active={inMine(path)} soonLabel={labels.soon} user={user} />
           <div className="max-w-full px-1 text-[0.7rem]"><LanguageSwitcher current={locale} short /></div>
-          <a href="/auth/logout" title={labels.logout} className="text-muted transition-colors hover:text-ink">
-            <LogOut size={14} />
-          </a>
           {/* 版本号 = 镜像 tag：打开页面就能回答「跑的是哪个 commit」 */}
           <span className="font-mono text-[0.58rem] text-muted opacity-70">{version}</span>
         </div>
       </aside>
 
-      {/* 手机：底部标签栏。语言 / 登出 收进设置页 */}
+      {/* 手机：底部标签栏。最后一格是「我的」（P9 #31）—— 设置 / 用户管理 / 登出都从「我的」进 */}
       <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-line bg-rail px-1 pb-[env(safe-area-inset-bottom)] md:hidden">
         {MAIN.map((m) => (
           <Item key={m.href} href={m.href} icon={m.icon} label={labels[m.key]} active={m.match(path)}
                 soon={m.soon} soonLabel={labels.soon} compact />
         ))}
-        <Item href="/settings" icon={Settings} label={labels.settings} active={path.startsWith("/settings")} soonLabel={labels.soon} compact />
+        <Item href="/me" icon={UserRound} label={labels.mine} active={inMine(path)} soonLabel={labels.soon} compact user={user} />
       </nav>
     </>
   );

@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS bank (
   locale      VARCHAR(16)  NOT NULL DEFAULT 'zh',
   kind        VARCHAR(16)  NOT NULL,               -- cert | custom
   meta        JSON,                                -- 考纲域定义等题库特有元数据
+  visibility  VARCHAR(16)  NOT NULL DEFAULT 'private',  -- public | private（2026-10-08-bank-access.sql）
   created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uk_bank_slug (slug)
@@ -340,12 +341,13 @@ CREATE TABLE IF NOT EXISTS user_sessions (
 -- ── user_permissions（§22.4 方案 B：无角色层）──────────────────────
 -- ⚠️ melete 初始权限集为空，表照建（用户裁决 ④）：
 --    DDL 是三家共享模板，建了将来加权限零改表；不建则验收覆盖不到 §22.4。
--- ⛔ 无 granted_by —— §22.4 ③ 定「仅 atlhyper 需要」。
+-- ⭐ 2026-10-08 起有 granted_by：三档用户的升降级由 admin 在 web 上做，要记是谁做的（P9 #27）。
 CREATE TABLE IF NOT EXISTS user_permissions (
   user_id     BINARY(16)  NOT NULL,
   permission  VARCHAR(64) NOT NULL,   -- <资源>:<动作>，或单个 *
   granted_at  DATETIME    NOT NULL,
   expires_at  DATETIME    NULL,       -- 留列（VIP 天然有期限），逻辑可后做
+  granted_by  BINARY(16)  NULL,       -- 哪个 admin 授予；超级用户直接写库时为空（2026-10-08-bank-access.sql）
   PRIMARY KEY (user_id, permission),
   KEY idx_permission (permission)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

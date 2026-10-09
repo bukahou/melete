@@ -18,12 +18,26 @@ import (
 
 var ErrNotFound = errors.New("account not found")
 
+// FederatedProfile 是上游（Akasha）登录带回来的资料。
+//
+// ⚠️ Email 是【上游的说法】：只写进 users.upstream_email，只用于在管理页上辨认人，
+// ⛔ 绝不写进 users.email、⛔ 绝不用于找回密码 / 认证 / 按邮箱认亲 —— 那等于把安全责任委托给上游。
+// （与 geass 同一条纪律；2026-10-08 发现 melete 一直只存了显示名，邮箱与头像拿到了却被丢掉）
+type FederatedProfile struct {
+	Subject   string
+	Display   string
+	Email     string
+	AvatarURL string
+}
+
 // Repository 是账号数据的读写契约。
 type Repository interface {
 	FindByUsername(ctx context.Context, username string) (*Account, error)
 	FindByID(ctx context.Context, id string) (*Account, error)
-	// EstablishFederated 幂等确立联邦账号：按 (provider, subject) 找，找不到则建。
-	EstablishFederated(ctx context.Context, provider, subject, display string) (*Account, error)
+	// EstablishFederated 幂等确立联邦账号：按 (provider, subject) 找，找不到则建（建号时写入上游资料）。
+	EstablishFederated(ctx context.Context, provider string, p FederatedProfile) (*Account, error)
+	// TouchLogin 记一次成功登录（users.last_login_at）。
+	TouchLogin(ctx context.Context, id string) error
 }
 
 type mysqlRepository struct{ db *sqlx.DB }
@@ -96,13 +110,26 @@ func (r *mysqlRepository) FindByID(ctx context.Context, id string) (*Account, er
 // LoginWithIdentity，案卷裁决 ①(b) 指定）。
 //
 // ⚠️ 建 users 与建 identities 必须同一事务：两步同生共死，⛔ 不留孤儿 user 行。
-func (r *mysqlRepository) EstablishFederated(ctx context.Context, provider, subject, display string) (*Account, error) {
+func (r *mysqlRepository) EstablishFederated(ctx context.Context, provider string, p FederatedProfile) (*Account, error) {
+	subject, display := p.Subject, p.Display
 	if a, err := r.findByIdentity(ctx, provider, subject); err == nil {
+		// ⭐ 老账号：每次登录都用上游的最新资料覆盖（2026-10-09 用户裁定 a）——
+		//   Melete 里没有任何编辑资料的入口，上游就是唯一来源；不同步的话，
+		//   建号时没存下邮箱 / 头像的老账号会永远是空的。
+		if err := r.syncProfile(ctx, a.ID, p); err != nil {
+			return nil, err
+		}
+		if display != "" {
+			a.Display = &display
+		}
 		return a, nil
 	} else if !errors.Is(err, ErrNotFound) {
 		return nil, err
 	}
 
+	if strings.TrimSpace(display) == "" {
+		display = "学习者" // 上游没给任何名字时的兜底 —— 只在建号时用，⛔ 不参与同步
+	}
 	username, err := r.generateFederatedUsername(ctx, provider, display)
 	if err != nil {
 		return nil, err
@@ -119,9 +146,9 @@ func (r *mysqlRepository) EstablishFederated(ctx context.Context, provider, subj
 	err = r.inTx(ctx, func(tx *sqlx.Tx) error {
 		now := time.Now().UTC()
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO users (id, username, status, created_at, updated_at, display_name)
-			VALUES (?, ?, ?, ?, ?, ?)`,
-			bin, username, StatusActive, now, now, nullStr(display)); err != nil {
+			INSERT INTO users (id, username, status, created_at, updated_at, display_name, upstream_email, avatar_url)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			bin, username, StatusActive, now, now, nullStr(display), nullStr(p.Email), nullStr(p.AvatarURL)); err != nil {
 			return fmt.Errorf("建立联邦账号: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `
@@ -149,6 +176,37 @@ func (r *mysqlRepository) EstablishFederated(ctx context.Context, provider, subj
 		return nil, err
 	}
 	return &Account{ID: id, Username: username, Display: nullPtr(display), Status: StatusActive}, nil
+}
+
+// syncProfile 用上游资料覆盖本地副本。
+// ⚠️ 上游这一次没给的字段（空串）⛔ 不覆盖成空 —— 某次 scope 不全不该把已有的资料抹掉。
+// ⚠️ 只写 display_name / upstream_email / avatar_url，⛔ 绝不碰 email（那是本应用验证过的地址）。
+func (r *mysqlRepository) syncProfile(ctx context.Context, id string, p FederatedProfile) error {
+	bin, err := userid.Encode(id)
+	if err != nil {
+		return err
+	}
+	if _, err := r.db.ExecContext(ctx, `
+		UPDATE users SET
+		  display_name   = COALESCE(?, display_name),
+		  upstream_email = COALESCE(?, upstream_email),
+		  avatar_url     = COALESCE(?, avatar_url)
+		WHERE id = ?`, nullStr(p.Display), nullStr(p.Email), nullStr(p.AvatarURL), bin); err != nil {
+		return fmt.Errorf("同步上游资料: %w", err)
+	}
+	return nil
+}
+
+// TouchLogin 记一次成功登录。⚠️ 只写 last_login_at，⛔ 不动 updated_at —— 那一列属于账号资料的变更。
+func (r *mysqlRepository) TouchLogin(ctx context.Context, id string) error {
+	bin, err := userid.Encode(id)
+	if err != nil {
+		return err
+	}
+	if _, err := r.db.ExecContext(ctx, `UPDATE users SET last_login_at = ? WHERE id = ?`, time.Now().UTC(), bin); err != nil {
+		return fmt.Errorf("记录登录时间: %w", err)
+	}
+	return nil
 }
 
 func (r *mysqlRepository) findByIdentity(ctx context.Context, provider, subject string) (*Account, error) {

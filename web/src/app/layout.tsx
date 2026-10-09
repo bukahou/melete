@@ -2,8 +2,11 @@ import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 import { Noto_Serif_SC } from "next/font/google";
+import { unstable_rethrow } from "next/navigation";
 import { readAccessToken } from "@/lib/session";
+import { getMyProfile } from "@/lib/api";
 import { SideNav } from "@/components/SideNav";
+import { GuestShell } from "@/components/GuestShell";
 import type { Locale } from "@/i18n/locales";
 import { cookies } from "next/headers";
 import { DEFAULT_THEME, THEME_COOKIE, isTheme } from "@/lib/theme";
@@ -30,6 +33,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // 登录态决定是否显示导航（侧栏）；用户名从 token 的 cookie 拿不到，
   // 显示名改由页面按需取（避免每个页面都为了导航多打一次 API）
   const signedIn = Boolean(await readAccessToken());
+  // 档位只用来决定显不显示「用户管理」入口（P9 #27）。取不到就当不是 admin —— 少显示一个入口，⛔ 不影响页面
+  // 资料只用来画侧栏「我的」的头像。取不到就退回通用图标 —— ⛔ 不影响页面
+  const profile = signedIn ? await getMyProfile().catch((e) => { unstable_rethrow(e); return null; }) : null;
   // ⭐ lang 属性不是装饰：读屏软件靠它选发音，浏览器靠它选断行与字体回退。
   // 中日共用大量汉字，标错了日文会被用中文字形渲染 —— 这是肉眼可见的错。
   const locale = (await getLocale()) as Locale;
@@ -46,10 +52,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <SideNav
               locale={locale}
               version={process.env.APP_VERSION ?? "dev"}
+              user={profile ? { name: profile.displayName, avatarUrl: profile.avatarUrl } : undefined}
               labels={{
                 home: t("nav.home"), history: t("nav.history"), glossary: t("nav.glossary"),
                 bookmarks: t("nav.bookmarks"), settings: t("common.settings"),
-                logout: t("common.logout"), soon: t("nav.soon"),
+                logout: t("common.logout"), soon: t("nav.soon"), admin: t("nav.admin"), mine: t("nav.mine"),
               }}
             />
             {/* pb-24：手机上给底部标签栏让位 */}
@@ -58,8 +65,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </main>
           </div>
         ) : (
-          // 未登录（登录 / 找回密码）：没有导航可去，只留居中的内容
-          <main className="mx-auto w-full max-w-4xl px-6 py-12">{children}</main>
+          // 未登录：背后垫一张应用外壳（只是画，inert），登录页作为弹窗叠在上面 —— 参照 it-pass（2026-10-08 用户裁定）
+          <div className="relative min-h-screen">
+            <div className="fixed inset-0 overflow-hidden"><GuestShell /></div>
+            <div className="fixed inset-0 bg-black/35 backdrop-blur-[1.5px]" />
+            <main className="relative z-10 flex min-h-screen items-start justify-center px-4 py-10 md:items-center md:py-12">{children}</main>
+          </div>
         )}
         </NextIntlClientProvider>
       </body>

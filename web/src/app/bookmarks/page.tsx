@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getMyBank } from "@/lib/api";
+import { resolveStudyBank } from "@/lib/api";
 
 export const revalidate = 0;
 
@@ -9,6 +9,6 @@ export const revalidate = 0;
  * ⛔ 不另做一个只会列题的书签页。没有当前题库就回首页（那里会引导去设置选）。
  */
 export default async function BookmarksPage() {
-  const cur = await getMyBank();
-  redirect(cur.bankSlug ? `/banks/${cur.bankSlug}/practice/pick?st=bookmarked` : "/");
+  const slug = await resolveStudyBank();
+  redirect(slug ? `/banks/${slug}/practice/pick?st=bookmarked` : "/");
 }

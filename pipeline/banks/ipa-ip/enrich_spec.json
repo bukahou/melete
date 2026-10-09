@@ -1,5 +1,7 @@
 {
   "bank": "ipa-ip",
+  "visibility": "public",
+  "_note_visibility": "公开题库：任何登录用户都能看（P9 #27 #30）。不写即 private —— AWS 两个题库就是靠缺省成为 private 的。",
   "explanation_locale": "ja",
   "_note_locale": "解析用日文（用户 2026-09-05 拍板）。这是第一个 locale=ja 的题库；SAA/SAP 是 zh。",
   "tag_types": {

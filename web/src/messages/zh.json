@@ -6,7 +6,9 @@
     "retry": "重试",
     "questions": "{n} 题",
     "back": "返回",
-    "unknown": "—"
+    "unknown": "—",
+    "notFoundTitle": "找不到这一页",
+    "notFoundBody": "它可能不存在，或者你的账号看不到它。"
   },
   "nav": {
     "home": "首页",
@@ -14,7 +16,9 @@
     "glossary": "用语集",
     "bookmarks": "书签",
     "soon": "即将开放",
-    "backHome": "回首页"
+    "backHome": "回首页",
+    "admin": "用户管理",
+    "mine": "我的"
   },
   "brand": {
     "tagline": "练习与修习",
@@ -92,7 +96,9 @@
     "banksTitle": "题库一览",
     "banksHint": "点一下切换",
     "banksCurrent": "学习中",
-    "banksDone": "已答 {done} / {total}"
+    "banksDone": "已答 {done} / {total}",
+    "guestDomain": "领域",
+    "banksPrivate": "私有"
   },
   "history": {
     "home": "首页",
@@ -182,29 +188,22 @@
   "login": {
     "tagline": "Μελέτη — 练习与修习",
     "creed": "被动阅读不产生学习，<em>主动回忆</em>才产生。每道题并列保存题库标注、社区投票与 AI 裁决三方答案 —— 分歧本身就是学习材料。",
-    "akasha": "用 Akasha 登录",
+    "thirdParty": "使用第三方账号登录",
     "copyright": "题库内容涉及版权，仅限持有账号的学习者访问。",
-    "oidcCancelled": "已取消 Akasha 登录",
+    "oidcCancelled": "已取消第三方登录",
     "oidcState": "登录会话已过期，请重试",
-    "oidcUpstream": "Akasha 暂时不可用，请稍后重试或用密码登录",
-    "oidcApplication": "登录时出了点问题，请重试"
+    "oidcUpstream": "第三方登录暂时不可用，请稍后重试",
+    "oidcApplication": "登录时出了点问题，请重试",
+    "modalTitle": "登录 / 注册",
+    "autoRegister": "第一次登录时，会自动为你创建 Melete 账号。"
   },
   "settings": {
     "title": "设置",
-    "heading": "题库 · 登录设备 · 外观",
-    "devTitle": "登录设备",
-    "devUnavailable": "暂时取不到",
-    "devCount": "{n} 台",
-    "devFailed": "列表暂时取不到，其余功能不受影响。",
-    "devUnknown": "未知设备",
-    "devCurrent": "当前",
-    "devLogoutOthers": "登出其它设备",
-    "devNote": "⚠️ 这里不显示任何令牌 —— 那是撤销凭据，摆在界面上等于让能看到屏幕的人拿走会话。",
+    "heading": "题库 · 语言 · 外观",
     "langTitle": "语言",
     "langHint": "界面与题目正文",
     "langNote": "⚠️ 题目正文的译文是逐题补的。没有译文的题会显示原文并注明 —— ⛔ 不会静默回退。",
     "langSubmit": "保存语言",
-    "noticeSessOk": "已登出其它设备。",
     "noticeLangOk": "语言已保存。",
     "noticeRate": "操作过于频繁，请稍后再试。",
     "noticeFail": "操作失败，请重试。",
@@ -222,7 +221,7 @@
     "theme_system": "跟随系统",
     "themeSubmit": "保存",
     "noticeThemeOk": "外观已更新",
-    "logout": "退出登录"
+    "mine": "我的"
   },
   "error": {
     "title": "页面出错了",
@@ -262,5 +261,52 @@
     "showMore": "再显示 {n} 题",
     "shownOf": "显示 {shown} / {total}",
     "practice": "练习这 {n} 道题"
+  },
+  "admin": {
+    "title": "用户管理",
+    "users": "用户",
+    "total": "共 {n} 人",
+    "joined": "{when}注册",
+    "tier_basic": "普通",
+    "tier_advanced": "高级",
+    "tier_admin": "admin",
+    "tierNote_basic": "注册即是。只能看公开题库",
+    "tierNote_advanced": "能看全部题库（含私有题库）。由 admin 升级",
+    "tierNote_admin": "能看全部，并能升级 / 降级普通与高级用户。只能由超级用户设定，admin 之间不能互相修改",
+    "upgrade": "升级为高级",
+    "downgrade": "降级为普通",
+    "prev": "上一页",
+    "next": "下一页",
+    "noticeOk": "已更新。对方下次打开就会生效",
+    "noticeAdmin": "不能修改 admin 账号",
+    "noticeFail": "操作失败，请重试",
+    "lastLogin": "{when}登录",
+    "neverLogin": "还没有登录记录",
+    "mine": "我的"
+  },
+  "me": {
+    "title": "我的",
+    "home": "首页",
+    "joined": "{when}注册",
+    "lastLogin": "{when}登录",
+    "neverLogin": "还没有登录记录",
+    "profileNote": "资料来自你的第三方账号，每次登录时同步；在 Melete 里不能修改。",
+    "tier_basic": "普通",
+    "tier_advanced": "高级",
+    "tier_admin": "admin",
+    "banksTitle": "我的题库",
+    "private": "私有",
+    "devTitle": "登录设备",
+    "devCount": "{n} 台",
+    "devFailed": "列表暂时取不到，其余功能不受影响。",
+    "devUnknown": "未知设备",
+    "devCurrent": "当前",
+    "devLogoutOthers": "登出其他设备",
+    "devNote": "手机丢了，或在别人的电脑上忘了登出时，用它让其他设备全部退出。",
+    "noticeSessOk": "已登出其他设备。",
+    "noticeFail": "操作失败，请重试",
+    "admin": "用户管理",
+    "settings": "设置",
+    "logout": "登出"
   }
 }
