@@ -49,6 +49,7 @@ export type TermSummary = components["schemas"]["TermSummary"];
 export type TermDetail = components["schemas"]["TermDetail"];
 export type Tier = components["schemas"]["Tier"];
 export type MyAccess = components["schemas"]["MyAccess"];
+export type MyProfile = components["schemas"]["MyProfile"];
 export type AdminUser = components["schemas"]["AdminUser"];
 export type AdminUserPage = components["schemas"]["AdminUserPage"];
 export type StudySession = components["schemas"]["StudySession"];

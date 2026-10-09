@@ -17,7 +17,8 @@
     "bookmarks": "ブックマーク",
     "soon": "準備中",
     "backHome": "ホームへ",
-    "admin": "ユーザー管理"
+    "admin": "ユーザー管理",
+    "mine": "マイページ"
   },
   "brand": {
     "tagline": "練習と修習",
@@ -198,20 +199,11 @@
   },
   "settings": {
     "title": "設定",
-    "heading": "問題集・ログイン端末・表示",
-    "devTitle": "ログイン端末",
-    "devUnavailable": "一時的に取得できません",
-    "devCount": "{n} 台",
-    "devFailed": "一覧を取得できませんでした。他の機能には影響ありません。",
-    "devUnknown": "不明な端末",
-    "devCurrent": "現在",
-    "devLogoutOthers": "他の端末をログアウト",
-    "devNote": "⚠️ ここにトークンは表示しません —— それは失効用の資格情報であり、画面に出すことは画面を見られる人にセッションを渡すのと同じです。",
+    "heading": "問題集・言語・表示",
     "langTitle": "言語",
     "langHint": "画面と問題文",
     "langNote": "⚠️ 問題文の訳は 1 問ずつ追加しています。訳のない問題は原文を表示し、その旨を明記します —— ⛔ 黙って戻したりはしません。",
     "langSubmit": "言語を保存",
-    "noticeSessOk": "他の端末をログアウトしました。",
     "noticeLangOk": "言語を保存しました。",
     "noticeRate": "操作が頻繁すぎます。しばらくしてからお試しください。",
     "noticeFail": "操作に失敗しました。もう一度お試しください。",
@@ -228,8 +220,7 @@
     "theme_dark": "ダーク",
     "theme_system": "システムに合わせる",
     "themeSubmit": "保存",
-    "noticeThemeOk": "表示を更新しました",
-    "logout": "ログアウト"
+    "noticeThemeOk": "表示を更新しました"
   },
   "error": {
     "title": "ページでエラーが発生しました",
@@ -292,5 +283,34 @@
     "noEmail": "（メールアドレスなし）",
     "lastLogin": "{when}にログイン",
     "neverLogin": "ログイン記録なし"
+  },
+  "me": {
+    "title": "マイページ",
+    "home": "ホーム",
+    "joined": "{when}に登録",
+    "lastLogin": "{when}にログイン",
+    "neverLogin": "ログイン記録なし",
+    "noEmail": "（メールアドレスなし）",
+    "profileNote": "プロフィールは外部アカウントから取得し、ログインのたびに同期されます。Melete では変更できません。",
+    "tier_basic": "一般",
+    "tier_advanced": "上級",
+    "tier_admin": "admin",
+    "banksTitle": "閲覧できる問題集",
+    "banksNote_basic": "一般アカウントは公開問題集のみ閲覧できます。",
+    "banksNote_advanced": "上級アカウントはすべての問題集を閲覧できます。",
+    "banksNote_admin": "admin はすべての問題集を閲覧できます。",
+    "private": "非公開",
+    "devTitle": "ログイン端末",
+    "devCount": "{n} 台",
+    "devFailed": "一覧を取得できませんでした。他の機能には影響ありません。",
+    "devUnknown": "不明な端末",
+    "devCurrent": "現在",
+    "devLogoutOthers": "他の端末をログアウト",
+    "devNote": "スマートフォンを紛失したときや、他人のパソコンでログアウトし忘れたときに、他の端末をまとめてログアウトできます。",
+    "noticeSessOk": "他の端末をログアウトしました。",
+    "noticeFail": "操作に失敗しました。もう一度お試しください",
+    "admin": "ユーザー管理",
+    "settings": "設定",
+    "logout": "ログアウト"
   }
 }

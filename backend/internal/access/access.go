@@ -109,6 +109,9 @@ type Service interface {
 	QuestionVisibility(ctx context.Context, questionID int64) (string, error)
 	AttemptVisibility(ctx context.Context, attemptID int64) (string, error)
 
+	// Profile：自己的资料与档位（「我的」页面）。
+	Profile(ctx context.Context, userID userid.UserID) (User, error)
+
 	// ListUsers：admin 页面的用户列表，按注册时间倒序分页。
 	ListUsers(ctx context.Context, actorID userid.UserID, page, pageSize int) ([]User, int, error)
 	// SetTier：admin 把普通 / 高级用户升降级。目标是 admin（含自己）⇒ ErrTargetIsAdmin。

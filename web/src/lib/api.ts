@@ -18,14 +18,14 @@ export type {
   Bank, BankDetail, Tag, QuestionSummary, QuestionDetail, QuestionPage,
   AnswerClaim, Choice, Reference, AttemptResult, ScheduleResult, DrillMode,
   Progress, TagStat, Resume, FocusCursor, DrillContext, Overview, StudySession,
-  SessionInfo, MyAccess, AdminUser, AdminUserPage, Tier, CurrentBank, SetSummary, DrillCursor, BankSession, TermSummary, TermDetail,
+  SessionInfo, MyAccess, MyProfile, AdminUser, AdminUserPage, Tier, CurrentBank, SetSummary, DrillCursor, BankSession, TermSummary, TermDetail,
 } from "./claims";
 export { voteDistribution, hasDisagreement, DRILL_MODES, parseDrillMode } from "./claims";
 
 import type {
   Bank, BankDetail, Tag, QuestionDetail, QuestionPage, AttemptResult, DrillMode,
   Progress, TagStat, Resume, DrillContext, Overview, StudySession,
-  SessionInfo, MyAccess, AdminUserPage, CurrentBank, SetSummary, TermSummary, TermDetail,
+  SessionInfo, MyAccess, MyProfile, AdminUserPage, CurrentBank, SetSummary, TermSummary, TermDetail,
 } from "./claims";
 
 import { headers } from "next/headers";
@@ -222,6 +222,9 @@ export async function chooseMyBank(bankSlug: string): Promise<{ ok: true } | { o
 
 /** 我的档位：普通 / 高级 / admin。界面只用它决定显不显示管理入口 —— 门在后端。 */
 export const getMyAccess = () => get<MyAccess>("/me/access", 0, true);
+
+/** 我的资料（「我的」页面、侧栏头像）：显示名 · 邮箱 · 头像 · 档位 · 注册 / 最后登录。来自第三方账号，Melete 里不能改。 */
+export const getMyProfile = () => get<MyProfile>("/me/profile", 0, true);
 
 /** admin：用户列表。非 admin 拿到 404。 */
 export const listAdminUsers = (page = 1) => get<AdminUserPage>(`/admin/users?page=${page}&pageSize=50`, 0, true);

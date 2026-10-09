@@ -57,15 +57,13 @@ func (v *OIDCVerifier) Verify(ctx context.Context, rawIDToken string) (account.F
 	}, nil
 }
 
-// DisplayName 展示名的取法：name → preferred_username → 「学习者」。web（oidcrp）与 iOS（id_token）两条路共用。
+// DisplayName 展示名的取法：name → preferred_username；都没有返回空串。web（oidcrp）与 iOS（id_token）两条路共用。
+// ⚠️ 不在这里兜底成「学习者」：登录时要拿它同步老账号，兜底值会把原来的名字覆盖掉。兜底只在建号时做。
 func DisplayName(name, preferred string) string {
 	if name != "" {
 		return name
 	}
-	if preferred != "" {
-		return preferred
-	}
-	return "学习者"
+	return preferred
 }
 
 func (v *OIDCVerifier) get(ctx context.Context) (*oidc.IDTokenVerifier, error) {

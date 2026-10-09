@@ -401,6 +401,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 我的资料（「我的」页面）
+         * @description 资料来自第三方账号（Akasha），每次登录同步；Melete 里 ⛔ 没有修改资料的入口（P9 #25）。
+         *     邮箱只用于展示，⛔ 不用于认证。
+         */
+        get: operations["getMyProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/users": {
         parameters: {
             query?: never;
@@ -1113,6 +1134,17 @@ export interface components {
         Tier: "basic" | "advanced" | "admin";
         MyAccess: {
             tier: components["schemas"]["Tier"];
+        };
+        MyProfile: {
+            displayName: string;
+            /** @description 第三方账号的邮箱。只用于展示 */
+            email?: string;
+            avatarUrl?: string;
+            tier: components["schemas"]["Tier"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastLoginAt?: string;
         };
         AdminUser: {
             /** @description 账号 id */
@@ -1964,6 +1996,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MyAccess"];
+                };
+            };
+        };
+    };
+    getMyProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyProfile"];
                 };
             };
         };

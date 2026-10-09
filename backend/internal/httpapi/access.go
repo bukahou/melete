@@ -76,6 +76,26 @@ func (s *Server) GetMyAccess(ctx context.Context, _ api.GetMyAccessRequestObject
 	return api.GetMyAccess200JSONResponse{Tier: api.Tier(tier)}, nil
 }
 
+// GetMyProfile 我的资料（「我的」页面）。资料来自第三方账号、每次登录同步，Melete 里不能改。
+func (s *Server) GetMyProfile(ctx context.Context, _ api.GetMyProfileRequestObject) (api.GetMyProfileResponseObject, error) {
+	id, err := s.requireAccount(ctx, "GetMyProfile")
+	if err != nil {
+		return nil, err
+	}
+	u, err := s.access.Profile(ctx, id)
+	if err != nil {
+		return nil, s.fail("GetMyProfile", err)
+	}
+	out := api.GetMyProfile200JSONResponse{DisplayName: u.DisplayName, Tier: api.Tier(u.Tier), CreatedAt: u.CreatedAt, LastLoginAt: u.LastLoginAt}
+	if u.Email != "" {
+		out.Email = &u.Email
+	}
+	if u.AvatarURL != "" {
+		out.AvatarUrl = &u.AvatarURL
+	}
+	return out, nil
+}
+
 // ListAdminUsers 用户列表。非 admin ⇒ 404（⛔ 不暴露「有这个接口」）。
 func (s *Server) ListAdminUsers(ctx context.Context, req api.ListAdminUsersRequestObject) (api.ListAdminUsersResponseObject, error) {
 	id, err := s.requireAccount(ctx, "ListAdminUsers")

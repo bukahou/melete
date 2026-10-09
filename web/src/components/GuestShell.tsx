@@ -39,7 +39,7 @@ export async function GuestShell() {
         labels={{
           home: nav("nav.home"), history: nav("nav.history"), glossary: nav("nav.glossary"),
           bookmarks: nav("nav.bookmarks"), settings: nav("common.settings"),
-          logout: nav("common.logout"), soon: nav("nav.soon"), admin: nav("nav.admin"),
+          logout: nav("common.logout"), soon: nav("nav.soon"), admin: nav("nav.admin"), mine: nav("nav.mine"),
         }}
       />
       <main className="min-w-0 flex-1 px-5 pb-24 pt-6 md:px-8">

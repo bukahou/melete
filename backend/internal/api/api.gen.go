@@ -850,6 +850,20 @@ type MyAccess struct {
 	Tier Tier `json:"tier"`
 }
 
+// MyProfile defines model for MyProfile.
+type MyProfile struct {
+	AvatarUrl   *string   `json:"avatarUrl,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	DisplayName string    `json:"displayName"`
+
+	// Email 第三方账号的邮箱。只用于展示
+	Email       *string    `json:"email,omitempty"`
+	LastLoginAt *time.Time `json:"lastLoginAt,omitempty"`
+
+	// Tier 普通 · 高级 · admin（P9
+	Tier Tier `json:"tier"`
+}
+
 // Overview defines model for Overview.
 type Overview struct {
 	// SeenTotal 跨题库做过的题数（去重）
@@ -1665,6 +1679,9 @@ type ServerInterface interface {
 	// 跨题库总览（今天 / 连续天数 / 累计）
 	// (GET /me/overview)
 	GetMyOverview(w http.ResponseWriter, r *http.Request)
+	// 我的资料（「我的」页面）
+	// (GET /me/profile)
+	GetMyProfile(w http.ResponseWriter, r *http.Request)
 	// 我的学习进度总览
 	// (GET /me/progress)
 	GetMyProgress(w http.ResponseWriter, r *http.Request, params GetMyProgressParams)
@@ -1860,6 +1877,12 @@ func (_ Unimplemented) AddBookmark(w http.ResponseWriter, r *http.Request, quest
 // 跨题库总览（今天 / 连续天数 / 累计）
 // (GET /me/overview)
 func (_ Unimplemented) GetMyOverview(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 我的资料（「我的」页面）
+// (GET /me/profile)
+func (_ Unimplemented) GetMyProfile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2901,6 +2924,26 @@ func (siw *ServerInterfaceWrapper) GetMyOverview(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetMyProfile operation middleware
+func (siw *ServerInterfaceWrapper) GetMyProfile(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyProfile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMyProgress operation middleware
 func (siw *ServerInterfaceWrapper) GetMyProgress(w http.ResponseWriter, r *http.Request) {
 
@@ -3346,6 +3389,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/overview", wrapper.GetMyOverview)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/profile", wrapper.GetMyProfile)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/progress", wrapper.GetMyProgress)
@@ -4357,6 +4403,27 @@ func (response GetMyOverview200JSONResponse) VisitGetMyOverviewResponse(w http.R
 	return err
 }
 
+type GetMyProfileRequestObject struct {
+}
+
+type GetMyProfileResponseObject interface {
+	VisitGetMyProfileResponse(w http.ResponseWriter) error
+}
+
+type GetMyProfile200JSONResponse MyProfile
+
+func (response GetMyProfile200JSONResponse) VisitGetMyProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMyProgressRequestObject struct {
 	Params GetMyProgressParams
 }
@@ -4648,6 +4715,9 @@ type StrictServerInterface interface {
 	// 跨题库总览（今天 / 连续天数 / 累计）
 	// (GET /me/overview)
 	GetMyOverview(ctx context.Context, request GetMyOverviewRequestObject) (GetMyOverviewResponseObject, error)
+	// 我的资料（「我的」页面）
+	// (GET /me/profile)
+	GetMyProfile(ctx context.Context, request GetMyProfileRequestObject) (GetMyProfileResponseObject, error)
 	// 我的学习进度总览
 	// (GET /me/progress)
 	GetMyProgress(ctx context.Context, request GetMyProgressRequestObject) (GetMyProgressResponseObject, error)
@@ -5514,6 +5584,30 @@ func (sh *strictHandler) GetMyOverview(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMyOverviewResponseObject); ok {
 		if err := validResponse.VisitGetMyOverviewResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyProfile operation middleware
+func (sh *strictHandler) GetMyProfile(w http.ResponseWriter, r *http.Request) {
+	var request GetMyProfileRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyProfile(ctx, request.(GetMyProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyProfileResponseObject); ok {
+		if err := validResponse.VisitGetMyProfileResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
