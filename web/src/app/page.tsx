@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CalendarRange, ChevronRight, Layers, Play, Search, Settings2, Shuffle, SlidersHorizontal } from "lucide-react";
 import {
   getBank,
-  getMyBank,
+  resolveStudyBank,
   getMyProgress,
   getMyResume,
   listAxisTags,
@@ -195,6 +195,10 @@ function Banks({ t, banks, current, progressOf }: {
             <>
               <span className="flex items-start gap-2">
                 <span className="min-w-0 flex-1 text-left text-[0.9rem] font-medium leading-snug">{b.name}</span>
+                {/* 私有题库只有高级用户与 admin 看得到（P9 #27）—— 标出来，让他们分得清哪些是普通用户看不到的 */}
+                {b.visibility === "private" && (
+                  <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[0.68rem] text-muted">{t("banksPrivate")}</span>
+                )}
                 {b.slug === current && (
                   <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-[0.68rem] font-semibold text-accent-ink">{t("banksCurrent")}</span>
                 )}
@@ -252,15 +256,17 @@ function NoBank({ t }: { t: T }) {
 }
 
 export default async function HomePage() {
-  const [t, mode, locale, current] = await Promise.all([
+  const [t, mode, locale, slugOrNone] = await Promise.all([
     getTranslations("dash"),
     getTranslations("mode"),
     getLocale(),
-    getMyBank(),
+    resolveStudyBank(),
   ]);
-  if (current.source === "none" || !current.bankSlug) return <NoBank t={t} />;
-
-  const slug = current.bankSlug;
+  // 没有当前题库（新用户 / 被降级后原来的题库看不到了）：看得到的题库只有一个就直接用它 ——
+  // App Store 来的陌生人注册完打开就该是公开题库（P9 #27），⛔ 不该先被要求「去设置选」。
+  // 看得到多个时仍按 #14 引导去选。
+  if (!slugOrNone) return <NoBank t={t} />;
+  const slug = slugOrNone;
   const [bank, progress, resume, tags, banks] = await Promise.all([
     getBank(slug), getMyProgress(slug), getMyResume(slug), listAxisTags(slug), listBanks(),
   ]);

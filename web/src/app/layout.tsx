@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 import { Noto_Serif_SC } from "next/font/google";
+import { unstable_rethrow } from "next/navigation";
 import { readAccessToken } from "@/lib/session";
+import { getMyAccess } from "@/lib/api";
 import { SideNav } from "@/components/SideNav";
 import { GuestShell } from "@/components/GuestShell";
 import type { Locale } from "@/i18n/locales";
@@ -31,6 +33,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // 登录态决定是否显示导航（侧栏）；用户名从 token 的 cookie 拿不到，
   // 显示名改由页面按需取（避免每个页面都为了导航多打一次 API）
   const signedIn = Boolean(await readAccessToken());
+  // 档位只用来决定显不显示「用户管理」入口（P9 #27）。取不到就当不是 admin —— 少显示一个入口，⛔ 不影响页面
+  const isAdmin = signedIn ? await getMyAccess().then((a) => a.tier === "admin").catch((e) => { unstable_rethrow(e); return false; }) : false;
   // ⭐ lang 属性不是装饰：读屏软件靠它选发音，浏览器靠它选断行与字体回退。
   // 中日共用大量汉字，标错了日文会被用中文字形渲染 —— 这是肉眼可见的错。
   const locale = (await getLocale()) as Locale;
@@ -47,10 +51,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <SideNav
               locale={locale}
               version={process.env.APP_VERSION ?? "dev"}
+              isAdmin={isAdmin}
               labels={{
                 home: t("nav.home"), history: t("nav.history"), glossary: t("nav.glossary"),
                 bookmarks: t("nav.bookmarks"), settings: t("common.settings"),
-                logout: t("common.logout"), soon: t("nav.soon"),
+                logout: t("common.logout"), soon: t("nav.soon"), admin: t("nav.admin"),
               }}
             />
             {/* pb-24：手机上给底部标签栏让位 */}

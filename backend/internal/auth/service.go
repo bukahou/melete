@@ -117,6 +117,7 @@ func (s *Service) Login(ctx context.Context, clientIP, username, password, devic
 	if err != nil {
 		return nil, fmt.Errorf("登录后取账号: %w", err)
 	}
+	s.touchLogin(ctx, a.ID)
 	return s.issue(ctx, a, deviceInfo, clientIP)
 }
 
@@ -124,12 +125,20 @@ func (s *Service) Login(ctx context.Context, clientIP, username, password, devic
 //
 // ⚠️ 「按 (provider, subject) 找或建账号」这一段属 akasha 范围（案卷 §35），
 // 本次不改其编排；这里只负责它之后的【发会话】。
-func (s *Service) EstablishFederated(ctx context.Context, sub, display, deviceInfo, clientIP string) (*Pair, error) {
-	a, err := s.accounts.EstablishFederated(ctx, "akasha", sub, display)
+func (s *Service) EstablishFederated(ctx context.Context, p account.FederatedProfile, deviceInfo, clientIP string) (*Pair, error) {
+	a, err := s.accounts.EstablishFederated(ctx, "akasha", p)
 	if err != nil {
 		return nil, err
 	}
+	s.touchLogin(ctx, a.ID)
 	return s.issue(ctx, a, deviceInfo, clientIP)
+}
+
+// touchLogin 记登录时间。⚠️ 失败只记日志、⛔ 不让登录失败 —— 它是展示用的，不是认证的一部分。
+func (s *Service) touchLogin(ctx context.Context, id string) {
+	if err := s.accounts.TouchLogin(ctx, id); err != nil {
+		slog.WarnContext(ctx, "记录登录时间失败", "err", err)
+	}
 }
 
 func (s *Service) issue(ctx context.Context, a *account.Account, deviceInfo, clientIP string) (*Pair, error) {

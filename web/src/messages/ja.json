@@ -6,7 +6,9 @@
     "retry": "再試行",
     "questions": "{n} 問",
     "back": "戻る",
-    "unknown": "—"
+    "unknown": "—",
+    "notFoundTitle": "ページが見つかりません",
+    "notFoundBody": "存在しないか、このアカウントでは閲覧できないページです。"
   },
   "nav": {
     "home": "ホーム",
@@ -14,7 +16,8 @@
     "glossary": "用語集",
     "bookmarks": "ブックマーク",
     "soon": "準備中",
-    "backHome": "ホームへ"
+    "backHome": "ホームへ",
+    "admin": "ユーザー管理"
   },
   "brand": {
     "tagline": "練習と修習",
@@ -93,7 +96,8 @@
     "banksHint": "クリックで切り替え",
     "banksCurrent": "学習中",
     "banksDone": "{total} 問中 {done} 問解答",
-    "guestDomain": "分野"
+    "guestDomain": "分野",
+    "banksPrivate": "非公開"
   },
   "history": {
     "home": "ホーム",
@@ -265,5 +269,28 @@
     "showMore": "さらに {n} 問表示",
     "shownOf": "{total} 問中 {shown} 問を表示",
     "practice": "この {n} 問を練習する"
+  },
+  "admin": {
+    "home": "ホーム",
+    "title": "ユーザー管理",
+    "users": "ユーザー",
+    "total": "{n} 人",
+    "joined": "{when}に登録",
+    "tier_basic": "一般",
+    "tier_advanced": "上級",
+    "tier_admin": "admin",
+    "tierNote_basic": "登録するだけでこの区分。公開問題集のみ閲覧できます",
+    "tierNote_advanced": "すべての問題集（非公開を含む）を閲覧できます。admin が昇格させます",
+    "tierNote_admin": "すべて閲覧でき、一般・上級ユーザーを昇格／降格できます。スーパーユーザーのみが設定し、admin 同士は変更できません",
+    "upgrade": "上級に昇格",
+    "downgrade": "一般に降格",
+    "prev": "前へ",
+    "next": "次へ",
+    "noticeOk": "更新しました。相手が次に開いたときから反映されます",
+    "noticeAdmin": "admin アカウントは変更できません",
+    "noticeFail": "操作に失敗しました。もう一度お試しください",
+    "noEmail": "（メールアドレスなし）",
+    "lastLogin": "{when}にログイン",
+    "neverLogin": "ログイン記録なし"
   }
 }

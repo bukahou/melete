@@ -61,7 +61,7 @@ func TestEstablishFederatedIntegration(t *testing.T) {
 	cleanupSubject(t, db, sub)
 
 	t.Run("首次：建 users + identities，两者同生", func(t *testing.T) {
-		a, err := repo.EstablishFederated(ctx, "akasha", sub, "测试用户A")
+		a, err := repo.EstablishFederated(ctx, "akasha", FederatedProfile{Subject: sub, Display: "测试用户A", Email: "a@example.com", AvatarURL: "https://example.com/a.png"})
 		if err != nil {
 			t.Fatalf("首次确立失败: %v", err)
 		}
@@ -88,11 +88,31 @@ func TestEstablishFederatedIntegration(t *testing.T) {
 		if a.Username == "" {
 			t.Fatal("username 为空 —— 中文 display 清洗后的回落没有生效")
 		}
+		// ⭐ 上游带来的邮箱与头像要落库（2026-10-08 之前被丢掉了）——
+		//    邮箱只进 upstream_email，⛔ 绝不进 email（那一列只能由本应用验证过的地址写入）
+		var up, email, avatar *string
+		if err := db.QueryRow(`SELECT upstream_email, email, avatar_url FROM users WHERE id=?`, userid.UserID(a.ID)).Scan(&up, &email, &avatar); err != nil {
+			t.Fatal(err)
+		}
+		if up == nil || *up != "a@example.com" || avatar == nil || *avatar != "https://example.com/a.png" {
+			t.Fatalf("上游资料没有落库：upstream_email=%v avatar_url=%v", up, avatar)
+		}
+		if email != nil {
+			t.Fatalf("🔴 上游邮箱被写进了 email 列：%v", *email)
+		}
+		// TouchLogin 写 last_login_at
+		if err := repo.TouchLogin(ctx, a.ID); err != nil {
+			t.Fatal(err)
+		}
+		var touched int
+		if err := db.Get(&touched, `SELECT COUNT(*) FROM users WHERE id=? AND last_login_at IS NOT NULL`, userid.UserID(a.ID)); err != nil || touched != 1 {
+			t.Fatalf("last_login_at 没有写入（%v）", err)
+		}
 		t.Logf("  建号成功 id=%s username=%s display=%s", a.ID, a.Username, a.DisplayName())
 	})
 
 	t.Run("再次：找到同一个账号，⛔ 不新建", func(t *testing.T) {
-		a, err := repo.EstablishFederated(ctx, "akasha", sub, "测试用户A")
+		a, err := repo.EstablishFederated(ctx, "akasha", FederatedProfile{Subject: sub, Display: "测试用户A", Email: "a@example.com", AvatarURL: "https://example.com/a.png"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -138,7 +158,7 @@ func TestEstablishFederatedConcurrentFirstLoginIntegration(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			<-start // 尽量让它们真的同时进
-			a, err := repo.EstablishFederated(context.Background(), "akasha", sub, "测试用户B")
+			a, err := repo.EstablishFederated(context.Background(), "akasha", FederatedProfile{Subject: sub, Display: "测试用户B"})
 			if err != nil {
 				errs[i] = err
 				return

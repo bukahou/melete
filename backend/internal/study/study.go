@@ -12,6 +12,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
+	"github.com/bukahou/melete/backend/internal/access"
 	"github.com/bukahou/melete/backend/internal/userid"
 
 	"github.com/bukahou/melete/backend/internal/question"
@@ -82,12 +83,12 @@ type Service interface {
 	LoadProgress(ctx context.Context, accountID userid.UserID, slug string) (*Progress, error)
 	LoadTagStats(ctx context.Context, accountID userid.UserID, slug, tagType string, minAttempts int) ([]TagStat, error)
 	LoadResume(ctx context.Context, accountID userid.UserID, slug string) (*Resume, error)
-	LoadOverview(ctx context.Context, accountID userid.UserID) (*Overview, error)
-	LoadRecentSessions(ctx context.Context, accountID userid.UserID, limit int) ([]Session, error)
+	LoadOverview(ctx context.Context, accountID userid.UserID, scope access.Scope) (*Overview, error)
+	LoadRecentSessions(ctx context.Context, accountID userid.UserID, scope access.Scope, limit int) ([]Session, error)
 	LoadDueSummary(ctx context.Context, accountID userid.UserID) ([]DueSummary, error)
 	// 当前题库（P9）：首页显示哪一个，跟着账号走。见 current_bank.go。
-	LoadCurrentBank(ctx context.Context, accountID userid.UserID) (*CurrentBank, error)
-	ChooseCurrentBank(ctx context.Context, accountID userid.UserID, slug string) error
+	LoadCurrentBank(ctx context.Context, accountID userid.UserID, scope access.Scope) (*CurrentBank, error)
+	ChooseCurrentBank(ctx context.Context, accountID userid.UserID, scope access.Scope, slug string) error
 	LoadLastAttempt(ctx context.Context, accountID userid.UserID, slug string) (*LastAttempt, error)
 	// 收藏（P9 #20）：见 bookmark.go
 	SetBookmark(ctx context.Context, accountID userid.UserID, questionID int64, on bool) error

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Bookmark, BookOpen, House, LineChart, LogOut, Settings } from "lucide-react";
+import { Bookmark, BookOpen, House, LineChart, LogOut, Settings, ShieldCheck } from "lucide-react";
 import logo from "@/app/icon.png";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import type { Locale } from "@/i18n/locales";
@@ -20,7 +20,7 @@ import type { Locale } from "@/i18n/locales";
  */
 export type NavLabels = {
   home: string; history: string; glossary: string; bookmarks: string;
-  settings: string; logout: string; soon: string;
+  settings: string; logout: string; soon: string; admin: string;
 };
 
 type NavItem = { href: string; icon: typeof House; key: keyof NavLabels; soon?: boolean; match: (p: string) => boolean };
@@ -55,7 +55,11 @@ function Item({ href, icon: Icon, label, active, soon, soonLabel, compact }: {
   );
 }
 
-export function SideNav({ labels, locale, version }: { labels: NavLabels; locale: Locale; version: string }) {
+/**
+ * isAdmin：admin 才显示「用户管理」入口（P9 #27）。⚠️ 隐藏入口只是方便 —— 真正的门在后端，
+ * 非 admin 直接打开 /admin 拿到的是 404。
+ */
+export function SideNav({ labels, locale, version, isAdmin = false }: { labels: NavLabels; locale: Locale; version: string; isAdmin?: boolean }) {
   const path = usePathname() ?? "/";
   return (
     <>
@@ -72,6 +76,7 @@ export function SideNav({ labels, locale, version }: { labels: NavLabels; locale
           ))}
         </nav>
         <div className="mt-auto flex w-full flex-col items-center gap-3">
+          {isAdmin && <Item href="/admin" icon={ShieldCheck} label={labels.admin} active={path.startsWith("/admin")} soonLabel={labels.soon} />}
           <Item href="/settings" icon={Settings} label={labels.settings} active={path.startsWith("/settings")} soonLabel={labels.soon} />
           <div className="max-w-full px-1 text-[0.7rem]"><LanguageSwitcher current={locale} short /></div>
           <a href="/auth/logout" title={labels.logout} className="text-muted transition-colors hover:text-ink">

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getMyBank } from "@/lib/api";
+import { resolveStudyBank } from "@/lib/api";
 
 export const revalidate = 0;
 
@@ -9,6 +9,6 @@ export const revalidate = 0;
  * ⛔ 不让 layout 为了一个链接每页多打一次 API。没有当前题库就回首页（那里会引导去设置选）。
  */
 export default async function HistoryPage() {
-  const cur = await getMyBank();
-  redirect(cur.bankSlug ? `/banks/${cur.bankSlug}` : "/");
+  const slug = await resolveStudyBank();
+  redirect(slug ? `/banks/${slug}` : "/");
 }
