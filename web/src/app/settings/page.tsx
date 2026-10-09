@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { Check, Languages, Library, Palette } from "lucide-react";
 import { cookies } from "next/headers";
@@ -107,7 +108,12 @@ export default async function SettingsPage({
   return (
     <div className="mx-auto max-w-2xl space-y-6 pt-4">
       <header>
-        <p className="eyebrow">{t("title")}</p>
+        {/* 设置在「我的」之下（P9 #34）：面包屑一键回去 */}
+        <nav className="flex items-center gap-2 text-[0.82rem] text-muted">
+          <Link href="/me" className="hover:text-ink">{t("mine")}</Link>
+          <span className="opacity-50">›</span>
+          <span className="text-ink">{t("title")}</span>
+        </nav>
         <h1 className="display mt-3 text-2xl">{t("heading")}</h1>
       </header>
 

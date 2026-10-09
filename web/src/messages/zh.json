@@ -220,7 +220,8 @@
     "theme_dark": "深色",
     "theme_system": "跟随系统",
     "themeSubmit": "保存",
-    "noticeThemeOk": "外观已更新"
+    "noticeThemeOk": "外观已更新",
+    "mine": "我的"
   },
   "error": {
     "title": "页面出错了",
@@ -262,7 +263,6 @@
     "practice": "练习这 {n} 道题"
   },
   "admin": {
-    "home": "首页",
     "title": "用户管理",
     "users": "用户",
     "total": "共 {n} 人",
@@ -281,7 +281,8 @@
     "noticeAdmin": "不能修改 admin 账号",
     "noticeFail": "操作失败，请重试",
     "lastLogin": "{when}登录",
-    "neverLogin": "还没有登录记录"
+    "neverLogin": "还没有登录记录",
+    "mine": "我的"
   },
   "me": {
     "title": "我的",

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Bookmark, BookOpen, House, LineChart, Settings, ShieldCheck, UserRound } from "lucide-react";
+import { Bookmark, BookOpen, House, LineChart, UserRound } from "lucide-react";
 import logo from "@/app/icon.png";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { UserAvatar } from "./UserAvatar";
@@ -23,6 +23,9 @@ export type NavLabels = {
   home: string; history: string; glossary: string; bookmarks: string;
   settings: string; logout: string; soon: string; admin: string; mine: string;
 };
+
+/** 「我的」及其下的分支（设置 / 用户管理）：在这些页面时高亮「我的」，让人知道自己在哪条路上。 */
+const inMine = (p: string) => p.startsWith("/me") || p.startsWith("/settings") || p.startsWith("/admin");
 
 /** 侧栏「我的」用的头像：有资料就画头像，没有（取不到）就退回通用图标。 */
 export type NavUser = { name: string; avatarUrl?: string | null };
@@ -60,12 +63,8 @@ function Item({ href, icon: Icon, label, active, soon, soonLabel, compact, user 
   );
 }
 
-/**
- * isAdmin：admin 才显示「用户管理」入口（P9 #27）。⚠️ 隐藏入口只是方便 —— 真正的门在后端，
- * 非 admin 直接打开 /admin 拿到的是 404。
- */
-export function SideNav({ labels, locale, version, isAdmin = false, user }: {
-  labels: NavLabels; locale: Locale; version: string; isAdmin?: boolean; user?: NavUser;
+export function SideNav({ labels, locale, version, user }: {
+  labels: NavLabels; locale: Locale; version: string; user?: NavUser;
 }) {
   const path = usePathname() ?? "/";
   return (
@@ -83,10 +82,9 @@ export function SideNav({ labels, locale, version, isAdmin = false, user }: {
           ))}
         </nav>
         <div className="mt-auto flex w-full flex-col items-center gap-3">
-          {isAdmin && <Item href="/admin" icon={ShieldCheck} label={labels.admin} active={path.startsWith("/admin")} soonLabel={labels.soon} />}
-          {/* 我的（P9 #31）：图标就是自己的头像。⭐ 登出只在「我的」页面里 —— 这里不再放登出图标 */}
-          <Item href="/me" icon={UserRound} label={labels.mine} active={path.startsWith("/me")} soonLabel={labels.soon} user={user} />
-          <Item href="/settings" icon={Settings} label={labels.settings} active={path.startsWith("/settings")} soonLabel={labels.soon} />
+          {/* 我的（P9 #31 #34）：图标就是自己的头像。用户管理 / 设置 / 登出都从「我的」进 ——
+              电脑与手机同一条路径（2026-10-09 用户裁定 b），⛔ 侧栏不再单列这几个 */}
+          <Item href="/me" icon={UserRound} label={labels.mine} active={inMine(path)} soonLabel={labels.soon} user={user} />
           <div className="max-w-full px-1 text-[0.7rem]"><LanguageSwitcher current={locale} short /></div>
           {/* 版本号 = 镜像 tag：打开页面就能回答「跑的是哪个 commit」 */}
           <span className="font-mono text-[0.58rem] text-muted opacity-70">{version}</span>
@@ -99,8 +97,7 @@ export function SideNav({ labels, locale, version, isAdmin = false, user }: {
           <Item key={m.href} href={m.href} icon={m.icon} label={labels[m.key]} active={m.match(path)}
                 soon={m.soon} soonLabel={labels.soon} compact />
         ))}
-        <Item href="/me" icon={UserRound} label={labels.mine} active={path.startsWith("/me") || path.startsWith("/settings") || path.startsWith("/admin")}
-              soonLabel={labels.soon} compact user={user} />
+        <Item href="/me" icon={UserRound} label={labels.mine} active={inMine(path)} soonLabel={labels.soon} compact user={user} />
       </nav>
     </>
   );
