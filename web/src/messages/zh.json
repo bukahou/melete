@@ -187,14 +187,14 @@
   "login": {
     "tagline": "Μελέτη — 练习与修习",
     "creed": "被动阅读不产生学习，<em>主动回忆</em>才产生。每道题并列保存题库标注、社区投票与 AI 裁决三方答案 —— 分歧本身就是学习材料。",
-    "akasha": "用 Akasha 登录",
+    "thirdParty": "使用第三方账号登录",
     "copyright": "题库内容涉及版权，仅限持有账号的学习者访问。",
-    "oidcCancelled": "已取消 Akasha 登录",
+    "oidcCancelled": "已取消第三方登录",
     "oidcState": "登录会话已过期，请重试",
-    "oidcUpstream": "Akasha 暂时不可用，请稍后重试",
+    "oidcUpstream": "第三方登录暂时不可用，请稍后重试",
     "oidcApplication": "登录时出了点问题，请重试",
     "modalTitle": "登录 / 注册",
-    "autoRegister": "第一次用 Akasha 登录时，会自动为你创建 Melete 账号。"
+    "autoRegister": "第一次登录时，会自动为你创建 Melete 账号。"
   },
   "settings": {
     "title": "设置",
