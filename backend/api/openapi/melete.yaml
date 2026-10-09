@@ -514,6 +514,21 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MyAccess" }
 
+  /me/profile:
+    get:
+      tags: [study]
+      summary: 我的资料（「我的」页面）
+      description: |
+        资料来自第三方账号（Akasha），每次登录同步；Melete 里 ⛔ 没有修改资料的入口（P9 #25）。
+        邮箱只用于展示，⛔ 不用于认证。
+      operationId: getMyProfile
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MyProfile" }
+
   /admin/users:
     get:
       tags: [admin]
@@ -1366,6 +1381,17 @@ components:
       required: [tier]
       properties:
         tier: { $ref: "#/components/schemas/Tier" }
+
+    MyProfile:
+      type: object
+      required: [displayName, tier, createdAt]
+      properties:
+        displayName: { type: string }
+        email:       { type: string, description: 第三方账号的邮箱。只用于展示 }
+        avatarUrl:   { type: string }
+        tier:        { $ref: "#/components/schemas/Tier" }
+        createdAt:   { type: string, format: date-time }
+        lastLoginAt: { type: string, format: date-time }
 
     AdminUser:
       type: object

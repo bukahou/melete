@@ -74,6 +74,49 @@ func (s *service) requireAdmin(ctx context.Context, q sqlx.QueryerContext, actor
 	return nil
 }
 
+// userColumns：一个用户在界面上的样子。显示名没有就用用户名；邮箱 / 头像来自上游，没有为空串。
+const userColumns = `id, COALESCE(display_name, username) AS display_name,
+	COALESCE(upstream_email, '') AS email, COALESCE(avatar_url, '') AS avatar_url, created_at, last_login_at`
+
+type userRow struct {
+	ID          []byte     `db:"id"`
+	DisplayName string     `db:"display_name"`
+	Email       string     `db:"email"`
+	AvatarURL   string     `db:"avatar_url"`
+	CreatedAt   time.Time  `db:"created_at"`
+	LastLoginAt *time.Time `db:"last_login_at"`
+}
+
+func (r userRow) toUser() (User, error) {
+	id, err := userid.Decode(r.ID)
+	if err != nil {
+		return User{}, fmt.Errorf("解码用户 id: %w", err)
+	}
+	return User{ID: userid.UserID(id), DisplayName: r.DisplayName, Email: r.Email, AvatarURL: r.AvatarURL,
+		Tier: TierBasic, CreatedAt: r.CreatedAt, LastLoginAt: r.LastLoginAt}, nil
+}
+
+func (s *service) Profile(ctx context.Context, id userid.UserID) (User, error) {
+	var r userRow
+	err := s.db.GetContext(ctx, &r, `SELECT `+userColumns+` FROM users WHERE id = ? AND deleted_at IS NULL`, id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return User{}, ErrNotFound
+	}
+	if err != nil {
+		return User{}, fmt.Errorf("读取资料: %w", err)
+	}
+	u, err := r.toUser()
+	if err != nil {
+		return User{}, err
+	}
+	perms, err := s.permissionsOf(ctx, s.db, id)
+	if err != nil {
+		return User{}, err
+	}
+	u.Tier = TierOf(perms)
+	return u, nil
+}
+
 func (s *service) ListUsers(ctx context.Context, actor userid.UserID, page, pageSize int) ([]User, int, error) {
 	if err := s.requireAdmin(ctx, s.db, actor); err != nil {
 		return nil, 0, err
@@ -88,20 +131,10 @@ func (s *service) ListUsers(ctx context.Context, actor userid.UserID, page, page
 	if err := s.db.GetContext(ctx, &total, `SELECT COUNT(*) FROM users WHERE deleted_at IS NULL`); err != nil {
 		return nil, 0, fmt.Errorf("统计用户: %w", err)
 	}
-	type row struct {
-		ID          []byte     `db:"id"`
-		DisplayName string     `db:"display_name"`
-		Email       string     `db:"email"`
-		AvatarURL   string     `db:"avatar_url"`
-		CreatedAt   time.Time  `db:"created_at"`
-		LastLoginAt *time.Time `db:"last_login_at"`
-	}
-	var rows []row
+	var rows []userRow
 	// ⚠️ 按 created_at 排而不是 id：id 是 UUIDv7 虽然时间有序，但「注册时间」才是界面上的语义。
 	if err := s.db.SelectContext(ctx, &rows, `
-		SELECT id, COALESCE(display_name, username) AS display_name,
-		       COALESCE(upstream_email, '') AS email, COALESCE(avatar_url, '') AS avatar_url, created_at, last_login_at
-		FROM users WHERE deleted_at IS NULL
+		SELECT `+userColumns+` FROM users WHERE deleted_at IS NULL
 		ORDER BY created_at DESC, id DESC
 		LIMIT ? OFFSET ?`, pageSize, (page-1)*pageSize); err != nil {
 		return nil, 0, fmt.Errorf("列出用户: %w", err)
@@ -109,13 +142,12 @@ func (s *service) ListUsers(ctx context.Context, actor userid.UserID, page, page
 	out := make([]User, 0, len(rows))
 	ids := make([]userid.UserID, 0, len(rows))
 	for _, r := range rows {
-		id, err := userid.Decode(r.ID)
+		u, err := r.toUser()
 		if err != nil {
-			return nil, 0, fmt.Errorf("解码用户 id: %w", err)
+			return nil, 0, err
 		}
-		ids = append(ids, userid.UserID(id))
-		out = append(out, User{ID: userid.UserID(id), DisplayName: r.DisplayName, Email: r.Email, AvatarURL: r.AvatarURL,
-			Tier: TierBasic, CreatedAt: r.CreatedAt, LastLoginAt: r.LastLoginAt})
+		ids = append(ids, u.ID)
+		out = append(out, u)
 	}
 	if len(ids) == 0 {
 		return out, total, nil

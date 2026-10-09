@@ -111,8 +111,8 @@ func TestEstablishFederatedIntegration(t *testing.T) {
 		t.Logf("  建号成功 id=%s username=%s display=%s", a.ID, a.Username, a.DisplayName())
 	})
 
-	t.Run("再次：找到同一个账号，⛔ 不新建", func(t *testing.T) {
-		a, err := repo.EstablishFederated(ctx, "akasha", FederatedProfile{Subject: sub, Display: "测试用户A", Email: "a@example.com", AvatarURL: "https://example.com/a.png"})
+	t.Run("再次：找到同一个账号，⛔ 不新建；资料按上游最新覆盖，上游没给的不清空", func(t *testing.T) {
+		a, err := repo.EstablishFederated(ctx, "akasha", FederatedProfile{Subject: sub, Display: "改名后", Email: "b@example.com"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -128,6 +128,16 @@ func TestEstablishFederatedIntegration(t *testing.T) {
 			t.Fatal(err)
 		}
 		got, _ := userid.Decode(uid)
+		var name, up, avatar *string
+		if err := db.QueryRow(`SELECT display_name, upstream_email, avatar_url FROM users WHERE id=?`, userid.UserID(a.ID)).Scan(&name, &up, &avatar); err != nil {
+			t.Fatal(err)
+		}
+		if name == nil || *name != "改名后" || up == nil || *up != "b@example.com" {
+			t.Fatalf("再次登录应同步上游最新资料：display=%v upstream_email=%v", name, up)
+		}
+		if avatar == nil || *avatar != "https://example.com/a.png" {
+			t.Fatalf("上游这次没给头像，⛔ 不该清空原来的：avatar_url=%v", avatar)
+		}
 		if got != a.ID {
 			t.Fatalf("🔴 返回的 id 与库里的不一致：%s vs %s", a.ID, got)
 		}

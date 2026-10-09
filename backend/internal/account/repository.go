@@ -113,11 +113,23 @@ func (r *mysqlRepository) FindByID(ctx context.Context, id string) (*Account, er
 func (r *mysqlRepository) EstablishFederated(ctx context.Context, provider string, p FederatedProfile) (*Account, error) {
 	subject, display := p.Subject, p.Display
 	if a, err := r.findByIdentity(ctx, provider, subject); err == nil {
+		// ⭐ 老账号：每次登录都用上游的最新资料覆盖（2026-10-09 用户裁定 a）——
+		//   Melete 里没有任何编辑资料的入口，上游就是唯一来源；不同步的话，
+		//   建号时没存下邮箱 / 头像的老账号会永远是空的。
+		if err := r.syncProfile(ctx, a.ID, p); err != nil {
+			return nil, err
+		}
+		if display != "" {
+			a.Display = &display
+		}
 		return a, nil
 	} else if !errors.Is(err, ErrNotFound) {
 		return nil, err
 	}
 
+	if strings.TrimSpace(display) == "" {
+		display = "学习者" // 上游没给任何名字时的兜底 —— 只在建号时用，⛔ 不参与同步
+	}
 	username, err := r.generateFederatedUsername(ctx, provider, display)
 	if err != nil {
 		return nil, err
@@ -164,6 +176,25 @@ func (r *mysqlRepository) EstablishFederated(ctx context.Context, provider strin
 		return nil, err
 	}
 	return &Account{ID: id, Username: username, Display: nullPtr(display), Status: StatusActive}, nil
+}
+
+// syncProfile 用上游资料覆盖本地副本。
+// ⚠️ 上游这一次没给的字段（空串）⛔ 不覆盖成空 —— 某次 scope 不全不该把已有的资料抹掉。
+// ⚠️ 只写 display_name / upstream_email / avatar_url，⛔ 绝不碰 email（那是本应用验证过的地址）。
+func (r *mysqlRepository) syncProfile(ctx context.Context, id string, p FederatedProfile) error {
+	bin, err := userid.Encode(id)
+	if err != nil {
+		return err
+	}
+	if _, err := r.db.ExecContext(ctx, `
+		UPDATE users SET
+		  display_name   = COALESCE(?, display_name),
+		  upstream_email = COALESCE(?, upstream_email),
+		  avatar_url     = COALESCE(?, avatar_url)
+		WHERE id = ?`, nullStr(p.Display), nullStr(p.Email), nullStr(p.AvatarURL), bin); err != nil {
+		return fmt.Errorf("同步上游资料: %w", err)
+	}
+	return nil
 }
 
 // TouchLogin 记一次成功登录。⚠️ 只写 last_login_at，⛔ 不动 updated_at —— 那一列属于账号资料的变更。

@@ -17,7 +17,8 @@
     "bookmarks": "书签",
     "soon": "即将开放",
     "backHome": "回首页",
-    "admin": "用户管理"
+    "admin": "用户管理",
+    "mine": "我的"
   },
   "brand": {
     "tagline": "练习与修习",
@@ -198,20 +199,11 @@
   },
   "settings": {
     "title": "设置",
-    "heading": "题库 · 登录设备 · 外观",
-    "devTitle": "登录设备",
-    "devUnavailable": "暂时取不到",
-    "devCount": "{n} 台",
-    "devFailed": "列表暂时取不到，其余功能不受影响。",
-    "devUnknown": "未知设备",
-    "devCurrent": "当前",
-    "devLogoutOthers": "登出其它设备",
-    "devNote": "⚠️ 这里不显示任何令牌 —— 那是撤销凭据，摆在界面上等于让能看到屏幕的人拿走会话。",
+    "heading": "题库 · 语言 · 外观",
     "langTitle": "语言",
     "langHint": "界面与题目正文",
     "langNote": "⚠️ 题目正文的译文是逐题补的。没有译文的题会显示原文并注明 —— ⛔ 不会静默回退。",
     "langSubmit": "保存语言",
-    "noticeSessOk": "已登出其它设备。",
     "noticeLangOk": "语言已保存。",
     "noticeRate": "操作过于频繁，请稍后再试。",
     "noticeFail": "操作失败，请重试。",
@@ -228,8 +220,7 @@
     "theme_dark": "深色",
     "theme_system": "跟随系统",
     "themeSubmit": "保存",
-    "noticeThemeOk": "外观已更新",
-    "logout": "退出登录"
+    "noticeThemeOk": "外观已更新"
   },
   "error": {
     "title": "页面出错了",
@@ -292,5 +283,34 @@
     "noEmail": "（没有邮箱）",
     "lastLogin": "{when}登录",
     "neverLogin": "还没有登录记录"
+  },
+  "me": {
+    "title": "我的",
+    "home": "首页",
+    "joined": "{when}注册",
+    "lastLogin": "{when}登录",
+    "neverLogin": "还没有登录记录",
+    "noEmail": "（没有邮箱）",
+    "profileNote": "资料来自你的第三方账号，每次登录时同步；在 Melete 里不能修改。",
+    "tier_basic": "普通",
+    "tier_advanced": "高级",
+    "tier_admin": "admin",
+    "banksTitle": "我能看的题库",
+    "banksNote_basic": "普通账号只能看公开题库。",
+    "banksNote_advanced": "高级账号能看全部题库。",
+    "banksNote_admin": "admin 能看全部题库。",
+    "private": "私有",
+    "devTitle": "登录设备",
+    "devCount": "{n} 台",
+    "devFailed": "列表暂时取不到，其余功能不受影响。",
+    "devUnknown": "未知设备",
+    "devCurrent": "当前",
+    "devLogoutOthers": "登出其他设备",
+    "devNote": "手机丢了，或在别人的电脑上忘了登出时，用它让其他设备全部退出。",
+    "noticeSessOk": "已登出其他设备。",
+    "noticeFail": "操作失败，请重试",
+    "admin": "用户管理",
+    "settings": "设置",
+    "logout": "登出"
   }
 }

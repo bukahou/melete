@@ -155,6 +155,14 @@ func TestAccessIntegration(t *testing.T) {
 		t.Fatalf("列表里的档位不对：%v", seen)
 	}
 
+	// ⑦' 自己的资料：显示名与档位
+	if p, err := svc.Profile(ctx, adv); err != nil || p.DisplayName != "adv" || p.Tier != TierAdvanced {
+		t.Fatalf("Profile 不对：%+v（%v）", p, err)
+	}
+	if _, err := svc.Profile(ctx, userid.UserID(ghost)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("不存在的账号应为 ErrNotFound，得到 %v", err)
+	}
+
 	// ⑧ 按题目编号查所属题库的可见性
 	slug := fmt.Sprintf("t-acc-%d", time.Now().UnixNano()%1e9)
 	r, err := db.Exec(`INSERT INTO bank (slug, name, locale, kind) VALUES (?, ?, 'zh', 'cert')`, slug, slug)
