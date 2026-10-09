@@ -103,7 +103,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               <UserAvatar name={u.displayName} url={u.avatarUrl} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[0.92rem]">{u.displayName}</span>
-                <span className="block truncate text-[0.72rem] text-muted">{u.email ?? t("noEmail")}</span>
+                {u.email && <span className="block truncate text-[0.72rem] text-muted">{u.email}</span>}
                 <span className="block truncate text-[0.7rem] text-muted">
                   {t("joined", { when: timeAgo(u.createdAt, locale) })}
                   {" · "}

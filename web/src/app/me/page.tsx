@@ -85,7 +85,7 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
               <span className="truncate text-[1.1rem] font-semibold">{profile.displayName}</span>
               <TierPill tier={profile.tier} label={t(`tier_${profile.tier}`)} />
             </p>
-            <p className="truncate text-[0.82rem] text-muted">{profile.email ?? t("noEmail")}</p>
+            {profile.email && <p className="truncate text-[0.82rem] text-muted">{profile.email}</p>}
             <p className="text-[0.74rem] text-muted">
               {t("joined", { when: timeAgo(profile.createdAt, locale) })}
               {" · "}
@@ -96,7 +96,7 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
         <p className="mt-4 border-t border-line-2 pt-3 text-[0.74rem] text-muted">{t("profileNote")}</p>
       </section>
 
-      {/* 能看的题库：档位的含义落到具体题库上 */}
+      {/* 我的题库：只列看得到的。⛔ 不写「普通账号只能看公开题库」之类的话 —— 那等于告诉他还有看不到的题库（2026-10-09 用户） */}
       <section className="card px-5 py-4">
         <CardTitle>{t("banksTitle")}</CardTitle>
         <ul className="grid grid-cols-1 gap-1.5">
@@ -109,7 +109,6 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
             </li>
           ))}
         </ul>
-        <p className="mt-3 text-[0.74rem] text-muted">{t(`banksNote_${profile.tier}`)}</p>
       </section>
 
       {/* 登录设备（原在设置页） */}
