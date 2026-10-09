@@ -64,7 +64,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     <div className="mx-auto grid max-w-3xl gap-4 pt-2">
       <header className="grid gap-1">
         <nav className="flex items-center gap-2 text-[0.82rem] text-muted">
-          <Link href="/" className="hover:text-ink">{t("home")}</Link>
+          <Link href="/me" className="hover:text-ink">{t("mine")}</Link>
           <span className="opacity-50">›</span>
           <span className="text-ink">{t("title")}</span>
         </nav>

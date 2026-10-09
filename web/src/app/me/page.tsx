@@ -144,7 +144,7 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
         <p className="mt-3 text-[0.74rem] text-muted">{t("devNote")}</p>
       </section>
 
-      {/* 去别处：用户管理（只有 admin）· 设置（手机底栏已换成「我的」，设置从这里进） */}
+      {/* 去别处：用户管理（只有 admin）· 设置 —— 电脑与手机都只从这里进（P9 #34），侧栏 / 底栏不单列 */}
       <section className="card divide-y divide-line-2 overflow-hidden">
         {profile.tier === "admin" && (
           <Link href="/admin" className="flex items-center gap-3 px-5 py-3 hover:bg-accent-soft">

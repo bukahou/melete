@@ -34,9 +34,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // 显示名改由页面按需取（避免每个页面都为了导航多打一次 API）
   const signedIn = Boolean(await readAccessToken());
   // 档位只用来决定显不显示「用户管理」入口（P9 #27）。取不到就当不是 admin —— 少显示一个入口，⛔ 不影响页面
-  // 资料只用来画侧栏的「我的」头像、决定显不显示「用户管理」。取不到就当普通用户 —— 少显示一点，⛔ 不影响页面
+  // 资料只用来画侧栏「我的」的头像。取不到就退回通用图标 —— ⛔ 不影响页面
   const profile = signedIn ? await getMyProfile().catch((e) => { unstable_rethrow(e); return null; }) : null;
-  const isAdmin = profile?.tier === "admin";
   // ⭐ lang 属性不是装饰：读屏软件靠它选发音，浏览器靠它选断行与字体回退。
   // 中日共用大量汉字，标错了日文会被用中文字形渲染 —— 这是肉眼可见的错。
   const locale = (await getLocale()) as Locale;
@@ -53,7 +52,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <SideNav
               locale={locale}
               version={process.env.APP_VERSION ?? "dev"}
-              isAdmin={isAdmin}
               user={profile ? { name: profile.displayName, avatarUrl: profile.avatarUrl } : undefined}
               labels={{
                 home: t("nav.home"), history: t("nav.history"), glossary: t("nav.glossary"),

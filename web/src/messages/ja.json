@@ -220,7 +220,8 @@
     "theme_dark": "ダーク",
     "theme_system": "システムに合わせる",
     "themeSubmit": "保存",
-    "noticeThemeOk": "表示を更新しました"
+    "noticeThemeOk": "表示を更新しました",
+    "mine": "マイページ"
   },
   "error": {
     "title": "ページでエラーが発生しました",
@@ -262,7 +263,6 @@
     "practice": "この {n} 問を練習する"
   },
   "admin": {
-    "home": "ホーム",
     "title": "ユーザー管理",
     "users": "ユーザー",
     "total": "{n} 人",
@@ -281,7 +281,8 @@
     "noticeAdmin": "admin アカウントは変更できません",
     "noticeFail": "操作に失敗しました。もう一度お試しください",
     "lastLogin": "{when}にログイン",
-    "neverLogin": "ログイン記録なし"
+    "neverLogin": "ログイン記録なし",
+    "mine": "マイページ"
   },
   "me": {
     "title": "マイページ",
