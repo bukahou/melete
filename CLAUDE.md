@@ -13,7 +13,7 @@
 
 ```
 melete (public)          代码：backend / web / pipeline
-config (private)         数据：banks/melete/ ← 题库在这里
+config (private)         数据：clusters/requiem/assets/melete-banks/ ← 题库在这里
 ```
 
 `pipeline/core/*.py` 通过 **`MELETE_DATA_ROOT`** 找到数据（见 `pipeline/core/paths.py`）。
@@ -60,7 +60,7 @@ config (private)         数据：banks/melete/ ← 题库在这里
 | 原始素材（PDF 等） | 体积大 + 版权。走**收件区**约定，见下方「素材收件区」一节 |
 | 内网 IP / 节点名 / 集群拓扑 / Tunnel UUID / 具体主机名 | ⛔ **任何文件都不行，含设计文档与注释**。部署清单在 config 私有仓 `clusters/requiem/apps/melete/`<br>⚠️ 这条原先写的是「**部署清单**放 config 私有仓」，于是 `docs/design/active/deployment.md` 钻了空子 —— 它是设计文档不是清单，就把当时执行的 `flarectl dns create --content <tunnel UUID>` 原样抄了进来（`9e2c385`，2026-09-02）。<br>⭐ 教训：规则按**文件类型**划范围就会漏，按**信息类型**划才不会。而且仓库当时是 private，这条规则不产生任何可感代价 —— **规则只在被违反且有后果时才显出漏洞，私有仓不给它这个机会**。 |
 | 任何真实凭证 | 见上。**已 commit 的凭证视为已泄漏**，删文件和补 .gitignore 都无效 |
-| 各题库的素材脏点清单 | 它描述的是素材不是代码，归属地在 `config/banks/melete/README.md` |
+| 各题库的素材脏点清单 | 它描述的是素材不是代码，归属地在 `config/clusters/requiem/assets/melete-banks/README.md` |
 
 > ⛔ **信息卫生以全局 CLAUDE.md §1.5 为准 —— 按【信息类型】划界，⛔ 不按文件类型。**
 > 写任何文档 / 注释 / 提交信息前，先查 `~/.claude/refs/identity-map.md`：真实标识一律写代号。
@@ -225,7 +225,7 @@ $MELETE_DATA_ROOT/<bank-slug>/questions.json       结构化产物  ⚠️ 落�
 $MELETE_DATA_ROOT/<bank-slug>/source.yaml          素材登记单
 ```
 
-⚠️ **产物不落在本仓** —— `MELETE_DATA_ROOT` 指向 config 私有仓的 `banks/melete/`。
+⚠️ **产物不落在本仓** —— `MELETE_DATA_ROOT` 指向 config 私有仓的 `clusters/requiem/assets/melete-banks/`。
 本仓的 `.gitignore` 把 `/data/` 挡死，就是为了万一配置出错时兜住。
 
 流程：
@@ -280,7 +280,7 @@ python3 pipeline/core/ingest.py aws-saa-c03
 
 各题库素材的具体脏点（哪几道题引用图片、连字丢失、字母被西里尔字母污染、
 哪些题头是英文导致被漏抓）**不在本仓** —— 它们描述的是素材，不是代码，
-归属地是 `config/banks/melete/README.md`。
+归属地是 `config/clusters/requiem/assets/melete-banks/README.md`。
 
 ⭐ 但其中一条教训是通用的，留在这里：
 

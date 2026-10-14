@@ -46,7 +46,7 @@ def data_root() -> Path:
     if not raw:
         sys.exit(
             f"✗ 未设 {_ENV} —— 题库数据不在本仓库里（本仓是公开仓）。\n"
-            f"  它在私有的 config 仓 banks/melete/。设置方式：\n"
+            f"  它在私有的 config 仓 clusters/requiem/assets/melete-banks/。设置方式：\n"
             f"    source ~/work/github/config/local/ubuntu/env/melete.env\n"
             f"  ⛔ 本脚本刻意不猜默认路径：猜错会把题库写回公开仓。"
         )
