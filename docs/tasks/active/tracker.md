@@ -516,7 +516,7 @@ p050-056 是 **「表計算ソフトの機能・用語（IT パスポート試�
 
 ## localauth 接入（cross-exam 005 §35 验收）🔄
 
-> **主档在 `config/cross-exam/`**：验收计划 `2026-09-06-melete-localauth-acceptance-plan.md`，
+> **主档在 `config/global/cross-exam/`**：验收计划 `2026-09-06-melete-localauth-acceptance-plan.md`，
 > 裁决与核实记录在 `2026-09-04-localauth-delivery-checklist.md` §35–§38。
 > 这里只记 melete 侧的状态，⛔ 不复制决策内容（复制 = 两份会漂）。
 
@@ -629,7 +629,7 @@ atlhyper 将来会继承（模板已修，风险消除）**。
       ⚠️ **是有意的风险接受，不是问题解决了** —— 债的去向是集群层
       （Cilium CEC + Envoy `local_ratelimit`，键取 `CF-Connecting-IP`），
       由 work 记在 `project-cluster-rate-limit-pending`。⛔ 删掉代码 ≠ 债还清。
-      执行时机：随 localauth 接入（见 `config/cross-exam/2026-09-06-melete-localauth-acceptance-plan.md` §1.3）。
+      执行时机：随 localauth 接入（见 `config/global/cross-exam/2026-09-06-melete-localauth-acceptance-plan.md` §1.3）。
 
       ⭐ **这条留下来的两份认知（比结论值钱，别随代码一起删）**：
       ① 模块 `guard.go` 注释：账号维度**故意不省** bcrypt CPU（提前判定会造出

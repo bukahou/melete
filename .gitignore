@@ -38,7 +38,7 @@ Thumbs.db
 
 # ⛔⛔ 题库数据【绝不入本仓】—— 本仓是公开仓 (2026-09-07 起)
 #
-# 数据在私有的 config 仓 banks/melete/，pipeline 通过 MELETE_DATA_ROOT 定位
+# 数据在私有的 config 仓 clusters/requiem/assets/melete-banks/，pipeline 通过 MELETE_DATA_ROOT 定位
 # (见 pipeline/core/paths.py)。
 #
 # 这条规则的历史：2026-09-07 之前本仓是 private，data/ 是【故意纳入】版本管理的
