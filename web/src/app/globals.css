@@ -10,7 +10,9 @@
  * 三条规则（改任何页面前先对照）：
  *   1. 强调色（accent）只给「能点、且最该点」的东西 —— 一屏最多一处实底
  *   2. 界面文字一律无衬线、字重 ≤ 600；数字小而安静，统计只是交代现状
- *   3. 不画面板边框：浅色 tinted 底 + 白卡片 + 间距 来分区（hairline 只留给列表行）
+ *   3. 浅青只做外框（2026-10-21 起，#41）：内容放在一整张近白的纸上（components/Page）；
+ *      纸面上用白条（.band）+ 细线行分区 —— ⛔ 不在纸上放卡片、⛔ 不画面板边框。
+ *      例外：首页仪表盘暂沿用「浅青底 + 白卡片」（it-pass 的首页也是这样）
  *
  * 深浅色：默认浅色；设置里可选 浅 / 深 / 跟随系统（cookie melete_theme → <html data-theme>）。
  * 来源三色（题库 / 社区 / AI）与状态色沿用旧版已验证的值，⛔ 不拿来当强调色。
@@ -22,7 +24,8 @@
   --color-surface: #e3f0f0;   /* 页面底：浅青 */
   --color-rail: #d2e6e7;      /* 左侧栏：比页面深一档 */
   --color-raise: #f5fafa;     /* 卡片：近白带青 */
-  --color-tile: #ffffff;      /* 卡片里的按钮：纯白，比卡片再亮一档 */
+  --color-tile: #ffffff;      /* 卡片里的按钮、纸面上的白条：纯白，比卡片 / 纸再亮一档 */
+  --color-sheet: #f7fbfb;     /* 纸（#41）：除首页外，内容一律放在这张纸上 */
   --color-ink: #1e2a32;
   --color-muted: #5a6a72;
   --color-line: #cfe0e1;
@@ -62,6 +65,7 @@
   --color-rail: #0e1517;
   --color-raise: #182224;
   --color-tile: #1e2a2c;
+  --color-sheet: #172123;
   --color-ink: #d3dcdd;
   --color-muted: #8b9a9e;
   --color-line: #273436;
@@ -83,6 +87,7 @@
     --color-rail: #0e1517;
     --color-raise: #182224;
     --color-tile: #1e2a2c;
+  --color-sheet: #172123;
     --color-ink: #d3dcdd;
     --color-muted: #8b9a9e;
     --color-line: #273436;
@@ -133,11 +138,27 @@ body {
   text-wrap: balance;
 }
 
-/* card：分区的唯一形态 —— 近白卡片浮在浅彩色底上，⛔ 不画边框（规则 3） */
+/* card：首页仪表盘的卡片，近白卡片浮在浅青底上，⛔ 不画边框。⛔ 纸面上不用（规则 3）—— 纸上分区用 .band */
 .card {
   background: var(--color-raise);
   border-radius: 0.875rem;
 }
+
+/* band：纸面上的白条 —— 一节的标题、列表的列头（#41 #42）。⭐ 纸面分区靠白条 + 细线，⛔ 不靠卡片。
+   放在 components 层：页面上的工具类（px-6 等）要能覆盖它 —— 不分层的类会压过所有工具类。 */
+@layer components {
+  .band {
+    background: var(--color-tile);
+    min-height: 2.25rem;
+    padding-inline: 1rem;
+    font-size: 0.94rem;
+    font-weight: 600;
+  }
+}
+
+/* 纸上的 .card = 白块。纸面分区靠白条 + 细线，但有些内容本来就该成块（答案来源三栏、解析、提示条）——
+   它们在纸上用纯白，比纸亮一档；⛔ 不是浮在浅青底上的卡片（那只在首页）。 */
+.sheet .card { background: var(--color-tile); }
 
 /* tile：卡片里的可点按钮（it-pass 式）—— 白底 + 1px 强调色描边。
    ⭐ 描边是「这里能点」的信号，所以只给按钮，⛔ 不给卡片。 */

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 import {
   ApiError,
   getBank,
@@ -16,6 +16,7 @@ import { tagName, tagTypeLabel, tagWeight } from "@/lib/claims";
 import { drillHref, listParams } from "@/lib/drillSpec";
 import type { DrillContext } from "@/lib/claims";
 import { getLocale, getTranslations } from "next-intl/server";
+import { Page, Section } from "@/components/Page";
 
 export const revalidate = 0;
 
@@ -36,16 +37,6 @@ export const revalidate = 0;
 type T = Awaited<ReturnType<typeof getTranslations<"history">>>;
 const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : null);
 
-function CardTitle({ children, side }: { children: React.ReactNode; side?: React.ReactNode }) {
-  return (
-    <div className="mb-3 flex items-center gap-3">
-      <h2 className="shrink-0 text-[0.95rem] font-semibold">{children}</h2>
-      <span className="h-px flex-1 bg-line" />
-      {side && <span className="shrink-0 text-[0.78rem] text-muted">{side}</span>}
-    </div>
-  );
-}
-
 /** 一根尺：掌握率。line 给了就画一道竖线（只有「全体」画 —— P9 #7 不做分领域的合格判断）。 */
 function Meter({ rate, line }: { rate: number | null; line?: number }) {
   return (
@@ -57,8 +48,9 @@ function Meter({ rate, line }: { rate: number | null; line?: number }) {
 }
 
 /** 一行：名字 · 已答 / 题数 · 掌握率 + 尺。整行可点，点了去练这一块。
- *  ⚠️ 分隔线由外层 divide-y 画，⛔ 不在行上用 last:border-b-0 —— 考纲域行包在各自的组里，
- *  「组里最后一个」恰好是它，于是只有它没线（第一版截图里的不齐就是这么来的）。 */
+ *  ⭐ 纸面上的细线行（#41 #42）：名字不加粗、⛔ 不放箭头；每行自己画底线 ——
+ *  ⛔ 不用外层 divide-y + last:border-b-0 那一套：考纲域行包在各自的组里，「组里最后一个」会单独没线。
+ *  尺（掌握率）留着：这一页是「我哪里不会」的分析页，尺就是答案；入口列表（#42）去掉的是进度条。 */
 function Row({ href, title, sub, done, total, rate, level = 0, t }: {
   href: string; title: string; sub?: string; done: number; total: number; rate: number | null; level?: 0 | 1; t: T;
 }) {
@@ -66,9 +58,9 @@ function Row({ href, title, sub, done, total, rate, level = 0, t }: {
   const doneOf = t("doneOf", { done, total });
   return (
     <Link href={href}
-          className={`group flex items-center gap-4 py-3 pr-4 transition-colors hover:bg-accent-soft ${level ? "pl-9" : "pl-5"}`}>
+          className={`mx-2 flex min-h-14 items-center gap-4 border-b border-line-2 py-2 pr-2 transition-colors hover:bg-accent-soft ${level ? "pl-9" : "pl-5"}`}>
       <span className="min-w-0 flex-1">
-        <span className={`block truncate ${level ? "text-[0.88rem]" : "text-[0.95rem] font-semibold"}`}>{title}</span>
+        <span className={`block truncate ${level ? "text-[0.89rem]" : "text-[0.97rem]"}`}>{title}</span>
         {/* 第二行：桌面只放副标题（考纲权重）；手机再加上「已答」。没有副标题时桌面上不占这一行 */}
         <span className={`block text-[0.72rem] text-muted tabular-nums ${sub ? "" : "sm:hidden"}`}>
           {sub}
@@ -80,7 +72,6 @@ function Row({ href, title, sub, done, total, rate, level = 0, t }: {
         <span className="text-right text-[0.88rem] font-medium tabular-nums">{rate != null ? `${rate}%` : <span className="text-muted">—</span>}</span>
         <Meter rate={rate} />
       </span>
-      <ChevronRight size={15} className="text-muted transition-colors group-hover:text-accent-ink" />
     </Link>
   );
 }
@@ -142,50 +133,42 @@ export default async function HistoryOverviewPage({
   const code = slug.toUpperCase().replace(/^AWS-/, "");
 
   return (
-    <div className="mx-auto grid max-w-[960px] gap-4">
-      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <nav className="flex w-full items-center gap-2 text-[0.82rem] text-muted">
-          <Link href="/" className="hover:text-ink">{t("home")}</Link>
-          <span className="opacity-50">›</span>
-          <span className="text-ink">{t("title")}</span>
-        </nav>
-        <h1 className="display text-[1.4rem]">{t("title")}</h1>
-        <span className="text-[0.82rem] text-muted">{code}</span>
-        <Link href="/settings#bank" className="ml-auto inline-flex items-center gap-1 text-[0.78rem] text-muted hover:text-accent-ink">
-          <Settings2 size={13} />{t("switchBank")}
-        </Link>
-      </header>
-
+    // 学习履历是侧栏直达的顶级页：顶栏只有标题（没有返回），右侧放「换题库」
+    <Page title={t("title")} width="wide" sub={code}
+          actions={(
+            <Link href="/settings#bank" className="inline-flex shrink-0 items-center gap-1 text-[0.78rem] text-muted hover:text-accent-ink">
+              <Settings2 size={13} />{t("switchBank")}
+            </Link>
+          )}>
       {/* 全体：与首页「合格判断」同一个口径 —— 掌握率（每题最近一次）对着安全线 */}
-      <section className="card px-5 py-4">
-        <CardTitle side={meta.safetyRate != null ? t("safety", { line: meta.safetyRate }) : undefined}>{t("overall")}</CardTitle>
-        <div className="grid grid-cols-3 gap-4 pb-3">
-          {[
-            { label: t("answered"), value: progress.seenCount, unit: `/ ${total}` },
-            { label: t("mastery"), value: mastery ?? "—", unit: mastery != null ? "%" : undefined },
-            { label: t("practice"), value: practice ?? "—", unit: practice != null ? "%" : undefined },
-          ].map((f) => (
-            <div key={f.label} className="text-center">
-              <div className="text-[0.75rem] text-muted">{f.label}</div>
-              <div className="mt-1 text-[1.6rem] font-medium leading-none text-accent-ink tabular-nums">
-                {f.value}{f.unit && <small className="ml-0.5 text-[0.78rem] text-muted">{f.unit}</small>}
+      <Section title={t("overall")} side={meta.safetyRate != null ? t("safety", { line: meta.safetyRate }) : undefined}>
+        <div className="px-4 pt-4">
+          <div className="grid grid-cols-3 gap-4 pb-3">
+            {[
+              { label: t("answered"), value: progress.seenCount, unit: `/ ${total}` },
+              { label: t("mastery"), value: mastery ?? "—", unit: mastery != null ? "%" : undefined },
+              { label: t("practice"), value: practice ?? "—", unit: practice != null ? "%" : undefined },
+            ].map((f) => (
+              <div key={f.label} className="text-center">
+                <div className="text-[0.75rem] text-muted">{f.label}</div>
+                <div className="mt-1 text-[1.6rem] font-medium leading-none text-accent-ink tabular-nums">
+                  {f.value}{f.unit && <small className="ml-0.5 text-[0.78rem] text-muted">{f.unit}</small>}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          <Meter rate={mastery} line={meta.safetyRate ?? undefined} />
+          <p className="mt-2 text-[0.72rem] text-muted">{t("masteryNote")}</p>
         </div>
-        <Meter rate={mastery} line={meta.safetyRate ?? undefined} />
-        <p className="mt-2 text-[0.72rem] text-muted">{t("masteryNote")}</p>
-      </section>
+      </Section>
 
       {/* 考纲域：⛔ 不画安全线 —— P9 #7 只看整体，不做分领域的合格判断 */}
-      <section className="card overflow-hidden pt-4">
-        <div className="px-5"><CardTitle side={t("weakHint")}>{domainLabel}</CardTitle></div>
-        <div className="divide-y divide-line-2 border-t border-line-2">
+      <Section title={domainLabel} side={t("weakHint")}>
         {domains.map((d, i) => {
           const s = byDomain.get(d.id);
           const w = tagWeight(meta, d);
           return (
-            <div key={d.id} className="divide-y divide-line-2">
+            <div key={d.id}>
               <Row t={t} href={href([d.id])} title={tagName(d, locale)} sub={w != null ? t("weight", { w }) : undefined}
                    done={s?.total ?? 0} total={d.questionCount ?? 0} rate={rateOf(s)} />
               {groupSums[i].map((g) => (
@@ -195,26 +178,22 @@ export default async function HistoryOverviewPage({
             </div>
           );
         })}
-        </div>
-      </section>
+      </Section>
 
       {/* 知识对象：AWS 是服务，IPA 是中分類 —— 弱的在前 */}
-      <section className="card overflow-hidden pt-4">
-        <div className="px-5"><CardTitle side={t("topicSide", { n: topics.length })}>{topicLabel}</CardTitle></div>
-        <div className="divide-y divide-line-2 border-t border-line-2">
-          {topicRows.map((tp) => {
-            const s = byTopic.get(tp.id);
-            return <Row key={tp.id} t={t} href={href([tp.id])} title={tagName(tp, locale)}
-                        done={s?.total ?? 0} total={tp.questionCount ?? 0} rate={rateOf(s)} />;
-          })}
-        </div>
+      <Section title={topicLabel} side={t("topicSide", { n: topics.length })}>
+        {topicRows.map((tp) => {
+          const s = byTopic.get(tp.id);
+          return <Row key={tp.id} t={t} href={href([tp.id])} title={tagName(tp, locale)}
+                      done={s?.total ?? 0} total={tp.questionCount ?? 0} rate={rateOf(s)} />;
+        })}
         {topics.length > 10 && (
           <Link href={showAll ? `/banks/${slug}` : `/banks/${slug}?all=1`}
-                className="block border-t border-line-2 py-3 text-center text-[0.85rem] text-accent-ink hover:bg-accent-soft">
+                className="mx-2 block py-3 text-center text-[0.85rem] text-accent-ink hover:bg-accent-soft">
             {showAll ? t("collapse") : t("showMore", { n: topics.length - 10 })}
           </Link>
         )}
-      </section>
-    </div>
+      </Section>
+    </Page>
   );
 }

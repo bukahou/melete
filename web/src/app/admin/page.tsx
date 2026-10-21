@@ -5,6 +5,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { ApiError, listAdminUsers, type AdminUser, type AdminUserPage, type Tier } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { UserAvatar } from "@/components/UserAvatar";
+import { Page, Section } from "@/components/Page";
 
 export const revalidate = 0;
 
@@ -61,18 +62,9 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
     );
 
   return (
-    <div className="mx-auto grid max-w-3xl gap-4 pt-2">
-      <header className="grid gap-1">
-        <nav className="flex items-center gap-2 text-[0.82rem] text-muted">
-          <Link href="/me" className="hover:text-ink">{t("mine")}</Link>
-          <span className="opacity-50">›</span>
-          <span className="text-ink">{t("title")}</span>
-        </nav>
-        <h1 className="display text-[1.4rem]">{t("title")}</h1>
-      </header>
-
+    <Page title={t("title")} crumbs={[{ href: "/me", label: t("mine") }, { label: t("title") }]}>
       {/* 三档说明：管理的人要知道「升级」到底意味着什么 */}
-      <section className="card grid gap-2 px-5 py-4 text-[0.84rem]">
+      <section className="grid gap-2 px-4 text-[0.84rem]">
         {(["basic", "advanced", "admin"] as const).map((tier) => (
           <p key={tier} className="flex items-baseline gap-3">
             <TierPill tier={tier} label={t(`tier_${tier}`)} />
@@ -82,7 +74,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       </section>
 
       {notice && (
-        <div className="rounded-md border px-4 py-3 text-sm"
+        <div className="mt-6 rounded-md border px-4 py-3 text-sm"
              style={{
                borderColor: `var(--color-${notice.tone})`,
                background: `color-mix(in oklab, var(--color-${notice.tone}) 8%, transparent)`,
@@ -91,15 +83,10 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         </div>
       )}
 
-      <section className="card overflow-hidden">
-        <div className="flex items-center gap-3 px-5 pb-2 pt-4">
-          <h2 className="shrink-0 text-[0.95rem] font-semibold">{t("users")}</h2>
-          <span className="h-px flex-1 bg-line" />
-          <span className="text-[0.78rem] text-muted">{t("total", { n: data.total })}</span>
-        </div>
-        <div className="divide-y divide-line-2 border-t border-line-2">
+      <div className="mt-8">
+        <Section title={t("users")} side={t("total", { n: data.total })}>
           {data.items.map((u) => (
-            <div key={u.id} className="flex items-center gap-3 px-5 py-3">
+            <div key={u.id} className="mx-2 flex min-h-14 items-center gap-3 border-b border-line-2 py-2.5 pl-3 pr-1">
               <UserAvatar name={u.displayName} url={u.avatarUrl} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[0.92rem]">{u.displayName}</span>
@@ -114,15 +101,15 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               <span className="w-[6.5rem] shrink-0 text-right">{action(u)}</span>
             </div>
           ))}
-        </div>
-        {pages > 1 && (
-          <div className="flex items-center justify-between border-t border-line-2 px-5 py-3 text-[0.82rem]">
-            {page > 1 ? <Link href={`/admin?page=${page - 1}`} className="inline-flex items-center gap-1 text-accent-ink"><ChevronLeft size={14} />{t("prev")}</Link> : <span />}
-            <span className="text-muted tabular-nums">{page} / {pages}</span>
-            {page < pages ? <Link href={`/admin?page=${page + 1}`} className="inline-flex items-center gap-1 text-accent-ink">{t("next")}<ChevronRight size={14} /></Link> : <span />}
-          </div>
-        )}
-      </section>
-    </div>
+          {pages > 1 && (
+            <div className="mx-2 flex items-center justify-between px-3 py-3 text-[0.82rem]">
+              {page > 1 ? <Link href={`/admin?page=${page - 1}`} className="inline-flex items-center gap-1 text-accent-ink"><ChevronLeft size={14} />{t("prev")}</Link> : <span />}
+              <span className="text-muted tabular-nums">{page} / {pages}</span>
+              {page < pages ? <Link href={`/admin?page=${page + 1}`} className="inline-flex items-center gap-1 text-accent-ink">{t("next")}<ChevronRight size={14} /></Link> : <span />}
+            </div>
+          )}
+        </Section>
+      </div>
+    </Page>
   );
 }

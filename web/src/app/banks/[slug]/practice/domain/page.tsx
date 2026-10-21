@@ -73,7 +73,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
 
   return (
     <PracticeShell home={t("home")} title={dash("drillDomain", { domain: domainLabel })} sub={t("domainSub", { domain: domainLabel })}>
-      <section className="card overflow-hidden pb-2">
+      <section>
         {tree ? <EntryColumns /> : <EntryHead title={domainLabel} columns />}
         {list.map((r, i) => tree && r.level === 0
           ? <EntryHead key={i} title={r.title} href={drillHref(slug, r.ctx)} stats={statsOf(r, i)} />

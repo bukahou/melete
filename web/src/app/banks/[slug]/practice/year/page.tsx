@@ -48,7 +48,7 @@ export default async function YearPage({ params }: { params: Promise<{ slug: str
 
   return (
     <PracticeShell home={t("home")} title={dash("drillYear")} sub={t("yearSub", { size })}>
-      <section className="card overflow-hidden pb-2">
+      <section>
         <EntryHead title={bySession ? t("groupBySession") : t("groupBySize", { size })} columns />
         {rows.map((r, i) => (
           <EntryRow
