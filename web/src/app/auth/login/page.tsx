@@ -11,8 +11,9 @@ import { getTranslations } from "next-intl/server";
  *   （Akasha 只是实现：自研的 OIDC 身份中枢；代码与日志里照旧叫它的名字。）
  * ⭐ 2026-10-08 用户裁定：登录只用第三方（Akasha）。首次登录自动注册，之后账号信息不可改，
  *   只能登出再登录 / 换账号。
- *   ⚠️ 撤下的只是【网页上】的密码表单：后端 /auth/password 仍在 —— iOS 调试账号与 dev 测试账号用它，
- *   待确认 iOS 不用后与注册 / 找回 / 改邮箱等端点一起删（见 tracker）。
+ *   ⚠️ 撤下的只是【这一页上】的密码表单：后端 /auth/password 等端点长期保留（#37），给调试账号用 ——
+ *   iOS 调试账号直接调 API；网页上的调试入口是一个不在任何地方链接的页面 /auth/login/password（#35，见那一页）。
+ *   ⛔ 这一页不放任何指向它的链接或提示：用户侧只有一种登录方式。
  */
 export default async function LoginPage({
   searchParams,

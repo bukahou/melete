@@ -316,6 +316,19 @@ python3 pipeline/core/ingest.py aws-saa-c03
 
 ---
 
+## 调试账号与截图（2026-10-21，tracker #35–#38）
+
+用户侧只有第三方登录（#25）。调试账号走一个**不在任何地方链接**的页面 `/auth/login/password`：
+
+- 由运行时开关 `MELETE_WEB_PASSWORD_LOGIN=on` 打开，缺省关闭（关着时 404）。哪些环境打开记在 config 私有仓的部署配置
+- 开发环境有三档调试账号（普通 / 高级 / admin）。凭证在 config 私有仓 `local/ubuntu/env/melete.env` 的
+  `MELETE_DEBUG_<BASIC|ADVANCED|ADMIN>_USER / _PASS` —— ⛔ 不写进本仓、⛔ 不打印
+- 看页面：`node web/scripts/screenshot.mjs --as basic|advanced|admin|guest [--width 390] <路径>...`
+  （目标站点缺省 `$MELETE_SHOT_BASE`；截完图自动登出）
+- ⛔ 后端密码登录等端点**不删**（#37）：Akasha 没有本地密码，调试账号无法改走第三方登录
+
+---
+
 ## 协作约定
 
 遵循用户全局 CLAUDE.md 的**决策教练模式**：浮现盲点 → 列候选与利弊 → 给推荐和理由 → **用户拍板**。

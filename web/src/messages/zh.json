@@ -195,7 +195,15 @@
     "oidcUpstream": "第三方登录暂时不可用，请稍后重试",
     "oidcApplication": "登录时出了点问题，请重试",
     "modalTitle": "登录 / 注册",
-    "autoRegister": "第一次登录时，会自动为你创建 Melete 账号。"
+    "autoRegister": "第一次登录时，会自动为你创建 Melete 账号。",
+    "passwordTitle": "调试账号登录",
+    "username": "用户名",
+    "password": "密码",
+    "submit": "登录",
+    "badCredentials": "用户名或密码错误",
+    "rateLimited": "尝试太频繁，请稍后再试",
+    "debugOnly": "仅限调试账号",
+    "backToThirdParty": "返回第三方账号登录"
   },
   "settings": {
     "title": "设置",

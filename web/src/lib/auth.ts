@@ -10,7 +10,7 @@
  *   web  → httpOnly cookie：SSR 要在服务端读到它做登录墙，且 XSS 偷不走
  *   iOS  → Keychain（见 geass-mobile/CLAUDE.md）
  *
- * ⭐ 2026-09-08 起本文件只剩 OIDC 配置。cookie 的读、写、清、刷新、过期判定
+ * ⭐ 2026-09-08 起本文件只剩认证配置（OIDC + 调试账号的密码登录开关）。cookie 的读、写、清、刷新、过期判定
  *   全部搬到 lib/session.ts（门面）+ lib/session-core.ts（纯逻辑）——
  *   此前它们散在 auth.ts / proxy.ts / 各 route 里，cookie 寿命和刷新时机脱节了 5 分钟
  *   而没人发现。⛔ 不要再往这里加 cookie 相关的东西。
@@ -35,4 +35,18 @@ export const oidc = {
   get origin() { return required("MELETE_WEB_ORIGIN"); },
   /** api 的**公网**地址 —— 浏览器要被 302 到这里，不能用集群内的 ClusterIP */
   get apiPublicBase() { return required("MELETE_API_PUBLIC_BASE"); },
+};
+
+/**
+ * 调试账号的密码登录（P9 #35–#38，2026-10-21 用户裁定）开不开。
+ *
+ * 用户侧只有一种登录方式（#25）—— 密码登录只给调试账号用，入口是一个不在任何地方链接的页面
+ * （/auth/login/password）。⭐ 「不链接」只为不打扰真实用户，⛔ 不是安全措施：仓库公开，路径谁都看得到；
+ * 保护来自「只有调试账号有密码」（第三方登录的账号 password_hash 为空）与后端的登录失败限流。
+ *
+ * ⛔ 缺省关闭（fail-closed）：只有部署配置显式写 "on" 才开，其它任何值都当关。哪些环境打开记在部署配置里。
+ * ⚠️ 运行时读，⛔ 不得在构建期定死 —— 镜像在各环境是同一个，开关只能跟着运行环境走。
+ */
+export const passwordLogin = {
+  get enabled() { return process.env.MELETE_WEB_PASSWORD_LOGIN === "on"; },
 };

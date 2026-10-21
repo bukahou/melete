@@ -195,7 +195,15 @@
     "oidcUpstream": "外部アカウントでのログインが一時的に利用できません。しばらくしてから再度お試しください",
     "oidcApplication": "ログイン時に問題が発生しました。もう一度お試しください",
     "modalTitle": "ログイン／新規登録",
-    "autoRegister": "初回ログイン時に、Melete のアカウントが自動で作成されます。"
+    "autoRegister": "初回ログイン時に、Melete のアカウントが自動で作成されます。",
+    "passwordTitle": "デバッグアカウントでログイン",
+    "username": "ユーザー名",
+    "password": "パスワード",
+    "submit": "ログイン",
+    "badCredentials": "ユーザー名またはパスワードが違います",
+    "rateLimited": "試行回数が多すぎます。しばらくしてから再度お試しください",
+    "debugOnly": "デバッグアカウント専用",
+    "backToThirdParty": "外部アカウントでのログインに戻る"
   },
   "settings": {
     "title": "設定",
