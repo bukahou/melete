@@ -8,7 +8,7 @@ import { getTranslations } from "next-intl/server";
 export default async function NotFound() {
   const t = await getTranslations();
   return (
-    <div className="mx-auto max-w-md pt-16 text-center">
+    <div className="mx-auto max-w-md px-5 pt-16 text-center">
       <p className="font-mono text-[0.8rem] text-muted">404</p>
       <h1 className="display mt-2 text-[1.4rem]">{t("common.notFoundTitle")}</h1>
       <p className="mt-3 text-[0.9rem] text-muted">{t("common.notFoundBody")}</p>

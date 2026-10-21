@@ -7,6 +7,7 @@ import { localized, tagTypeLabel } from "@/lib/claims";
 import { arrangeCategory, categoryHref, categoryLabel, glossarySections, termSub } from "@/lib/glossary";
 import { GlossarySearch } from "@/components/GlossaryBrowser";
 import { TermRow } from "@/components/TermRow";
+import { Page } from "@/components/Page";
 
 export const revalidate = 0;
 
@@ -32,15 +33,6 @@ export default async function GlossaryPage({
   }
   const code = slug.toUpperCase().replace(/^AWS-/, "");
   const root = `/banks/${slug}/glossary`;
-  const crumbs = (here?: string) => (
-    <nav className="flex w-full items-center gap-2 text-[0.82rem] text-muted">
-      <Link href="/" className="hover:text-ink">{t("home")}</Link>
-      <span className="opacity-50">›</span>
-      {here ? <Link href={root} className="hover:text-ink">{t("title")}</Link> : <span className="text-ink">{t("title")}</span>}
-      {here && <><span className="opacity-50">›</span><span className="truncate text-ink">{here}</span></>}
-    </nav>
-  );
-
   // ---- 分类页 ----
   // 排法见 lib/glossary.ts 的 arrangeCategory：主条目置顶（带释义）→ 常考的按出题数 → 只出现 1 次的折叠
   if (c) {
@@ -57,14 +49,10 @@ export default async function GlossaryPage({
                       count={x.questionCount > 0 ? t("inQuestions", { n: x.questionCount }) : undefined} />;
     };
     return (
-      <div className="mx-auto grid max-w-3xl gap-4 pt-2">
-        <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          {crumbs(label)}
-          <h1 className="display text-[1.4rem]">{label}</h1>
-          <span className="text-[0.82rem] text-muted">{code} · {t("count", { n: pool.length })}</span>
-        </header>
+      <Page title={label} crumbs={[{ href: "/", label: t("home") }, { href: root, label: t("title") }, { label }]}
+            sub={`${code} · ${t("count", { n: pool.length })}`}>
         {lead && leadDetail && (
-          <section className="card px-6 py-5">
+          <section className="px-4 pb-6">
             <h2 className="text-[1.1rem] font-semibold">{nameOf(lead)}</h2>
             {termSub(lead, nameOf(lead)) && <p className="mt-0.5 text-[0.78rem] text-muted">{termSub(lead, nameOf(lead))}</p>}
             <p className="mt-3 text-[0.95rem] leading-[1.9]">{localized(leadDetail.definition, locale)}</p>
@@ -73,24 +61,21 @@ export default async function GlossaryPage({
             </Link>
           </section>
         )}
-        {main.length > 0 && (
-          <section className="card overflow-hidden">
-            <div className="divide-y divide-line-2">{main.map(row)}</div>
-          </section>
-        )}
+        {/* 细线行直接放在纸上（#41）；第一行补一条顶线，与上面的释义分开 */}
+        {main.length > 0 && <section className="[&>a:first-child]:border-t [&>a:first-child]:border-line-2">{main.map(row)}</section>}
         {/* ⚠️ 展开状态进 URL（&more=1），⛔ 不用 <details>：展开后点进术语再返回，内存里的展开态就丢了 */}
         {rest.length > 0 && (
-          <section className="card overflow-hidden">
+          <section className="mt-6">
             <Link href={more ? categoryHref(slug, c) : `${categoryHref(slug, c)}&more=1`} scroll={false} replace
-                  className="flex items-center gap-3 px-5 py-3 hover:bg-accent-soft">
+                  className="band flex items-center gap-3 font-normal transition-colors hover:bg-accent-soft">
               <ChevronRight size={15} className={`text-muted transition-transform ${more ? "rotate-90" : ""}`} />
               <span className="flex-1 text-[0.92rem]">{t("rest", { n: rest.length })}</span>
               <span className="text-[0.72rem] text-muted">{t("restNote")}</span>
             </Link>
-            {more && <div className="divide-y divide-line-2 border-t border-line-2">{rest.map(row)}</div>}
+            {more && rest.map(row)}
           </section>
         )}
-      </div>
+      </Page>
     );
   }
 
@@ -100,35 +85,28 @@ export default async function GlossaryPage({
     ...glossarySections(bank.meta, terms, locale, { general: t("general"), other: t("other") }),
   ];
   return (
-    <div className="mx-auto grid max-w-3xl gap-4 pt-2">
-      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        {crumbs()}
-        <h1 className="display text-[1.4rem]">{t("title")}</h1>
-        <span className="text-[0.82rem] text-muted">{code} · {t("summary", { n: terms.length, axis: tagTypeLabel(bank.meta, "topic", locale) })}</span>
-      </header>
+    // 用语集是侧栏直达的顶级页：顶栏只有标题、没有返回（同 it-pass「用語集」）
+    <Page title={t("title")} sub={`${code} · ${t("summary", { n: terms.length, axis: tagTypeLabel(bank.meta, "topic", locale) })}`}>
       {terms.length === 0 ? (
-        <p className="card px-6 py-10 text-center text-sm text-muted">{t("empty")}</p>
+        <p className="px-4 py-10 text-center text-sm text-muted">{t("empty")}</p>
       ) : (
         <GlossarySearch slug={slug} terms={terms} initialQuery={q ?? ""}>
-          <div className="grid gap-4">
+          <div>
             {sections.map((s, i) => (
-              <section key={s.heading ?? i} className="grid gap-2">
-                {s.heading && <h2 className="px-1 text-[0.95rem] font-semibold">{s.heading}</h2>}
-                <div className="card divide-y divide-line-2 overflow-hidden">
-                  {s.rows.map((r) => (
-                    <Link key={r.category} href={categoryHref(slug, r.category)}
-                          className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-accent-soft">
-                      <span className="min-w-0 flex-1 truncate text-[0.92rem]">{r.label}</span>
-                      <span className="shrink-0 text-[0.78rem] text-muted tabular-nums">{t("count", { n: r.count })}</span>
-                      <ChevronRight size={15} className="shrink-0 text-muted group-hover:text-accent-ink" />
-                    </Link>
-                  ))}
-                </div>
+              <section key={s.heading ?? i} className="[&+&]:mt-6">
+                {s.heading && <div className="band flex items-center">{s.heading}</div>}
+                {s.rows.map((r) => (
+                  <Link key={r.category} href={categoryHref(slug, r.category)}
+                        className="mx-2 flex min-h-14 items-center gap-3 border-b border-line-2 pl-5 pr-2 transition-colors hover:bg-accent-soft">
+                    <span className="min-w-0 flex-1 truncate text-[0.97rem]">{r.label}</span>
+                    <span className="shrink-0 text-[0.84rem] text-muted tabular-nums">{t("count", { n: r.count })}</span>
+                  </Link>
+                ))}
               </section>
             ))}
           </div>
         </GlossarySearch>
       )}
-    </div>
+    </Page>
   );
 }

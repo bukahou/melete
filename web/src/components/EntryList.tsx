@@ -59,7 +59,7 @@ export function EntryHead({ title, href, stats, columns }: {
       {columns ? <ColumnNames /> : stats ? <Cells stats={stats} /> : null}
     </>
   );
-  const cls = `${GRID} min-h-9 bg-tile px-4 text-[0.94rem] font-semibold [&:not(:first-child)]:mt-4`;
+  const cls = `band ${GRID} [&:not(:first-child)]:mt-4`;
   return href
     ? <Link href={href} className={`${cls} transition-colors hover:bg-accent-soft ${FOCUS}`}>{body}</Link>
     : <div className={cls}>{body}</div>;

@@ -5,6 +5,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { getMyProfile, getSessions, listBanks, type Bank, type SessionInfo, type Tier } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
 import { UserAvatar } from "@/components/UserAvatar";
+import { Page, Section } from "@/components/Page";
 
 export const revalidate = 0;
 
@@ -34,17 +35,6 @@ function TierPill({ tier, label }: { tier: Tier; label: string }) {
   return <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[0.72rem] font-semibold ${style}`}>{label}</span>;
 }
 
-function CardTitle({ icon, children, side }: { icon?: React.ReactNode; children: React.ReactNode; side?: React.ReactNode }) {
-  return (
-    <div className="mb-3 flex items-center gap-3">
-      {icon && <span className="text-muted">{icon}</span>}
-      <h2 className="shrink-0 text-[0.95rem] font-semibold">{children}</h2>
-      <span className="h-px flex-1 bg-line" />
-      {side && <span className="shrink-0 text-[0.78rem] text-muted">{side}</span>}
-    </div>
-  );
-}
-
 export default async function MePage({ searchParams }: { searchParams: Promise<{ n?: string }> }) {
   const sp = await searchParams;
   const [t, locale, profile, banks] = await Promise.all([
@@ -63,11 +53,9 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
   }
 
   return (
-    <div className="mx-auto grid max-w-2xl grid-cols-1 gap-4 pt-2">
-      <h1 className="display text-[1.4rem]">{t("title")}</h1>
-
+    <Page title={t("title")}>
       {notice && (
-        <div className="rounded-md border px-4 py-3 text-sm"
+        <div className="mb-6 rounded-md border px-4 py-3 text-sm"
              style={{
                borderColor: `var(--color-${notice.tone})`,
                background: `color-mix(in oklab, var(--color-${notice.tone}) 8%, transparent)`,
@@ -77,31 +65,28 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
       )}
 
       {/* 资料：来自第三方账号，只读 */}
-      <section className="card px-5 py-5">
-        <div className="flex items-center gap-4">
-          <UserAvatar name={profile.displayName} url={profile.avatarUrl} size={56} />
-          <div className="min-w-0 flex-1">
-            <p className="flex items-center gap-2">
-              <span className="truncate text-[1.1rem] font-semibold">{profile.displayName}</span>
-              <TierPill tier={profile.tier} label={t(`tier_${profile.tier}`)} />
-            </p>
-            {profile.email && <p className="truncate text-[0.82rem] text-muted">{profile.email}</p>}
-            <p className="text-[0.74rem] text-muted">
-              {t("joined", { when: timeAgo(profile.createdAt, locale) })}
-              {" · "}
-              {profile.lastLoginAt ? t("lastLogin", { when: timeAgo(profile.lastLoginAt, locale) }) : t("neverLogin")}
-            </p>
-          </div>
+      <section className="flex items-center gap-4 px-4 pt-1">
+        <UserAvatar name={profile.displayName} url={profile.avatarUrl} size={56} />
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-2">
+            <span className="truncate text-[1.1rem] font-semibold">{profile.displayName}</span>
+            <TierPill tier={profile.tier} label={t(`tier_${profile.tier}`)} />
+          </p>
+          {profile.email && <p className="truncate text-[0.82rem] text-muted">{profile.email}</p>}
+          <p className="text-[0.74rem] text-muted">
+            {t("joined", { when: timeAgo(profile.createdAt, locale) })}
+            {" · "}
+            {profile.lastLoginAt ? t("lastLogin", { when: timeAgo(profile.lastLoginAt, locale) }) : t("neverLogin")}
+          </p>
         </div>
-        <p className="mt-4 border-t border-line-2 pt-3 text-[0.74rem] text-muted">{t("profileNote")}</p>
       </section>
+      <p className="mx-4 mb-8 mt-4 border-t border-line-2 pt-3 text-[0.74rem] text-muted">{t("profileNote")}</p>
 
       {/* 我的题库：只列看得到的。⛔ 不写「普通账号只能看公开题库」之类的话 —— 那等于告诉他还有看不到的题库（2026-10-09 用户） */}
-      <section className="card px-5 py-4">
-        <CardTitle>{t("banksTitle")}</CardTitle>
-        <ul className="grid grid-cols-1 gap-1.5">
+      <Section title={t("banksTitle")}>
+        <ul>
           {banks.map((b: Bank) => (
-            <li key={b.slug} className="flex items-center gap-2 text-[0.88rem]">
+            <li key={b.slug} className="mx-2 flex min-h-12 items-center gap-2 border-b border-line-2 py-2 pl-3 pr-1 text-[0.92rem]">
               <span className="min-w-0 flex-1 truncate">{b.name}</span>
               {b.visibility === "private" && (
                 <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[0.68rem] text-muted">{t("private")}</span>
@@ -109,19 +94,17 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
             </li>
           ))}
         </ul>
-      </section>
+      </Section>
 
       {/* 登录设备（原在设置页） */}
-      <section className="card px-5 py-4">
-        <CardTitle icon={<Monitor size={15} />} side={sessionsFailed ? undefined : t("devCount", { n: sessions.length })}>
-          {t("devTitle")}
-        </CardTitle>
+      <Section icon={<Monitor size={15} />} title={t("devTitle")}
+               side={sessionsFailed ? undefined : t("devCount", { n: sessions.length })}>
         {sessionsFailed ? (
-          <p className="text-sm text-muted">{t("devFailed")}</p>
+          <p className="px-4 pt-3 text-sm text-muted">{t("devFailed")}</p>
         ) : (
-          <ul className="grid grid-cols-1 gap-2 text-[0.86rem]">
+          <ul className="text-[0.88rem]">
             {sessions.map((s) => (
-              <li key={s.id} className="flex items-baseline gap-3">
+              <li key={s.id} className="mx-2 flex min-h-12 items-center gap-3 border-b border-line-2 py-2 pl-3 pr-1">
                 <span className={`min-w-0 truncate ${s.current ? "font-medium text-ink" : "text-muted"}`}>
                   {s.deviceInfo?.slice(0, 60) || t("devUnknown")}
                 </span>
@@ -133,39 +116,42 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
             ))}
           </ul>
         )}
-        {sessions.length > 1 && (
-          <form method="POST" action="/me/sessions" className="mt-4">
-            <button type="submit" className="rounded-lg border px-4 py-2 text-[0.82rem] font-semibold"
-                    style={{ borderColor: "var(--color-warn)", color: "var(--color-warn)" }}>
-              {t("devLogoutOthers")}
-            </button>
-          </form>
-        )}
-        <p className="mt-3 text-[0.74rem] text-muted">{t("devNote")}</p>
-      </section>
+        <div className="px-4 pt-4">
+          {sessions.length > 1 && (
+            <form method="POST" action="/me/sessions" className="mb-3">
+              <button type="submit" className="rounded-lg border px-4 py-2 text-[0.82rem] font-semibold"
+                      style={{ borderColor: "var(--color-warn)", color: "var(--color-warn)" }}>
+                {t("devLogoutOthers")}
+              </button>
+            </form>
+          )}
+          <p className="text-[0.74rem] text-muted">{t("devNote")}</p>
+        </div>
+      </Section>
 
-      {/* 去别处：用户管理（只有 admin）· 设置 —— 电脑与手机都只从这里进（P9 #34），侧栏 / 底栏不单列 */}
-      <section className="card divide-y divide-line-2 overflow-hidden">
+      {/* 去别处：用户管理（只有 admin）· 设置 —— 电脑与手机都只从这里进（P9 #34），侧栏 / 底栏不单列。
+          ⭐ 这两行是「去别的页」，留着箭头；入口列表（#42）去掉的是「选一组题」那种行上的箭头 */}
+      <nav className="mx-2 mt-8 border-t border-line-2">
         {profile.tier === "admin" && (
-          <Link href="/admin" className="flex items-center gap-3 px-5 py-3 hover:bg-accent-soft">
+          <Link href="/admin" className="flex min-h-12 items-center gap-3 border-b border-line-2 pl-3 pr-2 hover:bg-accent-soft">
             <ShieldCheck size={16} className="text-muted" />
             <span className="flex-1 text-[0.92rem]">{t("admin")}</span>
             <ChevronRight size={15} className="text-muted" />
           </Link>
         )}
-        <Link href="/settings" className="flex items-center gap-3 px-5 py-3 hover:bg-accent-soft">
+        <Link href="/settings" className="flex min-h-12 items-center gap-3 border-b border-line-2 pl-3 pr-2 hover:bg-accent-soft">
           <Settings size={16} className="text-muted" />
           <span className="flex-1 text-[0.92rem]">{t("settings")}</span>
           <ChevronRight size={15} className="text-muted" />
         </Link>
-      </section>
+      </nav>
 
       {/* 登出：这一页唯一的实底按钮 */}
       <a href="/auth/logout"
-         className="flex items-center justify-center gap-2 rounded-lg py-3 text-[0.92rem] font-semibold transition-opacity hover:opacity-90"
+         className="mt-8 flex items-center justify-center gap-2 rounded-lg py-3 text-[0.92rem] font-semibold transition-opacity hover:opacity-90"
          style={{ background: "var(--color-cta)", color: "var(--color-cta-fg)" }}>
         <LogOut size={16} />{t("logout")}
       </a>
-    </div>
+    </Page>
   );
 }

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { BookmarkToggle } from "@/components/BookmarkToggle";
 import { notFound } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
@@ -7,6 +6,7 @@ import { ClaimsPanel } from "@/components/ClaimsPanel";
 import { QuestionBody } from "@/components/QuestionBody";
 import { Markdown } from "@/components/Markdown";
 import { TagChip } from "@/components/TagChip";
+import { Page } from "@/components/Page";
 import { getLocale, getTranslations } from "next-intl/server";
 
 // ⚠️ 从 300 改成 0：页面内容随 Accept-Language 变，而路径里没有语言 ——
@@ -36,27 +36,15 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
   }
 
   return (
+    <Page title={`#${q.externalNo}`} back={false} width="wide"
+          crumbs={[{ href: "/", label: common("home") }, { href: `/banks/${q.bankSlug}`, label: q.bankSlug }, { label: `#${q.externalNo}` }]}
+          actions={<BookmarkToggle questionId={q.id} initial={q.bookmarked ?? false} />}>
+    {/* ⚠️ 这里曾经是「← 题库名」。那个箭头在暗示【浏览器后退】，
+        而它其实是一个写死跳到学习台的链接 —— 从刷题页点详情再点它，
+        会莫名其妙落在学习台且丢掉刷题位置。⇒ 顶栏不放返回（back=false），
+        面包屑只描述【你在哪】，不承诺「回到你来的地方」。 */}
     <article className="space-y-12">
-      <header className="flex flex-wrap items-baseline gap-x-4 gap-y-2 text-sm">
-        {/* ⚠️ 这里曾经是「← 题库名」。那个箭头在暗示【浏览器后退】，
-            而它其实是一个写死跳到学习台的链接 —— 从刷题页点详情再点它，
-            会莫名其妙落在学习台且丢掉刷题位置。
-            改成面包屑：它只描述【你在哪】，不承诺「回到你来的地方」。 */}
-        <nav className="flex items-center gap-1.5 font-mono text-xs text-muted">
-          <Link href="/" className="transition-colors hover:text-ink">{common("home")}</Link>
-          <span aria-hidden>›</span>
-          <Link href={`/banks/${q.bankSlug}`} className="transition-colors hover:text-ink">
-            {q.bankSlug}
-          </Link>
-        </nav>
-        <span className="display text-lg" style={{ fontFamily: "var(--font-mono-x)" }}>
-          #{q.externalNo}
-        </span>
-        <span className="text-xs text-muted">
-          {q.kind === "multi" ? t("multi", { n: q.pickCount }) : t("single")}
-        </span>
-        <span className="ml-auto self-center"><BookmarkToggle questionId={q.id} initial={q.bookmarked ?? false} /></span>
-      </header>
+      <p className="text-xs text-muted">{q.kind === "multi" ? t("multi", { n: q.pickCount }) : t("single")}</p>
 
       {(q.dataIssue || (q.warnings?.length ?? 0) > 0) && (
         <div
@@ -102,5 +90,6 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
         </section>
       )}
     </article>
+    </Page>
   );
 }

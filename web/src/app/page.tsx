@@ -238,6 +238,14 @@ function SearchBox({ t, slug }: { t: T; slug: string }) {
   );
 }
 
+/**
+ * 首页是仪表盘：浅青底上直接放卡片（it-pass 的首页也是这样），⛔ 不用 Page 的顶栏 + 纸（#41 的例外）。
+ * 外框不再由 layout 留边距（其它页的边距在 Page 里），这里自己留。
+ */
+function Dashboard({ children }: { children: React.ReactNode }) {
+  return <div className="px-5 pb-24 pt-6 md:px-8 md:pb-10">{children}</div>;
+}
+
 /** 还没有当前题库（新用户）：引导去设置选（P9 #14）。 */
 function NoBank({ t }: { t: T }) {
   return (
@@ -265,7 +273,7 @@ export default async function HomePage() {
   // 没有当前题库（新用户 / 被降级后原来的题库看不到了）：看得到的题库只有一个就直接用它 ——
   // App Store 来的陌生人注册完打开就该是公开题库（P9 #27），⛔ 不该先被要求「去设置选」。
   // 看得到多个时仍按 #14 引导去选。
-  if (!slugOrNone) return <NoBank t={t} />;
+  if (!slugOrNone) return <Dashboard><NoBank t={t} /></Dashboard>;
   const slug = slugOrNone;
   const [bank, progress, resume, tags, banks] = await Promise.all([
     getBank(slug), getMyProgress(slug), getMyResume(slug), listAxisTags(slug), listBanks(),
@@ -281,6 +289,7 @@ export default async function HomePage() {
   const code = slug.toUpperCase().replace(/^AWS-/, "");
 
   return (
+    <Dashboard>
     <div className="mx-auto grid max-w-[960px] gap-4">
       <SearchBox t={t} slug={slug} />
       <div className="grid gap-4 md:grid-cols-2">
@@ -290,5 +299,6 @@ export default async function HomePage() {
       <Drills t={t} bank={bank} resume={resume} kit={kit} code={code} />
       <Banks t={t} banks={banks} current={slug} progressOf={progressOf} />
     </div>
+    </Dashboard>
   );
 }

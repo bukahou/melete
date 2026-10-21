@@ -8,6 +8,7 @@ import { ClaimsPanel } from "@/components/ClaimsPanel";
 import { DrillCard } from "@/components/DrillCard";
 import { Markdown } from "@/components/Markdown";
 import { TagChip } from "@/components/TagChip";
+import { Page } from "@/components/Page";
 import { BookmarkToggle } from "@/components/BookmarkToggle";
 import { getLocale, getTranslations } from "next-intl/server";
 import { needsSourceNotice } from "@/i18n/locales";
@@ -86,8 +87,8 @@ export default async function DrillPage({
         ? `/banks/${slug}/practice/random/start?n=${context.count ?? 10}` // 再来一轮 = 换一个种子
         : linkTo(0);
     return (
-      <div className="mx-auto max-w-md space-y-6 pt-12 text-center">
-        <p className="eyebrow">{label}</p>
+      <Page title={label} back="/">
+      <div className="mx-auto max-w-md space-y-6 pt-8 text-center">
         <p className="display text-2xl">{t("roundDone")}</p>
         <p className="display text-[2.6rem] leading-none tabular-nums">
           {sum.correct}
@@ -103,6 +104,7 @@ export default async function DrillPage({
           <Link href="/" className="rounded-md border border-line px-5 py-2.5 text-sm">{t("backHome")}</Link>
         </div>
       </div>
+      </Page>
     );
   }
 
@@ -118,7 +120,8 @@ export default async function DrillPage({
           ? t("noMatch")
           : t("lastOne");
     return (
-      <div className="space-y-5 pt-10 text-center">
+      <Page title={label} back="/">
+      <div className="space-y-5 pt-8 text-center">
         <p className="display text-xl text-muted">{empty}</p>
         {mode === "due" && page.total === 0 && (
           <p className="text-sm text-muted">
@@ -137,6 +140,7 @@ export default async function DrillPage({
           {t("backHome")}
         </Link>
       </div>
+      </Page>
     );
   }
 
@@ -161,25 +165,18 @@ export default async function DrillPage({
   const untranslated = needsSourceNotice(q.sourceLocale, locale, q.localized);
 
   return (
+    <Page title={label} back="/" width="wide"
+          actions={<BookmarkToggle key={q.id} questionId={q.id} initial={q.bookmarked ?? false} />}>
     <div className="space-y-8">
-      <header className="flex flex-wrap items-baseline gap-x-4 gap-y-2 text-sm">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 font-mono text-xs text-muted transition-colors hover:text-ink"
-        >
-          <ArrowLeft size={13} />
-          {slug}
-        </Link>
-        <span className="tabular-nums text-xs text-muted">
-          {index + 1} / {page.total}
-        </span>
-        {context.mode !== "all" && (
-          <span className="rounded-sm border border-line px-1.5 py-0.5 text-[0.65rem] text-muted">
-            {label}
-          </span>
-        )}
+      {/* 顶栏放「这一轮是什么」与收藏（P9 #20：安静的图标按钮靠右）；这里放题号与进度。
+          ⛔ 这里曾经有一个「详情页」链接，已删 —— 它在刷题流里什么都不提供，
+          头上的 ← 还会把你扔到学习台、刷题位置全丢（2026-09-05 用户实测报告）。 */}
+      <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
         <span className="display text-lg" style={{ fontFamily: "var(--font-mono-x)" }}>
           #{q.externalNo}
+        </span>
+        <span className="tabular-nums text-xs text-muted">
+          {index + 1} / {page.total}
         </span>
         {q.contested && (
           <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: "var(--color-warn)" }}>
@@ -187,15 +184,6 @@ export default async function DrillPage({
             {t("contested")}
           </span>
         )}
-        {/* ⛔ 这里曾经有一个「详情页」链接，已删。
-            理由不是它不好，是它在刷题流里【什么都不提供】：详情页渲染的是
-            QuestionBody + ClaimsPanel + 解析 + 标签 —— 与揭晓后完全相同，
-            只是少了自评。点进去看不到新东西，而它头上的 ← 会把你扔到学习台，
-            刷题位置全丢。⚠️ 一个内容为零、代价是丢失位置的出口 = 陷阱。
-            详情页本身保留（错题本 / 标签列表 / 分享单题的固定链接要用），
-            只是不该出现在刷题过程中。2026-09-05 用户实测报告。 */}
-        {/* ⭐ 收藏（P9 #20）：安静的图标按钮靠右 ——「不懂、靠猜」的题想留着就点，不想用的人看不见它的存在感 */}
-        <span className="ml-auto self-center"><BookmarkToggle key={q.id} questionId={q.id} initial={q.bookmarked ?? false} /></span>
       </header>
 
       {/* 进度条：hairline 轨道 + 墨色进度（dataviz：数据是唯一允许大声的东西） */}
@@ -251,5 +239,6 @@ export default async function DrillPage({
       </DrillCard>
 
     </div>
+    </Page>
   );
 }

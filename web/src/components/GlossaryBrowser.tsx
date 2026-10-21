@@ -52,7 +52,8 @@ export function GlossarySearch({ slug, terms, initialQuery, children }: {
   }, [needle, terms, locale]);
 
   return (
-    <div className="grid gap-4">
+    // ⚠️ [&>*]:min-w-0：同 PickBrowser —— 网格子项默认按内容最小宽度撑开，长术语名会撑出纸面
+    <div className="grid gap-4 [&>*]:min-w-0">
       <label className="flex items-center gap-3 rounded-full border border-[color-mix(in_oklab,var(--color-accent-ink)_55%,transparent)] bg-tile px-5 py-3 focus-within:border-accent-ink">
         <Search size={17} className="text-muted" />
         <input value={q} onChange={(e) => setQ(e.target.value)}
@@ -62,16 +63,15 @@ export function GlossarySearch({ slug, terms, initialQuery, children }: {
       </label>
 
       {needle ? (
-        <section className="card overflow-hidden py-1.5">
-          <div className="px-5 py-2 text-[0.78rem] text-muted">{t("hits", { n: hits.length })}</div>
-          <div className="divide-y divide-line-2">
-            {hits.slice(0, 200).map((x) => {
-              const name = nameOf(x);
-              return <TermRow key={x.id} href={`/banks/${slug}/glossary/${x.id}`} name={name} sub={termSub(x, name)}
-                              count={x.questionCount > 0 ? t("inQuestions", { n: x.questionCount }) : undefined} />;
-            })}
-          </div>
-          {hits.length === 0 && <p className="px-5 pb-4 text-sm text-muted">{t("noHit")}</p>}
+        <section>
+          {/* 纸面上：白条写命中数，下面细线行（#41）—— ⛔ 不再套卡片 */}
+          <div className="band flex items-center text-[0.8rem] font-normal text-muted">{t("hits", { n: hits.length })}</div>
+          {hits.slice(0, 200).map((x) => {
+            const name = nameOf(x);
+            return <TermRow key={x.id} href={`/banks/${slug}/glossary/${x.id}`} name={name} sub={termSub(x, name)}
+                            count={x.questionCount > 0 ? t("inQuestions", { n: x.questionCount }) : undefined} />;
+          })}
+          {hits.length === 0 && <p className="px-4 py-6 text-sm text-muted">{t("noHit")}</p>}
         </section>
       ) : children}
     </div>
