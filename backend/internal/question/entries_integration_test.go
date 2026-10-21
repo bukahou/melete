@@ -61,6 +61,10 @@ func TestDrillEntriesIntegration(t *testing.T) {
 	want("题号 2–3", ids(ListFilter{NoFrom: 2, NoTo: 3}), "s1#2", "s1#3", "s2#2", "s2#3")
 	want("标签并集 A∪B", ids(ListFilter{AnyTagIDs: []int64{tagA, tagB}}), "s1#1", "s1#2", "s2#2")
 	want("标签交集 A∩B（旧参数不变）", ids(ListFilter{TagIDs: []int64{tagA, tagB}}), "s2#2")
+	// ⭐ 标签 + 语言：题目底部点标签就是这条路。旧写法在外层 GROUP BY q.id，
+	// TiDB 的 only_full_group_by 认不出 qi.stem 由 q.id 决定 ⇒ 整条查询报错（2026-10-21）。
+	want("标签 A + 语言", ids(ListFilter{TagIDs: []int64{tagA}, Locale: "ja"}), "s1#1", "s2#2")
+	want("标签交集 A∩B + 语言", ids(ListFilter{TagIDs: []int64{tagA, tagB}, Locale: "ja"}), "s2#2")
 
 	// 收藏：⭐ 另一个账号也收藏一题 —— 漏了 user_id 条件它就会混进来
 	mustExec(t, db, `INSERT INTO bookmark (user_id,question_id,created_at) VALUES (?,?,UTC_TIMESTAMP())`, me, q["s1#3"])
