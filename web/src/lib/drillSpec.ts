@@ -8,6 +8,7 @@ import { parseDrillMode } from "./claims";
  *   （P9 #13：不存游标表）。所以刷题页、首页、各入口页都只经过这里：
  *   · contextFromSearch  URL → 出处（刷题页）
  *   · drillHref          出处 → URL（入口页 / 继续 / 翻页）
+ *   · setHref            出处 → 题目列表页 URL（历年 / 分组、按考纲域点进来的那一页，#44）
  *   · listParams         出处 → 取题参数（与后端 drillQueryFromContext 是同一张表）
  * ⛔ 任何一处自己拼 URL，「继续」就可能回到别的集合上，而且不报错。
  *
@@ -79,8 +80,8 @@ export function contextFromSearch(sp: Search): DrillContext {
   return { mode: "all" };
 }
 
-/** 出处 → 刷题页 URL。pos 是位置（i = offset，done = 会缩短的集合里已做几题）。 */
-export function drillHref(slug: string, c: DrillContext, pos: { i?: number; done?: number } = {}): string {
+/** 出处 → URL 查询串（集合本身，不含位置）。刷题页与题目列表页共用 —— 两页对同一个集合必须写出同一串。 */
+function contextQuery(c: DrillContext): URLSearchParams {
   const q = new URLSearchParams();
   switch (c.mode) {
     case "year":
@@ -107,10 +108,25 @@ export function drillHref(slug: string, c: DrillContext, pos: { i?: number; done
     default:
       q.set("mode", c.mode);
   }
+  return q;
+}
+
+/** 出处 → 刷题页 URL。pos 是位置（i = offset，done = 会缩短的集合里已做几题）。 */
+export function drillHref(slug: string, c: DrillContext, pos: { i?: number; done?: number } = {}): string {
+  const q = contextQuery(c);
   if (pos.i) q.set("i", String(pos.i));
   if (pos.done) q.set("done", String(pos.done));
   const qs = q.toString();
   return `/banks/${slug}/drill${qs ? `?${qs}` : ""}`;
+}
+
+/**
+ * 出处 → 题目列表页 URL（P9 #44）：先看这一组有哪些题、各自做得怎样，点哪题从哪题开始。
+ * 只给「历年 / 分组」「按考纲域」两种入口 —— 列表第 i 行 = 刷题页 offset i（同一个出处、同一个 listParams）。
+ */
+export function setHref(slug: string, c: DrillContext): string {
+  const qs = contextQuery(c).toString();
+  return `/banks/${slug}/practice/set${qs ? `?${qs}` : ""}`;
 }
 
 /** 出处 → 取题参数。⚠️ 与后端 httpapi/drill.go 的 drillQueryFromContext 是同一张表，两边一起改。 */

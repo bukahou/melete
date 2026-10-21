@@ -1327,6 +1327,12 @@ export interface components {
             /** @description 是否已完成 AI 富化 */
             enriched: boolean;
             /**
+             * @description 这题的考纲域与考点标签 id（P9 #44）—— 列表据此写「这题考什么」、按考纲域分段；
+             *     名字从 /banks/{slug}/tags 取（列表不重复带名字）。
+             *     顺序：考纲域在前，考点按权重从高到低。⛔ 不含 concept。没有标签时是空数组。
+             */
+            tagIds: number[];
+            /**
              * @description stem 是否为请求语言（Accept-Language 协商结果）的译文。
              *     **false 表示回退到了源语言原文** —— 与 `sourceLocale` 比对后决定是否标注
              *     「本题暂无该语言版本」。请求源语言本身时同样是 false（那本就不是译文）。

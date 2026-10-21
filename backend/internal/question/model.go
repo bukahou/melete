@@ -28,6 +28,10 @@ type Summary struct {
 	// ⚠️ 请求源语言本身时也是 false（那本来就不是译文），界面据此不必标注：
 	//    判断标注与否用「请求的 locale ≠ 题库源语言 且 !Localized」。
 	Localized bool `db:"localized"`
+	// TagIDs 是这题的考纲域与考点标签（P9 #44）：列表据此写「这题考什么」、按考纲域分段。
+	// 顺序：考纲域在前，考点按权重（主 2 / 次 1）从高到低、同权按值；⛔ 不含 concept（全局概念不是题库的轴）。
+	// 列表查询之后一次 IN 查询补上（ListQuestions），⛔ 不逐题查；没有标签时是空切片，⛔ 不是 nil。
+	TagIDs []int64 `db:"-"`
 }
 
 // Choice 是一个选项。

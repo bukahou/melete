@@ -76,6 +76,7 @@ export default async function PickPage({
         tree={tree}
         ranges={ranges(bank, (from, to) => dash("rangeLabel", { from, to }), locale)}
         labels={{ domain: tagTypeLabel(bank.meta, "domain", locale), range: t("pickRange") }}
+        topicNames={Object.fromEntries(tags.filter((x) => x.type === "topic").map((x) => [x.id, tagName(x, locale)]))}
       />
     </Page>
   );

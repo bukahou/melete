@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { ApiError, getBank, summarizeQuestions, type BankDetail, type DrillContext } from "@/lib/api";
-import { drillHref, listParams } from "@/lib/drillSpec";
+import { listParams, setHref } from "@/lib/drillSpec";
 import { sessionLabel } from "@/lib/drillLabel";
 import { PracticeShell } from "@/components/PracticeShell";
 import { EntryHead, EntryRow } from "@/components/EntryList";
@@ -12,7 +12,7 @@ export const revalidate = 0;
  * 4.1 历年 / 分组（P9 #10 #18）。
  *
  * 有卷子（session）的题库按卷子列；只有一套的（AWS 汇编）按题号每 groupSize 题一组，
- * 标题写「第 1–100 题」—— ⛔ 不冒充考卷。进去后按题号全部出（#18）。
+ * 标题写「第 1–100 题」—— ⛔ 不冒充考卷。点进去先到这一组的题目列表（#44），点哪题从哪题开始。
  */
 function entries(bank: BankDetail): Array<{ ctx: DrillContext; count?: number }> {
   const sessions = bank.stats.sessions ?? [];
@@ -53,7 +53,7 @@ export default async function YearPage({ params }: { params: Promise<{ slug: str
         {rows.map((r, i) => (
           <EntryRow
             key={i}
-            href={drillHref(slug, r.ctx)}
+            href={setHref(slug, r.ctx)}
             title={r.ctx.session
               ? sessionLabel(bank.meta, r.ctx.session, locale)
               : dash("rangeLabel", { from: r.ctx.noFrom ?? 1, to: r.ctx.noTo ?? 1 })}

@@ -195,7 +195,46 @@ func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f Lis
 	if err := r.db.SelectContext(ctx, &items, listQuery, append(listArgs, limit, f.Offset)...); err != nil {
 		return nil, fmt.Errorf("查询题目列表: %w", err)
 	}
+	if err := r.attachTagIDs(ctx, items); err != nil {
+		return nil, err
+	}
 	return &Page{Items: items, Total: total, Limit: f.Limit, Offset: f.Offset}, nil
+}
+
+// attachTagIDs 给这一页的题目补上考纲域 / 考点标签（顺序见 Summary.TagIDs）。
+// ⭐ 一页一次 IN 查询；按题目顺序回填，没有标签的题给空切片。
+func (r *mysqlRepository) attachTagIDs(ctx context.Context, items []Summary) error {
+	if len(items) == 0 {
+		return nil
+	}
+	ids := make([]int64, len(items))
+	for i, it := range items {
+		ids[i] = it.ID
+		items[i].TagIDs = []int64{}
+	}
+	query, args, err := sqlx.In(`SELECT qt.question_id, qt.tag_id FROM question_tag qt JOIN tag t ON t.id = qt.tag_id
+		WHERE qt.question_id IN (?) AND t.type IN ('domain', 'topic')
+		ORDER BY qt.question_id, t.type = 'topic', qt.weight DESC, t.value, t.id`, ids)
+	if err != nil {
+		return fmt.Errorf("拼题目标签查询: %w", err)
+	}
+	var rows []struct {
+		QuestionID int64 `db:"question_id"`
+		TagID      int64 `db:"tag_id"`
+	}
+	if err := r.db.SelectContext(ctx, &rows, r.db.Rebind(query), args...); err != nil {
+		return fmt.Errorf("查询题目标签: %w", err)
+	}
+	pos := make(map[int64]int, len(items))
+	for i, it := range items {
+		pos[it.ID] = i
+	}
+	for _, row := range rows {
+		if i, ok := pos[row.QuestionID]; ok {
+			items[i].TagIDs = append(items[i].TagIDs, row.TagID)
+		}
+	}
+	return nil
 }
 
 // orderBy 是题目集合的唯一排序规则 —— 列表、定位（PositionAfter）、小结都用它，

@@ -6,7 +6,8 @@ import { Check, ChevronDown, Play, Shuffle, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { drillHref } from "@/lib/drillSpec";
 import { pickContextFromForm } from "@/lib/pickForm";
-import { BookmarkToggle } from "./BookmarkToggle";
+import { questionLabel } from "@/lib/questionSet";
+import { QuestionRow } from "./QuestionRow";
 
 /**
  * 4.3 自选条件 —— 照 it-pass「絞り込んで出題」：标签栏 + 题目列表（2026-10-08 用户裁定方案 b）。
@@ -22,7 +23,7 @@ import { BookmarkToggle } from "./BookmarkToggle";
 export type PickOption = { value: string; label: string };
 export type PickNode = PickOption & { count: number; children: Array<PickOption & { count: number }> };
 
-type Item = { id: number; no: number; stem: string; last: boolean | null; bookmarked: boolean };
+type Item = { id: number; no: number; stem: string; tagIds: number[]; last: boolean | null; bookmarked: boolean };
 type Sheet = "tags" | "range" | null;
 
 function Pill({ on, onClick, children, caret }: { on: boolean; onClick: () => void; children: React.ReactNode; caret?: boolean }) {
@@ -50,13 +51,14 @@ function Box({ on }: { on: boolean }) {
   );
 }
 
-export function PickBrowser({ slug, initial, statuses, tree, ranges, labels }: {
+export function PickBrowser({ slug, initial, statuses, tree, ranges, labels, topicNames }: {
   slug: string;
   initial: string;               // 进页时的查询串（st / t / r / seed）
   statuses: PickOption[];
   tree: PickNode[];              // 考纲域：一级 = domain，二级 = 分组（值是逗号串的 topic id）
   ranges: PickOption[];          // 卷子 / 题号段
   labels: { domain: string; range: string };
+  topicNames: Record<number, string>; // 考点 id → 名字（列表每行写「这题考什么」，#44）
 }) {
   const t = useTranslations("practice");
   const init = useMemo(() => new URLSearchParams(initial), [initial]);
@@ -144,19 +146,10 @@ export function PickBrowser({ slug, initial, statuses, tree, ranges, labels }: {
         ) : (
           <ol>
             {items.map((it, i) => (
-              <li key={it.id} className="mx-2 flex items-center border-b border-line-2 pr-1 hover:bg-accent-soft">
-                <Link href={drillHref(slug, ctx, { i })} className="flex min-h-14 min-w-0 flex-1 items-center gap-4 py-2 pl-3">
-                  <span className="w-14 shrink-0 tabular-nums">#{it.no}</span>
-                  <span className="min-w-0 flex-1 truncate text-[0.88rem] text-muted">{it.stem}</span>
-                  {/* 上次对错：固定宽度占位，两列图标才对得齐 */}
-                  <span className="flex w-4 shrink-0 justify-center">
-                    {it.last === true && <Check size={16} style={{ color: "var(--color-ok)" }} aria-label={t("pickLastOk")} />}
-                    {it.last === false && <X size={16} style={{ color: "var(--color-warn)" }} aria-label={t("pickLastNg")} />}
-                  </span>
-                </Link>
-                {/* 同 it-pass：列表里直接收藏 / 取消（不进题也能整理） */}
-                <BookmarkToggle key={`${it.id}-${it.bookmarked}`} questionId={it.id} initial={it.bookmarked} compact />
-              </li>
+              // 行与题目列表页（#44）同一个组件：题号 · 考点（没有考点退回题干开头）· 上次对错 · 收藏
+              <QuestionRow key={it.id} href={drillHref(slug, ctx, { i })} id={it.id} no={it.no}
+                           label={questionLabel(it.tagIds, (id) => topicNames[id], it.stem)}
+                           last={it.last} bookmarked={it.bookmarked} />
             ))}
           </ol>
         )}
