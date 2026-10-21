@@ -1,6 +1,7 @@
 // Package httpauth 是 melete-api 的入站认证。
 //
 // 只有一层：Authorization: Bearer <access token>，由 internal/auth 验签。
+// 另有一道排在它前面的闸：HidePaths —— 本环境没打开的功能，端点一律 404。
 //
 // **曾经还有一层服务间共享密钥，已随「API 对公网暴露」一并移除**
 // （见 docs/design/active/deployment.md §0）：原生 App 反编译即得共享密钥，
@@ -93,6 +94,30 @@ func RequireUserExcept(parser TokenParser, exempt ...string) func(http.Handler) 
 			ctx := context.WithValue(r.Context(), accountKey, claims.UserID)
 			ctx = context.WithValue(ctx, sessionKey, claims.SessionID)
 			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// HidePaths 让列出的**完整路径**对任何方法、任何调用方都返回 404 ——
+// 某个功能在本环境没有打开时用（P9 #39：本地密码账号）。
+//
+// ⭐ 404 而不是 403：「这里没有这个功能」，与网页上「看不到 = 404」同一条规则。
+// ⛔ 与 RequireUserExcept 同一纪律：完整路径，⛔ 不是前缀 —— 隐藏 /auth/password
+// 不得顺带藏掉同前缀的其它端点；要藏的每一个都显式列出。
+// ⚠️ 必须挂在 RequireUserExcept 之前：那一族里要认证的端点（改密码），
+// 对匿名请求也该是 404，⛔ 而不是先回一个 401 暴露「这里有东西」。
+func HidePaths(paths ...string) func(http.Handler) http.Handler {
+	hidden := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		hidden[p] = true
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if hidden[strings.TrimSuffix(r.URL.Path, "/")] {
+				writeJSONError(w, http.StatusNotFound, "未找到")
+				return
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }
