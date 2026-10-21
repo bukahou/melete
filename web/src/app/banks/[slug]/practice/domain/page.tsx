@@ -5,7 +5,7 @@ import {
   type BankDetail, type DrillContext, type Tag,
 } from "@/lib/api";
 import { tagName, tagTypeLabel } from "@/lib/claims";
-import { drillHref, listParams } from "@/lib/drillSpec";
+import { listParams, setHref } from "@/lib/drillSpec";
 import { PracticeShell } from "@/components/PracticeShell";
 import { EntryColumns, EntryHead, EntryRow, type EntryStats } from "@/components/EntryList";
 
@@ -16,7 +16,7 @@ export const revalidate = 0;
  *
  * 有考纲树（bank.meta.topicTree，IPA）就按 分野 › 大分類 › 中分類 三层列；
  * 没有（AWS）就平铺考纲域。选大分類 = 它下面几个中分類的并集（#17：大分類不是标签）。
- * 进去后按题号全部出（#18）。
+ * 点进去先到这一块的题目列表（#44），点哪题从哪题开始；做题按题号顺序（#18）。
  */
 type Row = { ctx: DrillContext; title: string; level: 0 | 1 | 2; count?: number; tagId?: number };
 
@@ -76,8 +76,8 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
       <section>
         {tree ? <EntryColumns /> : <EntryHead title={domainLabel} columns />}
         {list.map((r, i) => tree && r.level === 0
-          ? <EntryHead key={i} title={r.title} href={drillHref(slug, r.ctx)} stats={statsOf(r, i)} />
-          : <EntryRow key={i} href={drillHref(slug, r.ctx)} title={r.title} stats={statsOf(r, i)} level={r.level === 2 ? 2 : 1} />)}
+          ? <EntryHead key={i} title={r.title} href={setHref(slug, r.ctx)} stats={statsOf(r, i)} />
+          : <EntryRow key={i} href={setHref(slug, r.ctx)} title={r.title} stats={statsOf(r, i)} level={r.level === 2 ? 2 : 1} />)}
       </section>
     </PracticeShell>
   );

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { ApiError, getBank, getQuestion, listAxisTags, listQuestions, summarizeQuestions, type DrillContext } from "@/lib/api";
-import { contextFromSearch, drillHref, isShrinking, listParams } from "@/lib/drillSpec";
+import { contextFromSearch, drillHref, isShrinking, listParams, setHref } from "@/lib/drillSpec";
 import { describeContext } from "@/lib/drillLabel";
 import { ClaimsPanel } from "@/components/ClaimsPanel";
 import { DrillCard } from "@/components/DrillCard";
@@ -71,6 +71,9 @@ export default async function DrillPage({
     mode: modeT as never,
   });
 
+  // 顶栏的返回：从题目列表点进来的（历年 / 分组、按考纲域，#44）回到那一组的列表；其它回首页
+  const back = context.mode === "year" || context.mode === "domain" ? setHref(slug, context) : "/";
+
   // done = 本轮已完成几题。⚠️ 它有两个用途，缺一不可：
   //  · 会缩短的题目集合里 i 恒为 0，进度只能靠它算（i 不再有意义）
   //  · 让「下一题」的 URL 与当前 URL【不同】—— 否则 Next.js 认为没有导航，
@@ -87,7 +90,7 @@ export default async function DrillPage({
         ? `/banks/${slug}/practice/random/start?n=${context.count ?? 10}` // 再来一轮 = 换一个种子
         : linkTo(0);
     return (
-      <Page title={label} back="/">
+      <Page title={label} back={back}>
       <div className="mx-auto max-w-md space-y-6 pt-8 text-center">
         <p className="display text-2xl">{t("roundDone")}</p>
         <p className="display text-[2.6rem] leading-none tabular-nums">
@@ -120,7 +123,7 @@ export default async function DrillPage({
           ? t("noMatch")
           : t("lastOne");
     return (
-      <Page title={label} back="/">
+      <Page title={label} back={back}>
       <div className="space-y-5 pt-8 text-center">
         <p className="display text-xl text-muted">{empty}</p>
         {mode === "due" && page.total === 0 && (
@@ -165,7 +168,7 @@ export default async function DrillPage({
   const untranslated = needsSourceNotice(q.sourceLocale, locale, q.localized);
 
   return (
-    <Page title={label} back="/" width="wide"
+    <Page title={label} back={back} width="wide"
           actions={<BookmarkToggle key={q.id} questionId={q.id} initial={q.bookmarked ?? false} />}>
     <div className="space-y-8">
       {/* 顶栏放「这一轮是什么」与收藏（P9 #20：安静的图标按钮靠右）；这里放题号与进度。

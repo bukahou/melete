@@ -89,6 +89,7 @@ func toAPISummary(q question.Summary) api.QuestionSummary {
 		Kind: api.QuestionSummaryKind(q.Kind), PickCount: q.PickCount,
 		Contested: q.Contested, Enriched: q.Enriched,
 		Localized: &q.Localized, LastCorrect: q.LastCorrect, Bookmarked: &q.Bookmarked,
+		TagIds: q.TagIDs,
 	}
 }
 
@@ -141,6 +142,15 @@ func toAPIDetail(d *question.Detail) api.QuestionDetail {
 	}
 	for _, t := range d.Tags {
 		out.Tags = append(out.Tags, toAPIQuestionTag(t))
+	}
+	// TagIds：契约里 QuestionDetail 继承 QuestionSummary（allOf），同一个口径 —— 考纲域在前，再考点；⛔ 不含 concept
+	out.TagIds = []int64{}
+	for _, typ := range []string{"domain", "topic"} {
+		for _, t := range d.Tags {
+			if t.Type == typ {
+				out.TagIds = append(out.TagIds, t.ID)
+			}
+		}
 	}
 	if len(d.Warnings) > 0 {
 		w := d.Warnings

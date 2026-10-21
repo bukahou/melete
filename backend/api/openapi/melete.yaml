@@ -1592,7 +1592,7 @@ components:
 
     QuestionSummary:
       type: object
-      required: [id, externalNo, stem, kind, pickCount, contested, enriched]
+      required: [id, externalNo, stem, kind, pickCount, contested, enriched, tagIds]
       properties:
         id:         { type: integer, format: int64 }
         externalNo: { type: integer, description: 原题号，用于溯源 }
@@ -1607,6 +1607,13 @@ components:
         pickCount:  { type: integer }
         contested:  { type: boolean, description: 题库标注与社区投票是否不一致 }
         enriched:   { type: boolean, description: 是否已完成 AI 富化 }
+        tagIds:
+          type: array
+          items: { type: integer, format: int64 }
+          description: |
+            这题的考纲域与考点标签 id（P9 #44）—— 列表据此写「这题考什么」、按考纲域分段；
+            名字从 /banks/{slug}/tags 取（列表不重复带名字）。
+            顺序：考纲域在前，考点按权重从高到低。⛔ 不含 concept。没有标签时是空数组。
         localized:
           type: boolean
           description: |

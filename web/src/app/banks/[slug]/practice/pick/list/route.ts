@@ -18,7 +18,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const ctx = pickContextFromForm(q);
   const offset = Math.max(0, Number(q.get("offset")) || 0);
   try {
-    const page = await listQuestions(slug, { ...listParams(ctx), limit: PAGE, offset });
+    // fresh：刚答完回来就该看到 ✓ / ✕
+    const page = await listQuestions(slug, { ...listParams(ctx), limit: PAGE, offset, fresh: true });
     return NextResponse.json(
       {
         total: page.total,
@@ -28,6 +29,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
           no: it.externalNo,
           // 只给一行摘要：列表是用来「认出这道题」的，⛔ 不是用来读题的
           stem: it.stem.replace(/\s+/g, " ").slice(0, 90),
+          // 这题考什么（#44）：只给 id，名字页面上已经有（pick 页传给 PickBrowser 的 topicNames）
+          tagIds: it.tagIds,
           last: it.lastCorrect ?? null,
           bookmarked: it.bookmarked ?? false,
         })),

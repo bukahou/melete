@@ -976,7 +976,12 @@ type QuestionDetail struct {
 	// 「请求的就是源语言」区分开 —— 只看 localized 两者都是 false。
 	SourceLocale *string `json:"sourceLocale,omitempty"`
 	Stem         string  `json:"stem"`
-	Tags         []Tag   `json:"tags"`
+
+	// TagIds 这题的考纲域与考点标签 id（P9 #44）—— 列表据此写「这题考什么」、按考纲域分段；
+	// 名字从 /banks/{slug}/tags 取（列表不重复带名字）。
+	// 顺序：考纲域在前，考点按权重从高到低。⛔ 不含 concept。没有标签时是空数组。
+	TagIds []int64 `json:"tagIds"`
+	Tags   []Tag   `json:"tags"`
 
 	// Warnings P0 解析阶段的告警，不静默丢弃
 	Warnings *[]string `json:"warnings,omitempty"`
@@ -1018,6 +1023,11 @@ type QuestionSummary struct {
 	Localized *bool  `json:"localized,omitempty"`
 	PickCount int    `json:"pickCount"`
 	Stem      string `json:"stem"`
+
+	// TagIds 这题的考纲域与考点标签 id（P9 #44）—— 列表据此写「这题考什么」、按考纲域分段；
+	// 名字从 /banks/{slug}/tags 取（列表不重复带名字）。
+	// 顺序：考纲域在前，考点按权重从高到低。⛔ 不含 concept。没有标签时是空数组。
+	TagIds []int64 `json:"tagIds"`
 }
 
 // QuestionSummaryKind defines model for QuestionSummary.Kind.
