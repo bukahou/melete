@@ -14,7 +14,8 @@
  *   例：node web/scripts/screenshot.mjs --as basic --width 390 / /me
  *
  * ⭐ 登录走网页真实的那条路：POST /auth/password（调试账号登录页的表单路由）→ 拿到 Set-Cookie。
- *   所以目标站点必须打开了调试账号登录（MELETE_WEB_PASSWORD_LOGIN=on）；没打开时会得到 404 并直接报错。
+ *   所以目标站点必须打开了调试账号登录（网页与 API 两个开关：MELETE_WEB_PASSWORD_LOGIN / MELETE_API_PASSWORD_LOGIN）；
+ *   哪个没开都会得到 404，脚本直接报错。
  *   截完图会登出，吊销这次的会话 —— 不在账号的「登录设备」里越积越多。
  * ⭐ 凭证只从环境变量读（MELETE_DEBUG_<档位>_USER / _PASS），⛔ 不写进任何文件、不打印。
  * ⭐ 不装任何东西：浏览器用本机已有的 Chromium（Playwright 缓存目录里自动找，或 MELETE_SHOT_CHROME 指定），
@@ -81,7 +82,7 @@ async function login() {
     body: new URLSearchParams({ username, password, return: "/" }),
     redirect: "manual",
   });
-  if (res.status === 404) fail("目标站点没有打开调试账号登录（MELETE_WEB_PASSWORD_LOGIN）");
+  if (res.status === 404) fail("目标站点没有打开调试账号登录（MELETE_WEB_PASSWORD_LOGIN / MELETE_API_PASSWORD_LOGIN）");
   const location = res.headers.get("location") ?? "";
   if (res.status !== 303 || location.includes("/auth/login/password")) {
     fail(`登录失败：HTTP ${res.status}${location.includes("error=") ? `（${new URL(location, base).searchParams.get("error")}）` : ""}`);

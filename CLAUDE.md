@@ -316,16 +316,21 @@ python3 pipeline/core/ingest.py aws-saa-c03
 
 ---
 
-## 调试账号与截图（2026-10-21，tracker #35–#38）
+## 调试账号与截图（2026-10-21，tracker #35–#40）
 
 用户侧只有第三方登录（#25）。调试账号走一个**不在任何地方链接**的页面 `/auth/login/password`：
 
-- 由运行时开关 `MELETE_WEB_PASSWORD_LOGIN=on` 打开，缺省关闭（关着时 404）。哪些环境打开记在 config 私有仓的部署配置
+- **两个开关，都缺省关闭、只认 `on`**；哪些环境打开记在 config 私有仓的部署配置（两份配置里列着「刻意的差别」）
+  - `MELETE_WEB_PASSWORD_LOGIN`（#36）：只管这一页，关着时页面与表单路由 404
+  - `MELETE_API_PASSWORD_LOGIN`（#39）：管 API 上本地密码账号这一族端点（登录 / 注册 / 改密码 / 找回，清单 `httpapi.PasswordRoutes`），关着时一律 404。
+    ⭐ **「这个环境能不能用密码登录」由它决定** —— API 有自己的公网入口，只关网页挡不住直接调 API 的人
+- ⛔ 给 `/auth/` 加新端点时，`password_routes_test.go` 会要求你归类（属不属于本地密码账号）—— 那是故意的摩擦
 - 开发环境有三档调试账号（普通 / 高级 / admin）。凭证在 config 私有仓 `local/ubuntu/env/melete.env` 的
   `MELETE_DEBUG_<BASIC|ADVANCED|ADMIN>_USER / _PASS` —— ⛔ 不写进本仓、⛔ 不打印
 - 看页面：`node web/scripts/screenshot.mjs --as basic|advanced|admin|guest [--width 390] <路径>...`
   （目标站点缺省 `$MELETE_SHOT_BASE`；截完图自动登出）
-- ⛔ 后端密码登录等端点**不删**（#37）：Akasha 没有本地密码，调试账号无法改走第三方登录
+- ⛔ 后端密码登录等端点**不删**（#37）：Akasha 没有本地密码，调试账号无法改走第三方登录。
+  「不删」≠「开着」：开不开看上面的 API 开关（#39）
 
 ---
 

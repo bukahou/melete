@@ -7,6 +7,7 @@ const API = process.env.MELETE_API_BASE ?? "http://localhost:8899/api/v1";
 /**
  * 调试账号的密码登录（P9 #35–#38）：转发给 API 换 token，再把 token 落进 httpOnly cookie。
  * 表单在 /auth/login/password —— 一个不在任何地方链接的页面；开关关着时本路由与那一页都是 404。
+ * ⭐ 能不能登进去由 API 自己的开关决定（#39）：本层开着而 API 没开，同样 404。
  *
  * 2026-10-21 从账号收敛（#25）撤下前的版本恢复，改了一处：
  *   登录后回到哪（`return`）统一过 safeReturnPath —— 旧版直接 `new URL(return, origin)`，
@@ -40,6 +41,8 @@ export async function POST(req: Request) {
       deviceInfo: req.headers.get("user-agent")?.slice(0, 200) ?? "web",
     }),
   });
+  // API 自己的开关没开（MELETE_API_PASSWORD_LOGIN，#39）—— 与本层没开一样是 404
+  if (res.status === 404) return new NextResponse(null, { status: 404 });
   // ⚠️ API 把「退避中」与「密码错误」刻意做成同一个 401（不给预言机），这里也 ⛔ 不细分
   if (res.status === 401) return back("credentials");
   // 429 是另一层的请求限流，与密码对错无关 —— 分开说，否则会误导人反复重试

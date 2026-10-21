@@ -227,7 +227,7 @@ func run() error {
 	})
 
 	// 契约生成的路由挂在 /api/v1 下，与 OpenAPI 的 servers 一致。
-	// 认证见 internal/httpauth：所有端点要服务间密钥，业务端点额外要会话 JWT。
+	// 认证见 internal/httpauth：业务端点要会话 JWT（服务间密钥那一层已移除，见该包注释）。
 	// ⛔⛔ 免认证端点必须【逐条列出完整路径】，⛔ 不能用前缀。
 	//
 	// ⚠️ 2026-09-07 从 `apiBase + "/auth/"` 改过来：加 /auth/sessions
@@ -259,6 +259,14 @@ func run() error {
 		// 改邮箱就会变成公开的，任何人能把任何账号的邮箱改成自己的。
 	}
 
+	// 本地密码账号（P9 #39）：开关没打开时，这一族端点一律 404（清单见 httpapi.PasswordRoutes）。
+	// ⭐ 端点代码照旧注册（#37 不删），关掉的是这个环境里的功能。启动时打一行，开没开看日志就知道。
+	var passwordPaths []string
+	for _, p := range httpapi.PasswordRoutes() {
+		passwordPaths = append(passwordPaths, apiBase+p)
+	}
+	log.Info("本地密码账号（密码登录 / 注册 / 改密码 / 找回）", "enabled", cfg.PasswordLoginEnabled())
+
 	ctx := context.Background()
 	// 后端替 web 与 iOS 当 Akasha 的 OIDC client（两个浏览器导航端点，绕开 JSON 生成层）
 	oidcHandler := httpapi.NewOIDCHandler(ctx, httpapi.OIDCConfig{
@@ -285,6 +293,10 @@ func run() error {
 		// （它的调用方常常隔着一次 RPC）。⚠️ 解析失败不阻断请求：
 		// 那意味着请求没走预期链路，模块会降级成只按账号维度退避。
 		v1.Use(httpauth.ResolveClientIP(localauth.TrustCloudflare()))
+		// 本地密码账号没打开 ⇒ 这一族端点 404。⚠️ 必须排在认证之前（理由见 HidePaths）
+		if !cfg.PasswordLoginEnabled() {
+			v1.Use(httpauth.HidePaths(passwordPaths...))
+		}
 		// 业务端点要求 access token；认证端点豁免（那时还没有 token）
 		v1.Use(httpauth.RequireUserExcept(authSvc, publicPaths...))
 		// 语言协商：客户端用 Accept-Language 表达，服务端在白名单里挑。

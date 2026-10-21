@@ -49,7 +49,18 @@ type Config struct {
 	LoginRateWindow time.Duration `env:"MELETE_LOGIN_RATE_WINDOW" envDefault:"1m"`
 	MaxOpenConns    int           `env:"MELETE_DB_MAX_CONNS" envDefault:"20"`
 	LogLevel        string        `env:"MELETE_LOG_LEVEL" envDefault:"info"`
+
+	// PasswordLogin 本地密码账号（密码登录 / 注册 / 改密码 / 找回）开不开（P9 #39，2026-10-21 用户裁定）。
+	//
+	// ⭐ 网页上的开关（MELETE_WEB_PASSWORD_LOGIN）只管那一页；API 有自己的公网入口（iOS 直连），
+	//   「这个环境能不能用密码登录」只能由 API 自己决定。两个都开，网页上才登得进去。
+	// ⛔ 缺省关闭（fail-closed）：只认 "on"，其它任何值都当关 —— 与网页那个开关同一口径。
+	//   哪些环境打开记在部署配置里。关着时这一族端点一律 404（见 httpapi.PasswordRoutes）。
+	PasswordLogin string `env:"MELETE_API_PASSWORD_LOGIN"`
 }
+
+// PasswordLoginEnabled 见 Config.PasswordLogin：只有精确的 "on" 才算开。
+func (c *Config) PasswordLoginEnabled() bool { return c.PasswordLogin == "on" }
 
 func Load() (*Config, error) {
 	var cfg Config
