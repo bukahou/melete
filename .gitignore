@@ -23,6 +23,10 @@ node_modules/
 out/
 .turbo/
 *.tsbuildinfo
+# next dev 会在 web/ 下生成这两份给 AI 编程助手读的说明 —— 不入库（2026-10-22 用户裁定）：
+# 提交进来，每个在 web/ 里工作的会话都会多读一份不是本项目写的指令
+/web/AGENTS.md
+/web/CLAUDE.md
 
 # === Python ===
 __pycache__/
