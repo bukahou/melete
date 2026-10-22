@@ -162,9 +162,10 @@ func TestRecordAttemptIntegration(t *testing.T) {
 			t.Errorf("⛔ Raw 被改了：%d", res.Correction.Raw)
 		}
 		// attempt 表里存的必须是用户按的那个键，不是纠正后的
+		// ⚠️ 按本次作答的 id 读：「全表最新一行」在几个包并行跑时会读到别的测试刚写的记录
 		var stored int
 		if err := db.Get(&stored,
-			`SELECT rating FROM attempt ORDER BY id DESC LIMIT 1`); err != nil {
+			`SELECT rating FROM attempt WHERE id=?`, res.AttemptID); err != nil {
 			t.Fatal(err)
 		}
 		if stored != scheduler.RatingGood {
