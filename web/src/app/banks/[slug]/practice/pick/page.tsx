@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { ApiError, getBank, listAxisTags, type BankDetail, type Tag } from "@/lib/api";
 import { tagName, tagTypeLabel } from "@/lib/claims";
 import { sessionLabel } from "@/lib/drillLabel";
 import { PickBrowser, type PickNode } from "@/components/PickBrowser";
+import { Page } from "@/components/Page";
 
 export const revalidate = 0;
 
@@ -68,12 +68,7 @@ export default async function PickPage({
   for (const [k, v] of Object.entries(sp)) for (const x of Array.isArray(v) ? v : v != null ? [v] : []) initial.append(k, x);
 
   return (
-    <div className="mx-auto max-w-3xl pt-2">
-      <nav className="mb-3 flex items-center gap-2 text-[0.82rem] text-muted">
-        <Link href="/" className="hover:text-ink">{t("home")}</Link>
-        <span className="opacity-50">›</span>
-        <span className="text-ink">{dash("drillPick")}</span>
-      </nav>
+    <Page title={dash("drillPick")} crumbs={[{ href: "/", label: t("home") }, { label: dash("drillPick") }]}>
       <PickBrowser
         slug={slug}
         initial={initial.toString()}
@@ -81,7 +76,8 @@ export default async function PickPage({
         tree={tree}
         ranges={ranges(bank, (from, to) => dash("rangeLabel", { from, to }), locale)}
         labels={{ domain: tagTypeLabel(bank.meta, "domain", locale), range: t("pickRange") }}
+        topicNames={Object.fromEntries(tags.filter((x) => x.type === "topic").map((x) => [x.id, tagName(x, locale)]))}
       />
-    </div>
+    </Page>
   );
 }

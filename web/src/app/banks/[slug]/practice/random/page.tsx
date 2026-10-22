@@ -36,7 +36,7 @@ export default async function RandomPage({ params }: { params: Promise<{ slug: s
           <Link
             key={o.n}
             href={`/banks/${slug}/practice/random/start?n=${o.n}`}
-            className="card group grid gap-2 p-6 transition-shadow hover:shadow-[0_0_0_1.5px_var(--color-accent-ink)]"
+            className="tile group grid gap-2 p-6"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-xl" style={{ background: "var(--color-accent-soft)", color: "var(--color-accent-ink)" }}><Shuffle size={16} /></span>
             <span className="text-[1.15rem] font-semibold leading-tight">{o.label}</span>

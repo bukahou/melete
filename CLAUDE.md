@@ -13,7 +13,7 @@
 
 ```
 melete (public)          代码：backend / web / pipeline
-config (private)         数据：banks/melete/ ← 题库在这里
+config (private)         数据：clusters/requiem/assets/melete-banks/ ← 题库在这里
 ```
 
 `pipeline/core/*.py` 通过 **`MELETE_DATA_ROOT`** 找到数据（见 `pipeline/core/paths.py`）。
@@ -60,7 +60,7 @@ config (private)         数据：banks/melete/ ← 题库在这里
 | 原始素材（PDF 等） | 体积大 + 版权。走**收件区**约定，见下方「素材收件区」一节 |
 | 内网 IP / 节点名 / 集群拓扑 / Tunnel UUID / 具体主机名 | ⛔ **任何文件都不行，含设计文档与注释**。部署清单在 config 私有仓 `clusters/requiem/apps/melete/`<br>⚠️ 这条原先写的是「**部署清单**放 config 私有仓」，于是 `docs/design/active/deployment.md` 钻了空子 —— 它是设计文档不是清单，就把当时执行的 `flarectl dns create --content <tunnel UUID>` 原样抄了进来（`9e2c385`，2026-09-02）。<br>⭐ 教训：规则按**文件类型**划范围就会漏，按**信息类型**划才不会。而且仓库当时是 private，这条规则不产生任何可感代价 —— **规则只在被违反且有后果时才显出漏洞，私有仓不给它这个机会**。 |
 | 任何真实凭证 | 见上。**已 commit 的凭证视为已泄漏**，删文件和补 .gitignore 都无效 |
-| 各题库的素材脏点清单 | 它描述的是素材不是代码，归属地在 `config/banks/melete/README.md` |
+| 各题库的素材脏点清单 | 它描述的是素材不是代码，归属地在 `config/clusters/requiem/assets/melete-banks/README.md` |
 
 > ⛔ **信息卫生以全局 CLAUDE.md §1.5 为准 —— 按【信息类型】划界，⛔ 不按文件类型。**
 > 写任何文档 / 注释 / 提交信息前，先查 `~/.claude/refs/identity-map.md`：真实标识一律写代号。
@@ -225,7 +225,7 @@ $MELETE_DATA_ROOT/<bank-slug>/questions.json       结构化产物  ⚠️ 落�
 $MELETE_DATA_ROOT/<bank-slug>/source.yaml          素材登记单
 ```
 
-⚠️ **产物不落在本仓** —— `MELETE_DATA_ROOT` 指向 config 私有仓的 `banks/melete/`。
+⚠️ **产物不落在本仓** —— `MELETE_DATA_ROOT` 指向 config 私有仓的 `clusters/requiem/assets/melete-banks/`。
 本仓的 `.gitignore` 把 `/data/` 挡死，就是为了万一配置出错时兜住。
 
 流程：
@@ -280,7 +280,7 @@ python3 pipeline/core/ingest.py aws-saa-c03
 
 各题库素材的具体脏点（哪几道题引用图片、连字丢失、字母被西里尔字母污染、
 哪些题头是英文导致被漏抓）**不在本仓** —— 它们描述的是素材，不是代码，
-归属地是 `config/banks/melete/README.md`。
+归属地是 `config/clusters/requiem/assets/melete-banks/README.md`。
 
 ⭐ 但其中一条教训是通用的，留在这里：
 
@@ -313,6 +313,24 @@ python3 pipeline/core/ingest.py aws-saa-c03
 - P1 的模型选择与预算上限
 - 应用的 hostname（需查 config 仓 CLAUDE.md 的「在用 hostname 清单」避免撞名）
 - atlantis 内容迁入的时机（P5，不阻塞主线）
+
+---
+
+## 调试账号与截图（2026-10-21，tracker #35–#40）
+
+用户侧只有第三方登录（#25）。调试账号走一个**不在任何地方链接**的页面 `/auth/login/password`：
+
+- **两个开关，都缺省关闭、只认 `on`**；哪些环境打开记在 config 私有仓的部署配置（两份配置里列着「刻意的差别」）
+  - `MELETE_WEB_PASSWORD_LOGIN`（#36）：只管这一页，关着时页面与表单路由 404
+  - `MELETE_API_PASSWORD_LOGIN`（#39）：管 API 上本地密码账号这一族端点（登录 / 注册 / 改密码 / 找回，清单 `httpapi.PasswordRoutes`），关着时一律 404。
+    ⭐ **「这个环境能不能用密码登录」由它决定** —— API 有自己的公网入口，只关网页挡不住直接调 API 的人
+- ⛔ 给 `/auth/` 加新端点时，`password_routes_test.go` 会要求你归类（属不属于本地密码账号）—— 那是故意的摩擦
+- 开发环境有三档调试账号（普通 / 高级 / admin）。凭证在 config 私有仓 `local/ubuntu/env/melete.env` 的
+  `MELETE_DEBUG_<BASIC|ADVANCED|ADMIN>_USER / _PASS` —— ⛔ 不写进本仓、⛔ 不打印
+- 看页面：`node web/scripts/screenshot.mjs --as basic|advanced|admin|guest [--width 390] <路径>...`
+  （目标站点缺省 `$MELETE_SHOT_BASE`；截完图自动登出）
+- ⛔ 后端密码登录等端点**不删**（#37）：Akasha 没有本地密码，调试账号无法改走第三方登录。
+  「不删」≠「开着」：开不开看上面的 API 开关（#39）
 
 ---
 

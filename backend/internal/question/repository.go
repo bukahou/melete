@@ -64,17 +64,22 @@ const dueOrderExpr = `(SELECT c.due FROM card c
 	WHERE c.user_id = ? AND c.question_id = q.id)`
 
 // buildFilter 拼出 WHERE 子句与参数。
-// 多个标签取**交集**（同时命中全部标签），用 HAVING 计数实现。
-func buildFilter(bankID int64, f ListFilter) (where string, having string, args []any) {
+// 多个标签取**交集**（同时命中全部标签）：在子查询里按题目分组计数。
+//
+// ⚠️ 交集 ⛔ 不得改回「外层 JOIN question_tag + GROUP BY q.id HAVING」：外层一旦 GROUP BY，
+// SELECT 里每一列都要能由 q.id 推出。TiDB 推不过 LEFT JOIN question_i18n（qi.stem），
+// only_full_group_by 下整条查询报错（2026-10-21：点题目底部的标签 → 页面 500）。
+// 分组关进子查询，外层就没有 GROUP BY，列表 / 计数 / id 集合三条查询共用同一个 WHERE。
+func buildFilter(bankID int64, f ListFilter) (where string, args []any) {
 	conds := []string{"q.bank_id = ?"}
 	args = append(args, bankID)
 
 	if len(f.TagIDs) > 0 {
-		conds = append(conds, "qt.tag_id IN (?"+strings.Repeat(",?", len(f.TagIDs)-1)+")")
+		conds = append(conds, "q.id IN (SELECT qt.question_id FROM question_tag qt WHERE qt.tag_id IN (?"+
+			strings.Repeat(",?", len(f.TagIDs)-1)+fmt.Sprintf(") GROUP BY qt.question_id HAVING COUNT(DISTINCT qt.tag_id) = %d)", len(f.TagIDs)))
 		for _, id := range f.TagIDs {
 			args = append(args, id)
 		}
-		having = fmt.Sprintf(" HAVING COUNT(DISTINCT qt.tag_id) = %d", len(f.TagIDs))
 	}
 	if f.OnlyContested {
 		conds = append(conds, contestedExpr)
@@ -125,23 +130,13 @@ func buildFilter(bankID int64, f ListFilter) (where string, having string, args 
 		conds = append(conds, dueExpr)
 		args = append(args, f.AccountID)
 	}
-	return " WHERE " + strings.Join(conds, " AND "), having, args
+	return " WHERE " + strings.Join(conds, " AND "), args
 }
 
 func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f ListFilter) (*Page, error) {
-	where, having, args := buildFilter(bankID, f)
-	join := ""
-	if len(f.TagIDs) > 0 {
-		join = " JOIN question_tag qt ON qt.question_id = q.id"
-	}
+	where, args := buildFilter(bankID, f)
 
-	countQuery := `SELECT COUNT(*) FROM (SELECT q.id FROM question q` + join + where +
-		func() string {
-			if having != "" {
-				return " GROUP BY q.id" + having
-			}
-			return ""
-		}() + `) x`
+	countQuery := `SELECT COUNT(*) FROM question q` + where
 	var total int
 	if err := r.db.GetContext(ctx, &total, countQuery, args...); err != nil {
 		return nil, fmt.Errorf("统计题目数: %w", err)
@@ -171,10 +166,7 @@ func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f Lis
 	listQuery := `SELECT q.id, q.external_no, ` + stemExpr + ` AS stem, q.kind, q.pick_count,
 		` + contestedExpr + ` AS contested, ` + enrichedExpr + ` AS enriched,
 		` + localizedExpr + ` AS localized, ` + lastExpr + ` AS last_correct, ` + bookmarkExpr + ` AS bookmarked
-		FROM question q` + i18nJoin + join + where
-	if having != "" {
-		listQuery += " GROUP BY q.id" + having
-	}
+		FROM question q` + i18nJoin + where
 	// 排序：复习队列按到期时间，其余按原题号（让「第 N 题」在界面上可预期）。
 	// ⚠️ 排序参数必须插在 LIMIT/OFFSET 【之前】—— 占位符是按出现顺序绑定的，
 	// 顺序错了不会报错，只会把 user_id 当成 LIMIT。
@@ -203,7 +195,46 @@ func (r *mysqlRepository) ListQuestions(ctx context.Context, bankID int64, f Lis
 	if err := r.db.SelectContext(ctx, &items, listQuery, append(listArgs, limit, f.Offset)...); err != nil {
 		return nil, fmt.Errorf("查询题目列表: %w", err)
 	}
+	if err := r.attachTagIDs(ctx, items); err != nil {
+		return nil, err
+	}
 	return &Page{Items: items, Total: total, Limit: f.Limit, Offset: f.Offset}, nil
+}
+
+// attachTagIDs 给这一页的题目补上考纲域 / 考点标签（顺序见 Summary.TagIDs）。
+// ⭐ 一页一次 IN 查询；按题目顺序回填，没有标签的题给空切片。
+func (r *mysqlRepository) attachTagIDs(ctx context.Context, items []Summary) error {
+	if len(items) == 0 {
+		return nil
+	}
+	ids := make([]int64, len(items))
+	for i, it := range items {
+		ids[i] = it.ID
+		items[i].TagIDs = []int64{}
+	}
+	query, args, err := sqlx.In(`SELECT qt.question_id, qt.tag_id FROM question_tag qt JOIN tag t ON t.id = qt.tag_id
+		WHERE qt.question_id IN (?) AND t.type IN ('domain', 'topic')
+		ORDER BY qt.question_id, t.type = 'topic', qt.weight DESC, t.value, t.id`, ids)
+	if err != nil {
+		return fmt.Errorf("拼题目标签查询: %w", err)
+	}
+	var rows []struct {
+		QuestionID int64 `db:"question_id"`
+		TagID      int64 `db:"tag_id"`
+	}
+	if err := r.db.SelectContext(ctx, &rows, r.db.Rebind(query), args...); err != nil {
+		return fmt.Errorf("查询题目标签: %w", err)
+	}
+	pos := make(map[int64]int, len(items))
+	for i, it := range items {
+		pos[it.ID] = i
+	}
+	for _, row := range rows {
+		if i, ok := pos[row.QuestionID]; ok {
+			items[i].TagIDs = append(items[i].TagIDs, row.TagID)
+		}
+	}
+	return nil
 }
 
 // orderBy 是题目集合的唯一排序规则 —— 列表、定位（PositionAfter）、小结都用它，
@@ -229,15 +260,8 @@ func orderBy(f ListFilter) (string, []any) {
 // ListQuestionIDs 按 orderBy 返回整个集合的题目 id（已按 Take 截断）。
 // 只取 id，一个题库一千来题也只是几 KB —— 定位与小结在应用层做，比把同一套过滤再写成 SQL 窗口函数简单可靠。
 func (r *mysqlRepository) ListQuestionIDs(ctx context.Context, bankID int64, f ListFilter) ([]int64, error) {
-	where, having, args := buildFilter(bankID, f)
-	join := ""
-	if len(f.TagIDs) > 0 {
-		join = " JOIN question_tag qt ON qt.question_id = q.id"
-	}
-	query := `SELECT q.id FROM question q` + join + where
-	if having != "" {
-		query += " GROUP BY q.id" + having
-	}
+	where, args := buildFilter(bankID, f)
+	query := `SELECT q.id FROM question q` + where
 	order, orderArgs := orderBy(f)
 	query += order
 	args = append(args, orderArgs...)

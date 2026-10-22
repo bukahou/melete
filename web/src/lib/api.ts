@@ -121,14 +121,15 @@ export const listAxisTags = async (slug: string) =>
 
 export function listQuestions(
   slug: string,
-  opts: ListParams & { enriched?: boolean; limit?: number; offset?: number } = {},
+  opts: ListParams & { enriched?: boolean; limit?: number; offset?: number; fresh?: boolean } = {},
 ) {
   const q = drillQuery(opts);
   if (opts.enriched) q.set("enriched", "true");
   if (opts.limit != null) q.set("limit", String(opts.limit));
   if (opts.offset != null) q.set("offset", String(opts.offset));
-  // 个人化条件（错题本 / 收藏等）走 no-store：结果因人而异
-  return get<QuestionPage>(`/banks/${slug}/questions?${q}`, 60, Boolean(opts.mode || opts.bookmarked));
+  // 个人化条件（错题本 / 收藏等）走 no-store：结果因人而异。
+  // fresh：列表上要显示「上次对错 / 收藏」的页（题目列表、自选条件）—— 刚答完回来就该看到 ✓ / ✕
+  return get<QuestionPage>(`/banks/${slug}/questions?${q}`, 60, Boolean(opts.fresh || opts.mode || opts.bookmarked));
 }
 
 /** 一个题目集合的本轮小结（P9 #19）：多大、做过几道、最近一次答对几道。条件与 listQuestions 同一套。 */

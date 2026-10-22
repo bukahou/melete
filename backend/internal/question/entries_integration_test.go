@@ -61,6 +61,10 @@ func TestDrillEntriesIntegration(t *testing.T) {
 	want("题号 2–3", ids(ListFilter{NoFrom: 2, NoTo: 3}), "s1#2", "s1#3", "s2#2", "s2#3")
 	want("标签并集 A∪B", ids(ListFilter{AnyTagIDs: []int64{tagA, tagB}}), "s1#1", "s1#2", "s2#2")
 	want("标签交集 A∩B（旧参数不变）", ids(ListFilter{TagIDs: []int64{tagA, tagB}}), "s2#2")
+	// ⭐ 标签 + 语言：题目底部点标签就是这条路。旧写法在外层 GROUP BY q.id，
+	// TiDB 的 only_full_group_by 认不出 qi.stem 由 q.id 决定 ⇒ 整条查询报错（2026-10-21）。
+	want("标签 A + 语言", ids(ListFilter{TagIDs: []int64{tagA}, Locale: "ja"}), "s1#1", "s2#2")
+	want("标签交集 A∩B + 语言", ids(ListFilter{TagIDs: []int64{tagA, tagB}, Locale: "ja"}), "s2#2")
 
 	// 收藏：⭐ 另一个账号也收藏一题 —— 漏了 user_id 条件它就会混进来
 	mustExec(t, db, `INSERT INTO bookmark (user_id,question_id,created_at) VALUES (?,?,UTC_TIMESTAMP())`, me, q["s1#3"])
@@ -167,6 +171,47 @@ func TestDrillEntriesIntegration(t *testing.T) {
 
 	// 会缩短的集合：定位恒为 0（做完的题已离开集合）
 	locate("未解答（会缩短）", ListFilter{Session: &s1, Mode: "unseen"}, q["s1#3"], 0, 1)
+}
+
+// 列表上每题的考纲域 / 考点标签（P9 #44）：考纲域在前，考点按权重从高到低（同权按值），⛔ 不带 concept；
+// 没有标签的题是空数组而不是 null —— 契约写的是 required 数组。
+func TestListQuestionTagIDsIntegration(t *testing.T) {
+	db := openDueTestDB(t)
+	ctx := context.Background()
+	svc := NewService(NewMySQLRepository(db))
+	bankID, q := entriesFixture(t, db)
+
+	ins := func(bank int64, typ, value string) int64 {
+		t.Helper()
+		r, err := db.Exec(`INSERT INTO tag (bank_id,type,value) VALUES (?,?,?)`, bank, typ, value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, _ := r.LastInsertId()
+		return id
+	}
+	dom := ins(bankID, "domain", "d1")
+	minor := ins(bankID, "topic", "a-minor") // 值排在前，但权重低 ⇒ 应排在 major 之后
+	major := ins(bankID, "topic", "z-major")
+	concept := ins(bankID, "concept", "c1") // 只看类型：concept ⛔ 进列表（挂在本题库下，fixture 的清理一并删掉）
+	mustExec(t, db, `INSERT INTO question_tag (question_id,tag_id,weight) VALUES (?,?,1),(?,?,1),(?,?,2),(?,?,1)`,
+		q["s1#1"], minor, q["s1#1"], concept, q["s1#1"], major, q["s1#1"], dom)
+
+	s1 := "s1"
+	p, err := svc.ListQuestions(ctx, bankID, ListFilter{Session: &s1, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int64][]int64{}
+	for _, it := range p.Items {
+		got[it.ID] = it.TagIDs
+	}
+	if want := []int64{dom, major, minor}; !slices.Equal(got[q["s1#1"]], want) {
+		t.Fatalf("s1#1 的标签 = %v，期望 %v（考纲域在前、考点按权重、不含 concept）", got[q["s1#1"]], want)
+	}
+	if tags := got[q["s1#2"]]; tags == nil || len(tags) != 0 {
+		t.Fatalf("没有标签的题应是空数组（不是 nil），得到 %#v", tags)
+	}
 }
 
 func entriesFixture(t *testing.T, db *sqlx.DB) (int64, map[string]int64) {

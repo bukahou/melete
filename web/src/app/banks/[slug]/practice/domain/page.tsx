@@ -5,8 +5,9 @@ import {
   type BankDetail, type DrillContext, type Tag,
 } from "@/lib/api";
 import { tagName, tagTypeLabel } from "@/lib/claims";
-import { drillHref, listParams } from "@/lib/drillSpec";
-import { EntryRow, PracticeShell } from "@/components/PracticeShell";
+import { listParams, setHref } from "@/lib/drillSpec";
+import { PracticeShell } from "@/components/PracticeShell";
+import { EntryColumns, EntryHead, EntryRow, type EntryStats } from "@/components/EntryList";
 
 export const revalidate = 0;
 
@@ -15,7 +16,7 @@ export const revalidate = 0;
  *
  * 有考纲树（bank.meta.topicTree，IPA）就按 分野 › 大分類 › 中分類 三层列；
  * 没有（AWS）就平铺考纲域。选大分類 = 它下面几个中分類的并集（#17：大分類不是标签）。
- * 进去后按题号全部出（#18）。
+ * 点进去先到这一块的题目列表（#44），点哪题从哪题开始；做题按题号顺序（#18）。
  */
 type Row = { ctx: DrillContext; title: string; level: 0 | 1 | 2; count?: number; tagId?: number };
 
@@ -60,36 +61,24 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
   const groupSums = await Promise.all(
     list.map((r) => (r.tagId == null ? summarizeQuestions(slug, listParams(r.ctx)) : null)),
   );
+  // 标签行用我的标签统计（做过的题数 / 其中最近一次答对的），分组行用小结 —— 同一个口径（#9 掌握率）
+  const statsOf = (r: Row, i: number): EntryStats => {
+    const g = groupSums[i];
+    if (g) return g;
+    const st = r.tagId != null ? statById.get(r.tagId) : undefined;
+    return { total: r.count ?? 0, answered: st?.total ?? 0, correct: st?.correct ?? 0 };
+  };
+  // 有考纲树（IPA）：分野 = 白条（整条能点），列名另起一行；没有（AWS）：一条白条兼作列头，考纲域平铺成行
+  const tree = list.some((r) => r.level > 0);
 
   return (
     <PracticeShell home={t("home")} title={dash("drillDomain", { domain: domainLabel })} sub={t("domainSub", { domain: domainLabel })}>
-      {/* 一个分野一张卡片：分野之间靠留白分开，⛔ 不靠缩进 */}
-      {list.reduce<Array<Array<[Row, number]>>>((cards, r, i) => {
-        if (r.level === 0 || cards.length === 0) cards.push([]);
-        cards[cards.length - 1].push([r, i]);
-        return cards;
-      }, []).map((card, ci) => (
-        <section key={ci} className="card overflow-hidden py-1.5">
-          {card.map(([r, i]) => {
-            const st = r.tagId != null ? statById.get(r.tagId) : undefined;
-            const g = groupSums[i];
-            const total = g ? g.total : r.count ?? 0;
-            const answered = g ? g.answered : st?.total ?? 0;
-            const rate = g ? (g.answered ? Math.round((g.correct / g.answered) * 100) : null) : st && st.total > 0 ? Math.round(st.rate) : null;
-            return (
-              <EntryRow
-                key={i}
-                href={drillHref(slug, r.ctx)}
-                title={r.title}
-                level={r.level}
-                meta={t("questions", { n: total })}
-                stat={answered > 0 && rate != null ? t("rowRate", { answered, rate }) : undefined}
-                rate={rate}
-              />
-            );
-          })}
-        </section>
-      ))}
+      <section>
+        {tree ? <EntryColumns /> : <EntryHead title={domainLabel} columns />}
+        {list.map((r, i) => tree && r.level === 0
+          ? <EntryHead key={i} title={r.title} href={setHref(slug, r.ctx)} stats={statsOf(r, i)} />
+          : <EntryRow key={i} href={setHref(slug, r.ctx)} title={r.title} stats={statsOf(r, i)} level={r.level === 2 ? 2 : 1} />)}
+      </section>
     </PracticeShell>
   );
 }

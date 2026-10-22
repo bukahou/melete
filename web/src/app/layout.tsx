@@ -59,10 +59,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 logout: t("common.logout"), soon: t("nav.soon"), admin: t("nav.admin"), mine: t("nav.mine"),
               }}
             />
-            {/* pb-24：手机上给底部标签栏让位 */}
-            <main className="min-w-0 flex-1 px-5 pb-24 pt-6 md:px-8 md:pb-10">
-              <div className="mx-auto w-full max-w-[1000px]">{children}</div>
-            </main>
+            {/* ⭐ 外框由页面自己画（components/Page：顶栏 + 纸，#41）—— 标题在顶栏上，只有页面知道它是什么。
+                首页是仪表盘，自己留边距（app/page.tsx）。 */}
+            <main className="flex min-w-0 flex-1 flex-col">{children}</main>
           </div>
         ) : (
           // 未登录：背后垫一张应用外壳（只是画，inert），登录页作为弹窗叠在上面 —— 参照 it-pass（2026-10-08 用户裁定）

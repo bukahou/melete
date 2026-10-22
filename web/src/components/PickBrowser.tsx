@@ -6,7 +6,8 @@ import { Check, ChevronDown, Play, Shuffle, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { drillHref } from "@/lib/drillSpec";
 import { pickContextFromForm } from "@/lib/pickForm";
-import { BookmarkToggle } from "./BookmarkToggle";
+import { questionLabel } from "@/lib/questionSet";
+import { QuestionRow } from "./QuestionRow";
 
 /**
  * 4.3 自选条件 —— 照 it-pass「絞り込んで出題」：标签栏 + 题目列表（2026-10-08 用户裁定方案 b）。
@@ -22,7 +23,7 @@ import { BookmarkToggle } from "./BookmarkToggle";
 export type PickOption = { value: string; label: string };
 export type PickNode = PickOption & { count: number; children: Array<PickOption & { count: number }> };
 
-type Item = { id: number; no: number; stem: string; last: boolean | null; bookmarked: boolean };
+type Item = { id: number; no: number; stem: string; tagIds: number[]; last: boolean | null; bookmarked: boolean };
 type Sheet = "tags" | "range" | null;
 
 function Pill({ on, onClick, children, caret }: { on: boolean; onClick: () => void; children: React.ReactNode; caret?: boolean }) {
@@ -50,13 +51,14 @@ function Box({ on }: { on: boolean }) {
   );
 }
 
-export function PickBrowser({ slug, initial, statuses, tree, ranges, labels }: {
+export function PickBrowser({ slug, initial, statuses, tree, ranges, labels, topicNames }: {
   slug: string;
   initial: string;               // 进页时的查询串（st / t / r / seed）
   statuses: PickOption[];
   tree: PickNode[];              // 考纲域：一级 = domain，二级 = 分组（值是逗号串的 topic id）
   ranges: PickOption[];          // 卷子 / 题号段
   labels: { domain: string; range: string };
+  topicNames: Record<number, string>; // 考点 id → 名字（列表每行写「这题考什么」，#44）
 }) {
   const t = useTranslations("practice");
   const init = useMemo(() => new URLSearchParams(initial), [initial]);
@@ -107,23 +109,12 @@ export function PickBrowser({ slug, initial, statuses, tree, ranges, labels }: {
   const rangeLabel = range ? `${labels.range}：${ranges.find((r) => r.value === range)?.label ?? range}` : labels.range;
 
   return (
-    <div className="grid gap-4">
-      {/* 标题行：总数 + 打乱顺序（同 it-pass「絞り込んで出題（1100）」与右上角シャッフル） */}
-      <div className="flex items-center gap-3">
-        <h1 className="display text-[1.4rem]">
-          {t("pickTitle")}
-          <span className="ml-1.5 text-[1.05rem] font-normal text-muted tabular-nums">（{loading && total == null ? "…" : total ?? "—"}）</span>
-        </h1>
-        <button type="button" onClick={() => setSeed(seed ? "" : String(Math.floor(Math.random() * 2 ** 31)))}
-                aria-pressed={Boolean(seed)}
-                className={`ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[0.82rem] transition-colors ${
-                  seed ? "bg-accent-soft font-semibold text-accent-ink" : "text-muted hover:text-accent-ink"}`}>
-          <Shuffle size={15} />{seed ? t("pickShuffled") : t("pickShuffle")}
-        </button>
-      </div>
-
-      {/* 标签栏：状态单选 + 两个可选条件（点开才出面板） */}
-      <div className="flex flex-wrap gap-2">
+    // ⚠️ [&>*]:min-w-0：网格子项默认按内容最小宽度撑开，一行不换行的长题干就会把整列撑出纸面
+    //   （原先靠卡片的 overflow-hidden 顺带兜住；#41 去掉卡片后要显式写）
+    <div className="grid gap-4 [&>*]:min-w-0">
+      {/* 标签栏：状态单选 + 两个可选条件（点开才出面板）+ 打乱顺序（同 it-pass 右上角的シャッフル）。
+          ⚠️ 标题在顶栏（Page，#41）；符合条件的题数在底部那条，⛔ 不再在这里重复 */}
+      <div className="flex flex-wrap items-center gap-2">
         {statuses.map((s) => (
           <Pill key={s.value} on={status === s.value} onClick={() => setStatus(s.value)}>{s.label}</Pill>
         ))}
@@ -138,10 +129,16 @@ export function PickBrowser({ slug, initial, statuses, tree, ranges, labels }: {
             <X size={13} />{t("pickClear")}
           </button>
         )}
+        <button type="button" onClick={() => setSeed(seed ? "" : String(Math.floor(Math.random() * 2 ** 31)))}
+                aria-pressed={Boolean(seed)}
+                className={`ml-auto inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[0.82rem] transition-colors ${
+                  seed ? "bg-accent-soft font-semibold text-accent-ink" : "text-muted hover:text-accent-ink"}`}>
+          <Shuffle size={15} />{seed ? t("pickShuffled") : t("pickShuffle")}
+        </button>
       </div>
       
       {/* 题目列表：点哪题从哪题开始 */}
-      <section className={`card overflow-hidden transition-opacity ${loading ? "opacity-60" : ""}`}>
+      <section className={`transition-opacity ${loading ? "opacity-60" : ""}`}>
         {failed ? (
           <p className="px-5 py-10 text-center text-sm text-muted">{t("pickFailed")}</p>
         ) : !loading && items.length === 0 ? (
@@ -149,25 +146,16 @@ export function PickBrowser({ slug, initial, statuses, tree, ranges, labels }: {
         ) : (
           <ol>
             {items.map((it, i) => (
-              <li key={it.id} className="flex items-center border-b border-line-2 pr-3 last:border-b-0 hover:bg-accent-soft">
-                <Link href={drillHref(slug, ctx, { i })} className="flex min-w-0 flex-1 items-center gap-4 py-3 pl-5">
-                  <span className="w-14 shrink-0 font-semibold tabular-nums">#{it.no}</span>
-                  <span className="min-w-0 flex-1 truncate text-[0.88rem] text-muted">{it.stem}</span>
-                  {/* 上次对错：固定宽度占位，两列图标才对得齐 */}
-                  <span className="flex w-4 shrink-0 justify-center">
-                    {it.last === true && <Check size={16} style={{ color: "var(--color-ok)" }} aria-label={t("pickLastOk")} />}
-                    {it.last === false && <X size={16} style={{ color: "var(--color-warn)" }} aria-label={t("pickLastNg")} />}
-                  </span>
-                </Link>
-                {/* 同 it-pass：列表里直接收藏 / 取消（不进题也能整理） */}
-                <BookmarkToggle key={`${it.id}-${it.bookmarked}`} questionId={it.id} initial={it.bookmarked} compact />
-              </li>
+              // 行与题目列表页（#44）同一个组件：题号 · 考点（没有考点退回题干开头）· 上次对错 · 收藏
+              <QuestionRow key={it.id} href={drillHref(slug, ctx, { i })} id={it.id} no={it.no}
+                           label={questionLabel(it.tagIds, (id) => topicNames[id], it.stem)}
+                           last={it.last} bookmarked={it.bookmarked} />
             ))}
           </ol>
         )}
         {!failed && total != null && items.length < total && (
           <button type="button" onClick={loadMore}
-                  className="w-full border-t border-line-2 py-3 text-[0.85rem] text-accent-ink hover:bg-accent-soft">
+                  className="w-full py-3 text-[0.85rem] text-accent-ink hover:bg-accent-soft">
             {t("pickMore", { n: total - items.length })}
           </button>
         )}
@@ -175,7 +163,7 @@ export function PickBrowser({ slug, initial, statuses, tree, ranges, labels }: {
 
       {/* 从第 1 题开始（贴底，手机上让开底部标签栏） */}
       {total != null && total > 0 && (
-        <div className="card sticky bottom-20 z-10 flex items-center gap-4 px-5 py-3 shadow-[0_-2px_12px_rgba(0,0,0,0.06)] md:bottom-4">
+        <div className="sticky bottom-20 z-10 flex items-center gap-4 rounded-[0.875rem] bg-tile px-5 py-3 shadow-[0_-2px_14px_rgba(0,0,0,0.08)] md:bottom-4">
           <span className="min-w-0 flex-1 text-[0.85rem]">{t("pickMatch", { n: total })}</span>
           <Link href={drillHref(slug, ctx)}
                 className="inline-flex shrink-0 items-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold"

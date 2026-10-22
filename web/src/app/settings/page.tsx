@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { Check, Languages, Library, Palette } from "lucide-react";
 import { cookies } from "next/headers";
@@ -6,6 +5,7 @@ import { DEFAULT_THEME, THEMES, THEME_COOKIE, isTheme } from "@/lib/theme";
 import { getMyBank, listBanks, type Bank, type CurrentBank } from "@/lib/api";
 import { getLocale, getTranslations } from "next-intl/server";
 import { LOCALES, LOCALE_LABEL } from "@/i18n/locales";
+import { Page, Section } from "@/components/Page";
 
 export const revalidate = 0;
 
@@ -32,19 +32,11 @@ export async function generateMetadata() {
  * 形态沿用登录页：⛔ 不引入客户端状态，表单 POST 给 BFF 路由 → 303 回来。
  * 表单提交天然串行，⇒ 顺带避开并发刷新那类问题。
  */
-function Section({ id, icon, title, hint, children }: {
+/** 一节：白条标题 + 内容（#41：纸面分区靠白条，⛔ 不再套卡片）。表单类内容需要内边距，列表类（题库）自己处理。 */
+function Block({ id, icon, title, hint, children }: {
   id?: string; icon: React.ReactNode; title: string; hint?: string; children: React.ReactNode;
 }) {
-  return (
-    <section id={id} className="card scroll-mt-6">
-      <div className="flex items-baseline gap-3 px-6 pt-5">
-        <span className="translate-y-0.5 text-muted">{icon}</span>
-        <span className="eyebrow">{title}</span>
-        {hint && <span className="ml-auto text-[0.78rem] text-muted">{hint}</span>}
-      </div>
-      <div className="px-6 pb-6 pt-4">{children}</div>
-    </section>
-  );
+  return <Section id={id} icon={icon} title={title} side={hint}><div className="px-4 pb-1 pt-3">{children}</div></Section>;
 }
 
 function Field(props: React.InputHTMLAttributes<HTMLInputElement>) {
@@ -106,20 +98,11 @@ export default async function SettingsPage({
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 pt-4">
-      <header>
-        {/* 设置在「我的」之下（P9 #34）：面包屑一键回去 */}
-        <nav className="flex items-center gap-2 text-[0.82rem] text-muted">
-          <Link href="/me" className="hover:text-ink">{t("mine")}</Link>
-          <span className="opacity-50">›</span>
-          <span className="text-ink">{t("title")}</span>
-        </nav>
-        <h1 className="display mt-3 text-2xl">{t("heading")}</h1>
-      </header>
-
+    // 设置在「我的」之下（P9 #34）：面包屑与顶栏的返回都回「我的」
+    <Page title={t("title")} crumbs={[{ href: "/me", label: t("mine") }, { label: t("title") }]}>
       {notice && (
         <div
-          className="rounded-md border px-4 py-3 text-sm"
+          className="mb-6 rounded-md border px-4 py-3 text-sm"
           style={{
             borderColor: notice.tone === "ok" ? "var(--color-ok)" : "var(--color-warn)",
             background: `color-mix(in oklab, var(--color-${notice.tone}) 8%, transparent)`,
@@ -130,15 +113,15 @@ export default async function SettingsPage({
       )}
 
       {/* ⭐ 放在最上面：P9 起「换题库」只在这里做，是设置页最常用的一项。 */}
-      <Section id="bank" icon={<Library size={15} />} title={t("bankTitle")} hint={t("bankHint")}>
+      <Block id="bank" icon={<Library size={15} />} title={t("bankTitle")} hint={t("bankHint")}>
         {banks.length === 0 ? (
           <p className="text-sm text-muted">{t("bankFailed")}</p>
         ) : (
-          <ul className="divide-y divide-line-2">
+          <ul className="-mx-4 -mt-3">
             {banks.map((b) => {
               const chosen = current?.source === "chosen" && current.bankSlug === b.slug;
               return (
-                <li key={b.slug} className="flex items-center gap-4 py-3 first:pt-0 last:pb-0">
+                <li key={b.slug} className="mx-2 flex min-h-14 items-center gap-4 border-b border-line-2 py-2 pl-3 pr-1">
                   <span className="min-w-0 flex-1">
                     <span className={`block truncate text-sm ${chosen ? "font-semibold text-ink" : ""}`}>{b.name}</span>
                     <span className="block font-mono text-[0.72rem] text-muted">{b.slug}</span>
@@ -167,11 +150,11 @@ export default async function SettingsPage({
           {current?.source === "recent" && <>{t("bankRecentNote", { name: banks.find((b) => b.slug === current?.bankSlug)?.name ?? current.bankSlug ?? "" })} </>}
           {t("bankNote")}
         </p>
-      </Section>
+      </Block>
 
       {/* ⭐ 语言也放这里一份 —— 顶栏的切换器是「随手换」，这里是「账号的设置在哪」。
           两处写同一个 cookie，⛔ 不是两套状态。 */}
-      <Section icon={<Languages size={15} />} title={t("langTitle")} hint={t("langHint")}>
+      <Block icon={<Languages size={15} />} title={t("langTitle")} hint={t("langHint")}>
         <form method="POST" action="/settings/language-form" className="space-y-3">
           <select
             name="locale"
@@ -187,9 +170,9 @@ export default async function SettingsPage({
           <Submit>{t("langSubmit")}</Submit>
         </form>
         <p className="mt-3 text-xs leading-relaxed text-muted">{t("langNote")}</p>
-      </Section>
+      </Block>
 
-      <Section icon={<Palette size={15} />} title={t("themeTitle")} hint={t("themeHint")}>
+      <Block icon={<Palette size={15} />} title={t("themeTitle")} hint={t("themeHint")}>
         <form method="POST" action="/settings/theme-form" className="flex flex-wrap items-center gap-2">
           {THEMES.map((th) => (
             <label key={th}
@@ -200,8 +183,7 @@ export default async function SettingsPage({
           ))}
           <Submit>{t("themeSubmit")}</Submit>
         </form>
-      </Section>
-
-    </div>
+      </Block>
+    </Page>
   );
 }

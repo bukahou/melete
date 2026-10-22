@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DrillContext } from "./claims";
-import { contextFromSearch, drillHref, isShrinking, listParams } from "./drillSpec";
+import { contextFromSearch, drillHref, isShrinking, listParams, setHref } from "./drillSpec";
 
 /** drillHref 产出的 URL 再解析回来 —— 首页「继续」就是走这一圈。 */
 const roundTrip = (c: DrillContext) => {
@@ -25,6 +25,23 @@ describe("URL ⇄ 出处 往返不丢东西", () => {
     ["旧：全部", { mode: "all" }],
   ])("%s", (_, c) => {
     expect(roundTrip(c)).toEqual(c);
+  });
+});
+
+// 题目列表页（#44）与刷题页必须是同一个集合：列表第 i 行 = 刷题页 offset i
+describe("题目列表页 URL 与刷题页写出同一个集合", () => {
+  it.each<[string, DrillContext]>([
+    ["4.1 单套题库的题号段", { mode: "year", session: "", noFrom: 101, noTo: 200 }],
+    ["4.1 一套卷子", { mode: "year", session: "2026r08" }],
+    ["4.2 标签并集", { mode: "domain", tagIds: [3, 4, 5] }],
+  ])("%s", (_, c) => {
+    const set = new URL(setHref("x", c), "http://h");
+    const drill = new URL(drillHref("x", c), "http://h");
+    expect(set.pathname).toBe("/banks/x/practice/set");
+    expect(set.search).toBe(drill.search);
+    const sp: Record<string, string> = {};
+    set.searchParams.forEach((v, k) => (sp[k] = v));
+    expect(contextFromSearch(sp)).toEqual(c);
   });
 });
 
