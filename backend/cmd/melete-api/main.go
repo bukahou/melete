@@ -26,6 +26,7 @@ import (
 	"github.com/bukahou/melete/backend/internal/bank"
 	"github.com/bukahou/melete/backend/internal/config"
 	"github.com/bukahou/melete/backend/internal/glossary"
+	"github.com/bukahou/melete/backend/internal/health"
 	"github.com/bukahou/melete/backend/internal/httpapi"
 	"github.com/bukahou/melete/backend/internal/httpauth"
 	"github.com/bukahou/melete/backend/internal/httplocale"
@@ -53,6 +54,9 @@ func parseLevel(s string) slog.Level {
 
 // apiBase 与 OpenAPI 契约的 servers.url 一致，两处若不同步则路由与文档对不上。
 const apiBase = "/api/v1"
+
+// healthzDBTimeout /healthz ping 数据库最多等多久。部署配置里 readiness 探针的 timeoutSeconds 要比它长。
+const healthzDBTimeout = 2 * time.Second
 
 func run() error {
 	cfg, err := config.Load()
@@ -218,13 +222,10 @@ func run() error {
 	// 没有 CORS：浏览器不用 XHR 直连本服务 —— web 经服务端 BFF 调用，iOS 是原生请求，
 	// OIDC 两个端点是整页导航（302），都不受同源策略约束。
 
-	r.Get("/healthz", func(w http.ResponseWriter, req *http.Request) {
-		if err := db.PingContext(req.Context()); err != nil {
-			http.Error(w, "database unreachable", http.StatusServiceUnavailable)
-			return
-		}
-		w.Write([]byte("ok"))
-	})
+	// K8s 的两个探针（#46）：/livez 管要不要重启（⛔ 不碰数据库），/healthz 管接不接流量（ping 数据库）。
+	// ⚠️ 部署配置里 readiness 的 timeoutSeconds 要大于 healthzDBTimeout，理由见 health 包。
+	r.Method(http.MethodGet, "/livez", health.LivenessHandler())
+	r.Method(http.MethodGet, "/healthz", health.ReadinessHandler(db, healthzDBTimeout))
 
 	// 契约生成的路由挂在 /api/v1 下，与 OpenAPI 的 servers 一致。
 	// 认证见 internal/httpauth：业务端点要会话 JWT（服务间密钥那一层已移除，见该包注释）。
