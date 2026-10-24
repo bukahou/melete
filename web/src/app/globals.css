@@ -161,15 +161,17 @@ body {
 .sheet .card { background: var(--color-tile); }
 
 /* tile：卡片里的可点按钮（it-pass 式）—— 白底 + 1px 强调色描边。
-   ⭐ 描边是「这里能点」的信号，所以只给按钮，⛔ 不给卡片。 */
+   ⭐ 描边是「这里能点」的信号，所以只给按钮，⛔ 不给卡片。
+   描边用足色（2026-10-23 用户裁定）：之前是 55% 的混色，按钮边界发虚，是「没有 it-pass 利落」的来源之一；
+   it-pass 的按钮与检索框描边都是 100% 品牌色。深色下 --color-accent-ink 本来就是另一个值，不用另调。 */
 .tile {
   background: var(--color-tile);
-  border: 1px solid color-mix(in oklab, var(--color-accent-ink) 55%, transparent);
+  border: 1px solid var(--color-accent-ink);
   border-radius: 0.5rem;
   color: var(--color-accent-ink);
-  transition: background-color .15s, border-color .15s;
+  transition: background-color .15s;
 }
-.tile:hover { border-color: var(--color-accent-ink); background: color-mix(in oklab, var(--color-accent-soft) 45%, var(--color-tile)); }
+.tile:hover { background: color-mix(in oklab, var(--color-accent-soft) 45%, var(--color-tile)); }
 
 /* 入口图标的彩色底块（浅彩色，用户裁定）。⚠️ 纯装饰 —— 身份由旁边的文字给，⛔ 颜色不承载含义 */
 .ico { display: inline-flex; align-items: center; justify-content: center; border-radius: 0.625rem; }
