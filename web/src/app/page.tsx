@@ -34,6 +34,10 @@ export const revalidate = 0;
  *
  * 层级规则仍然成立（globals.css 头注）：卡片无边框；只有「能点」的按钮带强调色描边。
  * 当前题库由后端定（GET /me/bank），⛔ 前端不自己猜 —— iOS 与网页必须看到同一个。
+ *
+ * ⭐ 尺寸照 it-pass 实测（2026-10-23，用户「太集中中间」）：内容区 1176 宽（原 960 只用了侧栏右边 52% 的面积）、
+ *   页顶 38、检索框下 ≈30、两卡之间 24、入口按钮两列间距 24、按钮高 ≈62。GuestShell 是同一骨架，尺寸同步改。
+ *   题库一览仍装在卡片里（用户裁定：它是操作区，不是 it-pass 製品一覧那种陈列位）。
  */
 
 type T = Awaited<ReturnType<typeof getTranslations<"dash">>>;
@@ -156,10 +160,10 @@ function Drills({ t, bank, resume, kit, code }: { t: T; bank: BankDetail; resume
       }>
         {t("drillTitle")}
       </CardTitle>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 sm:gap-x-6">
         {entries.map((e) => (
-          <Link key={e.title} href={e.href} className="tile group flex items-center gap-3 px-3 py-2.5">
-            <span className={`ico ${e.ico} h-9 w-9 shrink-0`}><e.icon size={18} /></span>
+          <Link key={e.title} href={e.href} className="tile group flex items-center gap-3 px-3.5 py-3">
+            <span className={`ico ${e.ico} h-10 w-10 shrink-0`}><e.icon size={20} /></span>
             <span className="min-w-0 flex-1">
               <span className="block text-[0.92rem] font-medium">{e.title}</span>
               {"sub" in e && e.sub && <span className="block truncate text-[0.74rem] text-muted">{e.sub}</span>}
@@ -230,7 +234,7 @@ function Banks({ t, banks, current, progressOf }: {
 function SearchBox({ t, slug }: { t: T; slug: string }) {
   return (
     <form action={`/banks/${slug}/glossary`} method="GET"
-          className="flex items-center gap-3 rounded-full border border-[color-mix(in_oklab,var(--color-accent-ink)_55%,transparent)] bg-tile px-5 py-3 focus-within:border-accent-ink">
+          className="mb-3 flex items-center gap-3 rounded-full border border-accent-ink bg-tile px-5 py-3 focus-within:ring-[3px] focus-within:ring-accent-soft">
       <Search size={17} className="text-muted" />
       <input name="q" placeholder={t("searchPlaceholder")} aria-label={t("searchPlaceholder")}
              className="min-w-0 flex-1 bg-transparent text-[0.92rem] outline-none placeholder:text-muted" />
@@ -243,7 +247,7 @@ function SearchBox({ t, slug }: { t: T; slug: string }) {
  * 外框不再由 layout 留边距（其它页的边距在 Page 里），这里自己留。
  */
 function Dashboard({ children }: { children: React.ReactNode }) {
-  return <div className="px-5 pb-24 pt-6 md:px-8 md:pb-10">{children}</div>;
+  return <div className="px-5 pb-24 pt-6 md:px-8 md:pb-10 md:pt-[38px]">{children}</div>;
 }
 
 /** 还没有当前题库（新用户）：引导去设置选（P9 #14）。 */
@@ -290,9 +294,10 @@ export default async function HomePage() {
 
   return (
     <Dashboard>
-    <div className="mx-auto grid max-w-[960px] gap-4">
+    {/* 1176 = it-pass 首页内容区的实测宽度（见文件头注）；GuestShell 用同一个数 */}
+    <div className="mx-auto grid max-w-[1176px] gap-4">
       <SearchBox t={t} slug={slug} />
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 md:gap-6">
         <History t={t} bank={bank} progress={progress} />
         <PassCheck t={t} bank={bank} progress={progress} />
       </div>

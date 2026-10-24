@@ -42,12 +42,13 @@ export async function GuestShell() {
           logout: nav("common.logout"), soon: nav("nav.soon"), admin: nav("nav.admin"), mine: nav("nav.mine"),
         }}
       />
-      <main className="min-w-0 flex-1 px-5 pb-24 pt-6 md:px-8">
-        <div className="mx-auto grid w-full max-w-[960px] gap-4">
-          <div className="flex items-center gap-3 rounded-full border border-line bg-tile px-5 py-3 text-muted">
+      {/* 尺寸与 app/page.tsx 的 Dashboard 保持一致（1176 宽、页顶 38、间距），那边的头注有出处 */}
+      <main className="min-w-0 flex-1 px-5 pb-24 pt-6 md:px-8 md:pt-[38px]">
+        <div className="mx-auto grid w-full max-w-[1176px] gap-4">
+          <div className="mb-3 flex items-center gap-3 rounded-full border border-line bg-tile px-5 py-3 text-muted">
             <Search size={17} /><span className="text-[0.95rem]">{t("searchPlaceholder")}</span>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 md:gap-6">
             {card(t("historyTitle"), <div className="grid grid-cols-2 gap-4 text-center">
               <div><div className="text-[0.75rem] text-muted">{t("historyRate")}</div><div className="mt-1">{dash}</div></div>
               <div><div className="text-[0.75rem] text-muted">{t("historyAnswered")}</div><div className="mt-1">{dash}</div></div>
@@ -59,10 +60,10 @@ export async function GuestShell() {
               <h2 className="shrink-0 text-[0.95rem] font-semibold">{t("drillTitle")}</h2>
               <span className="h-px flex-1 bg-line" />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 sm:gap-x-6">
               {tiles.map((e) => (
-                <div key={e.title} className="tile flex items-center gap-3 px-3 py-2.5">
-                  <span className={`ico ${e.ico} h-9 w-9 shrink-0`}><e.icon size={18} /></span>
+                <div key={e.title} className="tile flex items-center gap-3 px-3.5 py-3">
+                  <span className={`ico ${e.ico} h-10 w-10 shrink-0`}><e.icon size={20} /></span>
                   <span className="flex-1 text-[0.92rem] font-medium">{e.title}</span>
                   <ChevronRight size={16} />
                 </div>
