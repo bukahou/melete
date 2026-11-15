@@ -26,6 +26,7 @@ except ImportError:
     sys.exit("✗ 需要 mysql-connector-python：pip install mysql-connector-python")
 
 from paths import REPO, bank_dir, rel  # 路径解析的唯一归属地, 见该模块 docstring
+from termnorm import load_normalizer
 BATCH = 200
 DSN_RE = re.compile(r"^(?P<user>[^:]+):(?P<password>.*)@tcp\((?P<host>[^:)]+):(?P<port>\d+)\)/(?P<database>[^?]+)")
 
@@ -484,6 +485,17 @@ def main() -> None:
 
     doc = json.loads(src.read_text(encoding="utf-8"))
     qs = doc["questions"]
+
+    # 专有名词归一（termnorm.py）：素材机翻的中文产品名 → 官方英文名。
+    # 只改进库的文字，enriched.json 一字不动；题库没有 term_normalize.json 就是空操作。
+    # 放在最前面：后面的校验与去重都按题号与告警走，不看正文，顺序不影响它们。
+    norm = load_normalizer(spec_path.parent)
+    if norm is not None:
+        notes = [n for q in qs for n in norm.normalize_question(q)]
+        touched = len({n.split(" ", 1)[0] for n in notes})
+        print(f"✓ 专有名词  {touched} 题 {len(notes)} 处归一（规则 {len(norm.rules)} 条，"
+              f"明细：python3 pipeline/core/termnorm.py {args.bank} --diff）\n")
+
     hard, soft = validate(qs)
     if hard:
         print("✗ 数据校验未通过（硬错误）：")
