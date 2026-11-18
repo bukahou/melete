@@ -12,7 +12,7 @@ info:
 servers:
   - url: /api/v1
 
-# 认证：Bearer access token（见 docs/design/active/deployment.md §0）。
+# 认证：Bearer access token。
 #
 # 本 API 对公网暴露（web 与 iOS 都是平等客户端），因此不存在「可信的调用方」——
 # 曾有过的服务间共享密钥已移除：原生 App 反编译即得密钥，它挡不住任何人。

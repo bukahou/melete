@@ -6,7 +6,7 @@ import "server-only";
  * `server-only` 让任何客户端组件 import 它时**构建期直接失败**，
  * 而不是等到内网地址已经进了浏览器 bundle 才发现。
  *
- * 架构前提（见 docs/design/active/deployment.md §1①）：
+ * 架构前提：
  * 浏览器只跟 web 说话，web 在集群内经 ClusterIP 调 api。
  * 因此 api 不对公网暴露、不需要 CORS，也不该有任何客户端代码知道它的地址。
  */
@@ -217,7 +217,7 @@ export async function chooseMyBank(bankSlug: string): Promise<{ ok: true } | { o
   return res.ok ? { ok: true } : { ok: false, status: res.status };
 }
 
-// ---- 档位与用户管理（P9 #27，设计见 docs/design/active/bank-access.md）----
+// ---- 档位与用户管理 ----
 //
 // ⚠️ 全部 personalized=true（no-store）：档位因人而异，升降级要立刻生效。
 
@@ -242,8 +242,8 @@ export async function setUserTier(userId: string, tier: "basic" | "advanced"): P
 
 // ---- 账号设置（阶段 5 的端点，2026-09-07 接前端）----
 //
-// ⭐ 2026-10-08 用户裁定：登录只用 Akasha，账号信息不再可改 ⇒ 改密 / 改邮箱 / 找回的封装已删，
-//   只剩登录设备两项。后端端点暂留（待确认 iOS 不用后再删，见 tracker）。
+// ⭐ 登录只用 Akasha，账号信息不再可改 ⇒ 改密 / 改邮箱 / 找回的封装已删，
+//   只剩登录设备两项。后端端点暂留（待确认 iOS 不用后再删）。
 //
 // ⚠️ 全部 personalized=true（no-store）：因人而异，⛔ 绝不进共享缓存。
 // 会话列表尤其如此 —— 缓存串号意味着看到别人的登录设备。

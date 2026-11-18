@@ -326,7 +326,7 @@ def topic_families(spec: dict, spec_dir: Path) -> list | None:
 
 def bank_visibility(spec: dict) -> str:
     """
-    题库对谁可见（P9 #27 #30，设计见 docs/design/active/bank-access.md）：
+    题库对谁可见：
       public  任何登录用户 · private 只有高级用户与 admin
     ⭐ 开发阶段定死在 spec 里，⛔ 应用里不能切换。没写 ⇒ private：忘了标时宁可普通用户看不到。
     """
@@ -575,7 +575,7 @@ def main() -> None:
     #   老路：译文覆盖 question.stem，原文从库里消失（SAP-C02 的英文就是这么丢的）
     #   新路：译文另存 question_i18n，stem 永远是原文 ⇒ 同一道题能供多种语言
     # 老路要拆，但那会把 SAP-C02 的展示语言从 zh 改成 en，是对既有题库的行为变更，
-    # 单独一步做（已登记 tracker P8）。⛔ 别在这个改动里顺手改掉。
+    # 单独一步做。⛔ 别在这个改动里顺手改掉。
     n_i18n = {}
     for tr_path in sorted(bank_dir(args.bank).glob("translated.*.json")):
         tr_doc = json.loads(tr_path.read_text(encoding="utf-8"))

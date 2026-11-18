@@ -18,7 +18,7 @@ import (
 
 // 自评四键，与前端 DrillCard 的 RATINGS 一一对应。
 //
-// 语义按 learning-flows.md 2026-09-01 已定：rating 是**回忆质量的主观陈述**，
+// 语义：rating 是**回忆质量的主观陈述**，
 // 客观对错由 attempt.correct 独立记录 —— 两者并存，矛盾本身就是信号。
 const (
 	RatingAgain = int(fsrs.Again) // 1 不会

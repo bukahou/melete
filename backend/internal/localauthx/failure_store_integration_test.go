@@ -73,11 +73,7 @@ func TestFailureStoreContractIntegration(t *testing.T) {
 //
 // melete 的答案：login_failures 与 users 同为 utf8mb4_general_ci，
 // 所以账号维度必须【同桶】。⚠️ 这条一旦变红，含义不是"测试挂了"，
-// 而是【变换大小写可以绕开账号退避】—— 见 tracker 的 COLLATE 技术债。
-//
-// ⚠️ 而它在 TiDB 上（默认 utf8mb4_bin，逐字节比）会变红，
-// 这正是那条债还没还清的证据。⛔ TiDB 禁令期内验不了，但这条断言
-// 会在迁库那天第一时间告诉我们。
+// 而是【变换大小写可以绕开账号退避】。
 func TestAccountKeysFoldCaseIntegration(t *testing.T) {
 	db := testDB(t)
 	s, err := NewFailureStore(db, uniqueScope(t, db))
