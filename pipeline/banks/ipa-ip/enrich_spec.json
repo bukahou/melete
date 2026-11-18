@@ -286,7 +286,7 @@
   "_note_topic_closed": "⛔⛔ topic 是【封闭词表】：只能从上面 23 个 name 里挑，不得新造。这是本题库与 SAA/SAP 最重要的差别，理由是账已经吃过一次 —— SAP 用开放词表产出 1002 个独有 concept、72% 只挂一道题、跨库共用仅 70 个，而 concept 按设计该是全局共享的。⚠️ 开放词表的问题在【写的时候】看不出来（每个标签单看都合理），要到【聚合的时候】才暴露，那时已经几百题写完了。封闭词表让这个缺陷写不出来。",
   "_note_topic_field_consistency": "⚠️ 每题的 topic 必须属于该题 domain 对应的 field（见 vocabulary 的 field 列）。跨 field 的组合说明 domain 或 topic 至少有一个判错了 —— 这是一条免费的交叉校验，因为 domain 来自卷子而非 AI。",
   "concept_seeds": [],
-  "_note_no_concept": "⛔ 本轮【不产 concept】（用户 2026-09-05 拍板）。concept 是跨题库共享轴，而它现在本身就是烂账（1075 个待归并，见 tracker 技术债）—— 在归并完成前再往里加只会让账更难还。P5 迁入 atlantis 时统一处理。",
+  "_note_no_concept": "⛔ 本轮【不产 concept】。concept 是跨题库共享轴，而它现在本身就是烂账（1075 个待归并）—— 在归并完成前再往里加只会让账更难还。P5 迁入 atlantis 时统一处理。",
   "pass_score": 600,
   "exam_questions": 100,
   "group_size": 100,

@@ -1,7 +1,7 @@
 -- Melete Schema (MySQL 8 / TiDB 双兼容)
 --
 -- 四条纪律：无外键 · 不假设 id 连续 · 批量分批提交 · 复杂 JSON 查询放应用层
--- 理由见 CLAUDE.md「MySQL ↔ TiDB 四条纪律」。
+-- 原因：TiDB 的外键会静默不级联；自增 id 各节点分段发放；单事务默认 100 MB 上限。
 --
 -- 本文件是 pipeline（load.py）与 backend（Go）的**共同契约**，
 -- 所以不放在其中任何一方目录下。
@@ -210,7 +210,6 @@ CREATE TABLE IF NOT EXISTS account (
 
 -- 会话（refresh token 的载体）。
 --
--- 对齐 geass-v3 的 user_sessions（见其 internal/auth/DECISIONS.md）：
 -- **refresh 不做成 JWT，而是落库为一行**。理由是 JWT 一旦签出就无法撤回，
 -- 而 refresh 的生命周期以月计 —— 必须能吊销（登出、换设备、密码泄漏）。
 -- 吊销 = 把 is_valid 置 0，不需要黑名单机制。
@@ -284,7 +283,6 @@ CREATE TABLE IF NOT EXISTS bookmark (
 --
 -- ⚠️ 本段显式钉死 COLLATE，而上方的旧表【没有】—— 这个不一致是有意留下的：
 --    给存量表改排序规则是一次影响数据的 DDL，不属于建表这一步。
---    ⛔ 那条债仍开着，见 docs/tasks/active/tracker.md 的 COLLATE 条目。
 -- ═══════════════════════════════════════════════════════════════════
 -- ── users（§22.2 定稿，15 列，⛔ 无 role）──────────────────────────
 CREATE TABLE IF NOT EXISTS users (

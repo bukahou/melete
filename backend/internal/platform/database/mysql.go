@@ -1,6 +1,6 @@
 // Package database 提供数据库连接。
 //
-// 纪律（见 CLAUDE.md「MySQL ↔ TiDB 四条纪律」）：
+// MySQL ↔ TiDB 四条纪律：
 // 无外键 · 不假设 id 连续 · 批量分批提交 · 复杂 JSON 查询放应用层。
 package database
 

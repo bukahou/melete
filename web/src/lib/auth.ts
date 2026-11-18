@@ -1,14 +1,14 @@
 /**
  * web 端的认证 —— **token 由 melete-api 签发，本层只负责持有与转发**。
  *
- * 这是 2026-09-02 的架构变更（见 docs/design/active/deployment.md §0）：
+ * 为什么由 API 签发：
  * iOS 端的加入让 API 必须成为 token 的唯一签发方，web 与 iOS 从此是平等客户端。
  * 原先 web 自己验 id_token、自己签会话 JWT 的做法已废止 ——
  * 那套逻辑无法被原生 App 复用，且导致 API 只能「相信 web 说的账号是谁」。
  *
  * 存储位置按平台取最佳实践（token 本身两端相同）：
  *   web  → httpOnly cookie：SSR 要在服务端读到它做登录墙，且 XSS 偷不走
- *   iOS  → Keychain（见 geass-mobile/CLAUDE.md）
+ *   iOS  → Keychain
  *
  * ⭐ 2026-09-08 起本文件只剩认证配置（OIDC + 调试账号的密码登录开关）。cookie 的读、写、清、刷新、过期判定
  *   全部搬到 lib/session.ts（门面）+ lib/session-core.ts（纯逻辑）——

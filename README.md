@@ -24,7 +24,6 @@ python3 pipeline/core/ingest.py <bank-slug>
 一个"合理的默认值"会让脚本把题库写回本仓，正是这个边界要防的事。
 
 三道闸：无默认值的环境变量 · `.gitignore` 的 `/data/` · CI 断言 `data/` 为空。
-详见 `CLAUDE.md` 的「边界」一节。
 
 ---
 
@@ -34,22 +33,9 @@ python3 pipeline/core/ingest.py <bank-slug>
 pipeline/
   core/                 通用管道（AI 富化 / 导入），零题库特有逻辑
   banks/<slug>/         题库特有解析器
-data/<slug>/            题库中间产物（故意纳入 git，供 review 与 diff）
 backend/                Go 服务
 web/                    Next.js 前端
-docs/
-  design/active/        架构设计 · 数据管道规格
-  tasks/active/         任务进度
 ```
-
-## 文档
-
-| 文档 | 内容 |
-|---|---|
-| `CLAUDE.md` | 安全边界 · 核心设计判断 · 当前状态 —— **动手前先读** |
-| `docs/design/active/architecture.md` | 领域模型 · Schema DDL · 部署 · 被否决的方案 |
-| `docs/design/active/data-pipeline.md` | 三段式管道规格 · 源文件形态 · 质量门禁 |
-| `docs/tasks/active/tracker.md` | 分期任务与进度 |
 
 ## 当前状态
 

@@ -10,7 +10,7 @@ import { Page, Section } from "@/components/Page";
 export const revalidate = 0;
 
 /**
- * 用户管理（P9 #27–#29，设计见 docs/design/active/bank-access.md）。
+ * 用户管理。
  *
  * 三档：普通（公开题库）· 高级（全部题库）· admin（全部 + 管理普通 / 高级）。
  * admin 在这里把普通用户升级为高级、把高级降回普通。
