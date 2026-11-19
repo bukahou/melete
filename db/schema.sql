@@ -120,6 +120,19 @@ CREATE TABLE IF NOT EXISTS choice_i18n (
   KEY idx_choice_i18n_locale (locale)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 逐个选项的点评：这个选项为什么对、为什么错。
+-- 与 explanation 同构（多来源 + 多语言），只是挂在选项上。对错不在这里存 ——
+-- 由 answer_claim 的裁决决定，这里只放原因。
+CREATE TABLE IF NOT EXISTS choice_explanation (
+  choice_id  BIGINT      NOT NULL,
+  source     VARCHAR(32) NOT NULL,   -- ai | editor | user
+  locale     VARCHAR(16) NOT NULL,
+  body       TEXT        NOT NULL,
+  created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (choice_id, source, locale)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 通用 (type, value) 结构，不硬编码 AWS。
 -- bank_id = 0 表示全局标签（concept 类，跨题库共享并链到知识条目）
 --

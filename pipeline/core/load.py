@@ -207,6 +207,29 @@ class Loader:
                       ON DUPLICATE KEY UPDATE body=VALUES(body)""", rows)
         return len(rows)
 
+    # ---- 逐项点评（choice_notes.py merge 的产物）----
+    def upsert_choice_explanations(self, qmap: dict, cmap: dict, qs: list,
+                                   notes: dict, locale: str) -> int:
+        rows, orphan = [], []
+        for q in qs:
+            item = notes.get(q["no"])
+            if not item:
+                continue
+            question_id = qid(qmap, q)
+            for label, body in item["choices"].items():
+                choice_id = cmap.get((question_id, label))
+                if choice_id is None:
+                    orphan.append(f"#{q['no']}{label}")
+                else:
+                    rows.append((choice_id, "ai", locale, body))
+        if orphan:
+            # 点评的选项在库里找不到：素材变过，点评与题面已不对应，要人看
+            print(f"⚠ 逐项点评有 {len(orphan)} 条找不到对应选项，已跳过：{orphan[:8]}")
+        self._exec("""INSERT INTO choice_explanation (choice_id, source, locale, body)
+                      VALUES (%s,%s,%s,%s)
+                      ON DUPLICATE KEY UPDATE body=VALUES(body)""", rows)
+        return len(rows)
+
     # ---- tag ----
     def upsert_tags(self, bank_id: int, qs: list, spec: dict) -> dict:
         """domain / service 是题库私有（bank_id=本题库），concept 全局共享（bank_id=0）。"""
@@ -334,6 +357,33 @@ def bank_visibility(spec: dict) -> str:
     if v not in ("public", "private"):
         sys.exit(f"✗ enrich_spec.json 的 visibility 只能是 public / private，得到 {v!r}")
     return v
+
+
+def load_choice_notes(bank: str) -> dict | None:
+    """choice_notes.json → {"locale", "complete", "items": {题号: 条目}}；没有这个文件返回 None。"""
+    path = bank_dir(bank) / "choice_notes.json"
+    if not path.exists():
+        return None
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    return {"locale": doc["locale"], "complete": doc.get("complete", False),
+            "items": {it["no"]: it for it in doc["items"]}}
+
+
+def apply_dispute_notes(qs: list, notes: dict) -> int:
+    """
+    有逐项点评的题，AI 裁决的 rationale 换成分歧说明（没有分歧就是 None）。
+    各选项的分析已经在 choice_explanation 里，rationale 只讲为什么与题库标注或社区投票不同。
+    """
+    n = 0
+    for q in qs:
+        item = notes.get(q["no"])
+        if not item:
+            continue
+        for c in q["claims"]:
+            if c["source"] == "ai_verdict":
+                c["rationale"] = item["dispute"]
+                n += 1
+    return n
 
 
 def qid(qmap: dict, q: dict) -> int:
@@ -563,9 +613,16 @@ def main() -> None:
         # 卷子（question.session）的显示名：session 是给机器的键（2026r08），人要看「令和8年度」
         "sessionLabels": spec.get("session_labels"),
     }, display_locale, bank_visibility(spec))
+    choice_notes = load_choice_notes(args.bank)
+    if choice_notes:
+        apply_dispute_notes(qs, choice_notes["items"])
     qmap = ld.upsert_questions(bank_id, qs)
     n_ch = ld.upsert_choices(qmap, qs)
     n_cl = ld.upsert_claims(qmap, qs)
+    n_notes = 0
+    if choice_notes:
+        n_notes = ld.upsert_choice_explanations(qmap, ld.choice_ids(qmap), qs,
+                                                choice_notes["items"], choice_notes["locale"])
     # 解析的语言 ≠ 题库的语言：SAP-C02 题面是英文，但富化会话按学习者语言写中文解析。
     # 由 spec 声明 explanation_locale，缺省才退回题库 locale（SAA 中文题库两者相同）。
     n_ex = ld.upsert_explanations(qmap, qs, spec.get("explanation_locale") or doc["bank"].get("locale", "zh"))
@@ -604,6 +661,12 @@ def main() -> None:
     print(f"✓ 选项      {n_ch}")
     print(f"✓ 答案主张  {n_cl}")
     print(f"✓ 解析      {n_ex}")
+    if choice_notes is None:
+        print("· 逐项点评  没有 choice_notes.json，AI 裁决理由保持富化时的整段原文")
+    else:
+        flag = "" if choice_notes["complete"] else "   ⚠ 部分点评（complete=false），其余题保持原来的整段理由"
+        print(f"✓ 逐项点评  {len(choice_notes['items'])} 题 · 选项 {n_notes}"
+              f"（{choice_notes['locale']}）{flag}")
     # ⚠️ 只报【本题库的】标签数。tmap 里还有全部全局 concept（bank_id=0，
     # 目前 1075 个），把它算进来会打印出「标签 1100」这种数字 ——
     # 而 IPA 只有 25 个。⛔ 一个会让人以为出了事的数字本身就是缺陷：
