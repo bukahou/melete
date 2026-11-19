@@ -150,6 +150,21 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ---------------------------------------------------------
+  # 管道的单元测试：只用标准库，不连库、不读题库数据
+  # ---------------------------------------------------------
+  pipeline:
+    name: pipeline unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test
+        run: python3 -m unittest discover -s pipeline/tests -v
+
+  # ---------------------------------------------------------
   # Job 3: 前端 —— lint + build
   # ---------------------------------------------------------
   # ⭐ 本仓前端【没有】NEXT_PUBLIC_*（API 地址只在服务端用，走 ConfigMap
