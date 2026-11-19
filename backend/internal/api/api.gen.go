@@ -117,6 +117,27 @@ func (e BankDetailVisibility) Valid() bool {
 	}
 }
 
+// Defines values for ChoiceExplanationSource.
+const (
+	ChoiceExplanationSourceAi     ChoiceExplanationSource = "ai"
+	ChoiceExplanationSourceEditor ChoiceExplanationSource = "editor"
+	ChoiceExplanationSourceUser   ChoiceExplanationSource = "user"
+)
+
+// Valid indicates whether the value is a known member of the ChoiceExplanationSource enum.
+func (e ChoiceExplanationSource) Valid() bool {
+	switch e {
+	case ChoiceExplanationSourceAi:
+		return true
+	case ChoiceExplanationSourceEditor:
+		return true
+	case ChoiceExplanationSourceUser:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CurrentBankSource.
 const (
 	Chosen CurrentBankSource = "chosen"
@@ -212,19 +233,19 @@ func (e DrillContextStatus) Valid() bool {
 
 // Defines values for ExplanationSource.
 const (
-	Ai     ExplanationSource = "ai"
-	Editor ExplanationSource = "editor"
-	User   ExplanationSource = "user"
+	ExplanationSourceAi     ExplanationSource = "ai"
+	ExplanationSourceEditor ExplanationSource = "editor"
+	ExplanationSourceUser   ExplanationSource = "user"
 )
 
 // Valid indicates whether the value is a known member of the ExplanationSource enum.
 func (e ExplanationSource) Valid() bool {
 	switch e {
-	case Ai:
+	case ExplanationSourceAi:
 		return true
-	case Editor:
+	case ExplanationSourceEditor:
 		return true
-	case User:
+	case ExplanationSourceUser:
 		return true
 	default:
 		return false
@@ -527,7 +548,8 @@ type AnswerClaim struct {
 	// Meta 如社区投票分布 {"A":80,"C":20}
 	Meta *map[string]interface{} `json:"meta,omitempty"`
 
-	// Rationale 为什么；AI 裁决必有
+	// Rationale 为什么。AI 裁决只在与题库标注或社区投票不一致时才有，讲的是不一致的原因；
+	// 各选项为什么对或错见 Choice.explanation。
 	Rationale *string           `json:"rationale,omitempty"`
 	Source    AnswerClaimSource `json:"source"`
 }
@@ -705,14 +727,35 @@ type BankStats struct {
 
 // Choice defines model for Choice.
 type Choice struct {
-	Body  string `json:"body"`
-	Label string `json:"label"`
+	Body string `json:"body"`
+
+	// Explanation 这个选项为什么对、或为什么错，一两句纯文本。对错本身由 claims 里的裁决决定，这里只讲原因。
+	// 还没有点评的题不带这个字段。
+	Explanation *ChoiceExplanation `json:"explanation,omitempty"`
+	Label       string             `json:"label"`
 
 	// Localized body 是否为请求语言的译文。**false 表示回退到了源语言原文**，
 	// 界面必须把这件事显示出来，⛔ 不静默回退。
 	// 选项与题干各自独立（可能只补了题干），所以各带各的标记。
 	Localized *bool `json:"localized,omitempty"`
 }
+
+// ChoiceExplanation 这个选项为什么对、或为什么错，一两句纯文本。对错本身由 claims 里的裁决决定，这里只讲原因。
+// 还没有点评的题不带这个字段。
+type ChoiceExplanation struct {
+	Body string `json:"body"`
+
+	// Locale body 实际的语言
+	Locale string `json:"locale"`
+
+	// Localized body 是否为请求语言。**false 表示没有请求语言的版本，回退到了另一种语言**，
+	// 界面要把这件事显示出来，⛔ 不静默回退。
+	Localized bool                    `json:"localized"`
+	Source    ChoiceExplanationSource `json:"source"`
+}
+
+// ChoiceExplanationSource defines model for ChoiceExplanation.Source.
+type ChoiceExplanationSource string
 
 // Credentials defines model for Credentials.
 type Credentials struct {

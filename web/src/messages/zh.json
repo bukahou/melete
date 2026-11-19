@@ -319,5 +319,8 @@
     "admin": "用户管理",
     "settings": "设置",
     "logout": "登出"
+  },
+  "choices": {
+    "notesFallback": "选项点评暂无该语言版本，以下为原文"
   }
 }

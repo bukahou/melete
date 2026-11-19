@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════════════════════════
--- 题库权限：三档用户 + 公开 / 私有题库（设计见 docs/design/active/bank-access.md，P9 裁决 #27–#30）
+-- 题库权限：三档用户 + 公开 / 私有题库
 --
 -- ## bank.visibility
 --   public  任何登录用户都能看
@@ -12,7 +12,7 @@
 --   超级用户（= 直接操作数据库的人）写库时留空。
 --
 -- ⚠️ 迁移完成的那一刻所有题库都是 private —— 旧镜像不读这一列，线上不受影响；
---    新镜像上线前先导入 visibility（IPA → public），见设计文档 §7 的上线顺序。
+--    新镜像上线前先导入 visibility（IPA → public）。
 -- ═══════════════════════════════════════════════════════════════════
 
 ALTER TABLE bank ADD COLUMN visibility VARCHAR(16) NOT NULL DEFAULT 'private';

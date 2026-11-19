@@ -350,7 +350,7 @@ def cmd_next(bank: str, count: int) -> None:
         print(f"{'='*70}\n写入目标: data/{bank}/enriched/{shard_name(r)}\n{'='*70}\n")
         if spec.get("translation"):
             print(f"⚠ 本题库要求每题附 translation（{spec['translation']['locale']}）："
-                  f"{{'stem': 题干译文, 'choices': {{label: 选项译文}}}}，见 enrich_spec.md「翻译」\n")
+                  f"{{'stem': 题干译文, 'choices': {{label: 选项译文}}}}\n")
         if vocab := spec.get("topic_vocabulary"):
             field = topic_field_of(spec)
             print(f"⛔ 本题库的 {field} 是【封闭词表】，只能从下面挑，不得新造。\n")
@@ -398,8 +398,6 @@ def cmd_write(bank: str, src: Path) -> None:
       · 转义问题消失
       · 自动路由到正确的分片文件，不用自己算题号区间
       · **写盘前先校验**，坏数据根本不会落地（而非写完再 check 才发现）
-
-    格式示例见 pipeline/banks/<bank>/enrich_spec.md。
 
     注：用 exec 载入文件。这是本地开发工具，输入文件由使用者自己生成，
     信任级别等同于直接 `python3 that_file.py`。

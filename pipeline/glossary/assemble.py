@@ -6,7 +6,7 @@
 
     python3 pipeline/glossary/assemble.py <work-dir>
 
-<work-dir> 的布局（三遍都由子 agent 产出，规则见同目录 pass3_rules.md 与各遍的提示词）：
+<work-dir> 的布局（三遍都由子 agent 产出）：
     pass1_out/<bank>-NN.json   第 1 遍：逐题抽出的术语（原始写法）  → 出题关联
     pass2_out/<bank>.json      第 2 遍：原始写法 → 正式名称（null = 剔除）+ 分组
     pass3_out/<bank>-NN.json   第 3 遍：每个正式名称写一次 名称 / 读音 / 释义

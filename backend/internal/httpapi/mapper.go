@@ -116,6 +116,16 @@ func toAPIReference(r *question.Reference) *api.Reference {
 	return &api.Reference{Answer: r.Answer, Source: api.ReferenceSource(r.Source)}
 }
 
+func toAPIChoiceExplanation(e *question.ChoiceExplanation) *api.ChoiceExplanation {
+	if e == nil {
+		return nil
+	}
+	return &api.ChoiceExplanation{
+		Source: api.ChoiceExplanationSource(e.Source), Locale: e.Locale,
+		Body: e.Body, Localized: e.Localized,
+	}
+}
+
 func toAPIDetail(d *question.Detail) api.QuestionDetail {
 	out := api.QuestionDetail{
 		Id: d.ID, ExternalNo: d.ExternalNo, Stem: d.Stem,
@@ -130,7 +140,10 @@ func toAPIDetail(d *question.Detail) api.QuestionDetail {
 		Tags:         make([]api.Tag, 0, len(d.Tags)),
 	}
 	for _, c := range d.Choices {
-		out.Choices = append(out.Choices, api.Choice{Label: c.Label, Body: c.Body, Localized: &c.Localized})
+		out.Choices = append(out.Choices, api.Choice{
+			Label: c.Label, Body: c.Body, Localized: &c.Localized,
+			Explanation: toAPIChoiceExplanation(c.Explanation),
+		})
 	}
 	for _, c := range d.Claims {
 		out.Claims = append(out.Claims, toAPIClaim(c))

@@ -1,6 +1,6 @@
 // Package access 是「谁能看哪个题库、谁能改谁的档位」的唯一归属地（P9 裁决 #27–#30）。
 //
-// 设计见 docs/design/active/bank-access.md。三档用户：
+// 三档用户：
 //
 //	普通   注册即是，user_permissions 空集        → 只看公开题库
 //	高级   content:private                       → 公开 + 全部私有题库

@@ -12,7 +12,7 @@ info:
 servers:
   - url: /api/v1
 
-# 认证：Bearer access token（见 docs/design/active/deployment.md §0）。
+# 认证：Bearer access token。
 #
 # 本 API 对公网暴露（web 与 iOS 都是平等客户端），因此不存在「可信的调用方」——
 # 曾有过的服务间共享密钥已移除：原生 App 反编译即得密钥，它挡不住任何人。
@@ -1553,6 +1553,27 @@ components:
             body 是否为请求语言的译文。**false 表示回退到了源语言原文**，
             界面必须把这件事显示出来，⛔ 不静默回退。
             选项与题干各自独立（可能只补了题干），所以各带各的标记。
+        explanation:
+          $ref: "#/components/schemas/ChoiceExplanation"
+
+    ChoiceExplanation:
+      type: object
+      description: |
+        这个选项为什么对、或为什么错，一两句纯文本。对错本身由 claims 里的裁决决定，这里只讲原因。
+        还没有点评的题不带这个字段。
+      required: [source, locale, body, localized]
+      properties:
+        source: { type: string, enum: [ai, editor, user] }
+        locale:
+          type: string
+          description: body 实际的语言
+          example: zh
+        body: { type: string }
+        localized:
+          type: boolean
+          description: |
+            body 是否为请求语言。**false 表示没有请求语言的版本，回退到了另一种语言**，
+            界面要把这件事显示出来，⛔ 不静默回退。
 
     AnswerClaim:
       type: object
@@ -1576,7 +1597,9 @@ components:
           description: 无则省略
         rationale:
           type: string
-          description: 为什么；AI 裁决必有
+          description: |
+            为什么。AI 裁决只在与题库标注或社区投票不一致时才有，讲的是不一致的原因；
+            各选项为什么对或错见 Choice.explanation。
         meta:
           type: object
           description: 如社区投票分布 {"A":80,"C":20}

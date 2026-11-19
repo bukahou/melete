@@ -20,7 +20,7 @@ export async function generateMetadata() {
  * ⭐ 资料来自第三方账号、每次登录同步；Melete 里 ⛔ 没有修改资料的入口（P9 #25）。
  * ⭐ 登出只在这里（这一页唯一的实底按钮）—— 侧栏图标与设置页底部的登出已去掉，同一件事只留一个地方。
  * ⚠️ 登出后能否「换账号」取决于上游：现在只登出 Melete（并联动第三方的 end_session）；
- *    「换个账号登录」需要 akasha 的 oidcrp 支持 prompt=select_account，记在 tracker。
+ *    「换个账号登录」需要 akasha 的 oidcrp 支持 prompt=select_account。
  */
 const NOTICE: Record<string, { key: string; tone: "ok" | "warn" }> = {
   "sess-ok": { key: "noticeSessOk", tone: "ok" },

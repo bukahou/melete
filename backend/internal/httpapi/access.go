@@ -10,7 +10,7 @@ import (
 	"github.com/bukahou/melete/backend/internal/userid"
 )
 
-// 题库权限在接口层的落点（P9 #27–#30，设计见 docs/design/active/bank-access.md）。
+// 题库权限在接口层的落点。
 //
 // ⭐ 每个和题库有关的端点第一步都是 viewer：谁在看、能看哪些题库。之后只用它返回的 Scope 判断。
 // ⭐ 看不到 = 不存在：一律回 404（与「真的不存在」同一句话），⛔ 不回 403 —— 普通用户连「有这个题库」都无从得知。
