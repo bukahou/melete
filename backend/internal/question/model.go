@@ -41,6 +41,18 @@ type Choice struct {
 	// Localized 同 Summary.Localized —— 选项的译文可能与题干不同步
 	// （比如译文只补了题干），所以各自带各自的标记。
 	Localized bool `db:"localized"`
+	// Explanation 是这个选项为什么对、为什么错的点评；还没有点评时为 nil。
+	Explanation *ChoiceExplanation `db:"-"`
+}
+
+// ChoiceExplanation 是一个选项的点评。对错由 Claim 决定，这里只有原因。
+type ChoiceExplanation struct {
+	Source string
+	Locale string
+	Body   string
+	// Localized：Body 是否为请求的语言。没有请求语言的版本时回退到别的语言，
+	// 此时为 false，界面要标出来。请求没有指定语言时为 true（无所谓回退）。
+	Localized bool
 }
 
 // Claim 是一条**带来源的答案主张**。

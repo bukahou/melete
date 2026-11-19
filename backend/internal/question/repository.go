@@ -346,6 +346,9 @@ func (r *mysqlRepository) FindQuestionByID(ctx context.Context, id int64, locale
 	if d.Choices, err = r.loadChoices(ctx, id, locale); err != nil {
 		return nil, err
 	}
+	if err = r.attachChoiceExplanations(ctx, id, locale, d.SourceLocale, d.Choices); err != nil {
+		return nil, err
+	}
 	if d.Claims, err = r.loadClaims(ctx, id); err != nil {
 		return nil, err
 	}
@@ -412,6 +415,80 @@ func (r *mysqlRepository) loadChoices(ctx context.Context, id int64, locale stri
 		return nil, fmt.Errorf("查询题目 %d 的选项: %w", id, err)
 	}
 	return out, nil
+}
+
+// choiceExplanationRow 是 choice_explanation 的一行，带上所属选项的字母。
+type choiceExplanationRow struct {
+	Label  string `db:"label"`
+	Source string `db:"source"`
+	Locale string `db:"locale"`
+	Body   string `db:"body"`
+}
+
+// attachChoiceExplanations 给每个选项挂上点评。同一选项有多条时按 pickChoiceExplanations 的规则选一条。
+func (r *mysqlRepository) attachChoiceExplanations(ctx context.Context, id int64, locale, sourceLocale string, choices []Choice) error {
+	rows := []choiceExplanationRow{}
+	err := r.db.SelectContext(ctx, &rows, `
+		SELECT c.label, ce.source, ce.locale, ce.body
+		FROM choice c JOIN choice_explanation ce ON ce.choice_id = c.id
+		WHERE c.question_id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("查询题目 %d 的选项点评: %w", id, err)
+	}
+	picked := pickChoiceExplanations(rows, locale, sourceLocale)
+	for i := range choices {
+		if e, ok := picked[choices[i].Label]; ok {
+			choices[i].Explanation = &e
+		}
+	}
+	return nil
+}
+
+// explanationSourceRank 是多个来源并存时的优先顺序：人工订正优先于 AI，用户自己的笔记不替代公共点评。
+var explanationSourceRank = map[string]int{"editor": 0, "ai": 1, "user": 2}
+
+// pickChoiceExplanations 为每个选项选出一条点评。语言：请求的语言 → 题库的语言 → 其他；
+// 同一语言里按来源优先级。locale 为空表示请求没有指定语言，选到哪种语言都不算回退。
+func pickChoiceExplanations(rows []choiceExplanationRow, locale, sourceLocale string) map[string]ChoiceExplanation {
+	rank := func(row choiceExplanationRow) (int, int, string) {
+		lang := 2
+		switch {
+		case locale != "" && row.Locale == locale:
+			lang = 0
+		case row.Locale == sourceLocale:
+			lang = 1
+		}
+		src, ok := explanationSourceRank[row.Source]
+		if !ok {
+			src = len(explanationSourceRank)
+		}
+		return lang, src, row.Locale
+	}
+	better := func(a, b choiceExplanationRow) bool {
+		al, as, ac := rank(a)
+		bl, bs, bc := rank(b)
+		if al != bl {
+			return al < bl
+		}
+		if as != bs {
+			return as < bs
+		}
+		return ac < bc
+	}
+	best := map[string]choiceExplanationRow{}
+	for _, row := range rows {
+		if cur, ok := best[row.Label]; !ok || better(row, cur) {
+			best[row.Label] = row
+		}
+	}
+	out := make(map[string]ChoiceExplanation, len(best))
+	for label, row := range best {
+		out[label] = ChoiceExplanation{
+			Source: row.Source, Locale: row.Locale, Body: row.Body,
+			Localized: locale == "" || row.Locale == locale,
+		}
+	}
+	return out
 }
 
 // loadClaims 的排序刻意固定：题库标注 → 社区投票 → AI 裁决 → 用户笔记。
