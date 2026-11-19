@@ -62,7 +62,7 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
         </div>
       )}
 
-      <QuestionBody stem={q.stem} choices={q.choices} pickCount={q.pickCount} selected={[]} />
+      <QuestionBody stem={q.stem} choices={q.choices} pickCount={q.pickCount} selected={[]} explain />
 
       <ClaimsPanel claims={q.claims} />
 

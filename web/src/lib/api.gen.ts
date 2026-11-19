@@ -1279,6 +1279,26 @@ export interface components {
              *     选项与题干各自独立（可能只补了题干），所以各带各的标记。
              */
             localized?: boolean;
+            explanation?: components["schemas"]["ChoiceExplanation"];
+        };
+        /**
+         * @description 这个选项为什么对、或为什么错，一两句纯文本。对错本身由 claims 里的裁决决定，这里只讲原因。
+         *     还没有点评的题不带这个字段。
+         */
+        ChoiceExplanation: {
+            /** @enum {string} */
+            source: "ai" | "editor" | "user";
+            /**
+             * @description body 实际的语言
+             * @example zh
+             */
+            locale: string;
+            body: string;
+            /**
+             * @description body 是否为请求语言。**false 表示没有请求语言的版本，回退到了另一种语言**，
+             *     界面要把这件事显示出来，⛔ 不静默回退。
+             */
+            localized: boolean;
         };
         /**
          * @description 一条带来源的答案主张。同一道题可以有多条，**故意不做合并**。
@@ -1295,7 +1315,10 @@ export interface components {
             answer: string;
             /** @description 无则省略 */
             confidence?: number;
-            /** @description 为什么；AI 裁决必有 */
+            /**
+             * @description 为什么。AI 裁决只在与题库标注或社区投票不一致时才有，讲的是不一致的原因；
+             *     各选项为什么对或错见 Choice.explanation。
+             */
             rationale?: string;
             /** @description 如社区投票分布 {"A":80,"C":20} */
             meta?: {
