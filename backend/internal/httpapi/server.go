@@ -441,6 +441,8 @@ func (s *Server) GetMyProgress(ctx context.Context, req api.GetMyProgressRequest
 		UnsureCount: p.UnsureCount, AttemptCount: p.AttemptCount,
 		AttemptCorrectCount: p.AttemptCorrectCount,
 		DueCount:            p.DueCount,
+		Recent:              toAPIRecentAccuracy(p.Recent),
+		PassGrade:           toAPIPassGrade(p.PassGrade),
 	}
 	if p.LastActiveAt.Valid {
 		t := p.LastActiveAt.Time
@@ -474,6 +476,7 @@ func (s *Server) GetMyTagStats(ctx context.Context, req api.GetMyTagStatsRequest
 		item := api.TagStat{
 			TagId: st.TagID, Type: api.TagStatType(st.Type), Value: st.Value,
 			Total: st.Total, Correct: st.Correct, Rate: st.Rate(),
+			Grade: toAPIGrade(st.Grade),
 		}
 		if st.I18n.Valid && st.I18n.String != "" {
 			m := map[string]string{}

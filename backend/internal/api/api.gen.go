@@ -252,6 +252,30 @@ func (e ExplanationSource) Valid() bool {
 	}
 }
 
+// Defines values for Grade.
+const (
+	GradeA Grade = "A"
+	GradeB Grade = "B"
+	GradeC Grade = "C"
+	GradeD Grade = "D"
+)
+
+// Valid indicates whether the value is a known member of the Grade enum.
+func (e Grade) Valid() bool {
+	switch e {
+	case GradeA:
+		return true
+	case GradeB:
+		return true
+	case GradeC:
+		return true
+	case GradeD:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QuestionDetailKind.
 const (
 	QuestionDetailKindMulti  QuestionDetailKind = "multi"
@@ -668,7 +692,7 @@ type BankDetailVisibility string
 // 标签轴叫什么（AWS 是「服务」、LPIC 是「命令与工具」）、考纲权重、及格线，
 // 全部从这里读。换一个题库只有这个对象不同，页面代码零改动。
 type BankMeta struct {
-	// ExamQuestions 一场正式考试的题数。作答不足这个数之前不给合格判断
+	// ExamQuestions 一场正式考试的题数。做过的题不满这个数之前不给合格等级（见 PassGrade.remaining）
 	ExamQuestions *int `json:"examQuestions,omitempty"`
 
 	// GroupSize 顺序练习每组多少题
@@ -680,7 +704,8 @@ type BankMeta struct {
 	// PassScore 官方及格分（无则不显示及格线）
 	PassScore *int `json:"passScore,omitempty"`
 
-	// SafetyRate 合格判断的安全线（正确率 %）= 及格线换算成正确率 + 10 个点。无则不做合格判断
+	// SafetyRate 合格判断的安全线（正确率 %），与 PassGrade 的 A 档下限是同一个数：
+	// 题库显式指定的值，否则 = 及格线换算成正确率 + 10 个点（封顶 100）。没有官方及格线时缺省
 	SafetyRate *int `json:"safetyRate,omitempty"`
 
 	// SessionLabels session → { locale → 显示名 }（如 2026r08 → 令和8年度）。没有则显示 session 原文
@@ -887,6 +912,23 @@ type FocusCursor struct {
 	Total int `json:"total"`
 }
 
+// Grade 合格等级。界线由后端按题库的官方及格线算出（各档范围见 PassGrade.bands），客户端只显示，⛔ 不自己按阈值分档。
+// A ≥ 安全线 · B ≥ 合格线 · C ≥ 合格线 − 15 个点 · D 其余。
+type Grade string
+
+// GradeBand defines model for GradeBand.
+type GradeBand struct {
+	// Grade 合格等级。界线由后端按题库的官方及格线算出（各档范围见 PassGrade.bands），客户端只显示，⛔ 不自己按阈值分档。
+	// A ≥ 安全线 · B ≥ 合格线 · C ≥ 合格线 − 15 个点 · D 其余。
+	Grade Grade `json:"grade"`
+
+	// MaxRate 本档正确率上限（不含）；A 缺省
+	MaxRate *int `json:"maxRate,omitempty"`
+
+	// MinRate 本档正确率下限（含）；D 为 0
+	MinRate int `json:"minRate"`
+}
+
 // MyAccess defines model for MyAccess.
 type MyAccess struct {
 	// Tier 普通 · 高级 · admin（P9
@@ -917,6 +959,21 @@ type Overview struct {
 
 	// TodayCount 今天的作答次数
 	TodayCount int `json:"todayCount"`
+}
+
+// PassGrade 整体的合格等级：按当前掌握率（correctCount / seenCount，每题只看最近一次）分档。
+// 题库没有官方及格线时整个对象缺省。
+// 做过的题不满一场正式考试的题数之前不给等级：grade 缺省，remaining 是还要再做几道。
+type PassGrade struct {
+	// Bands 本题库四档的范围（A → D），界面「等级说明」直接渲染
+	Bands []GradeBand `json:"bands"`
+
+	// Grade 合格等级。界线由后端按题库的官方及格线算出（各档范围见 PassGrade.bands），客户端只显示，⛔ 不自己按阈值分档。
+	// A ≥ 安全线 · B ≥ 合格线 · C ≥ 合格线 − 15 个点 · D 其余。
+	Grade *Grade `json:"grade,omitempty"`
+
+	// Remaining 还要再做几道（去重）才给等级；0 表示 grade 已给出
+	Remaining int `json:"remaining"`
 }
 
 // PasswordChanged defines model for PasswordChanged.
@@ -963,8 +1020,18 @@ type Progress struct {
 	DueCount     int        `json:"dueCount"`
 	LastActiveAt *time.Time `json:"lastActiveAt,omitempty"`
 
+	// PassGrade 整体的合格等级：按当前掌握率（correctCount / seenCount，每题只看最近一次）分档。
+	// 题库没有官方及格线时整个对象缺省。
+	// 做过的题不满一场正式考试的题数之前不给等级：grade 缺省，remaining 是还要再做几道。
+	PassGrade *PassGrade `json:"passGrade,omitempty"`
+
 	// QuestionCount 题库总题数
 	QuestionCount int `json:"questionCount"`
+
+	// Recent 近期正确率：窗口内的每次作答都算（含重做），回答「最近练得怎么样」。
+	// 窗口 = 请求时刻往前 windowDays × 24 小时（滚动），只统计 bank 参数指定的题库。
+	// ⚠️ 与合格等级用的当前掌握率（每题只看最近一次）是两个口径。
+	Recent RecentAccuracy `json:"recent"`
 
 	// SeenCount 做过的题数（去重）
 	SeenCount int `json:"seenCount"`
@@ -1080,6 +1147,20 @@ type QuestionSummaryKind string
 type RatingInput struct {
 	// Rating FSRS 标准四键自评 1=Again 2=Hard 3=Good 4=Easy
 	Rating int `json:"rating"`
+}
+
+// RecentAccuracy 近期正确率：窗口内的每次作答都算（含重做），回答「最近练得怎么样」。
+// 窗口 = 请求时刻往前 windowDays × 24 小时（滚动），只统计 bank 参数指定的题库。
+// ⚠️ 与合格等级用的当前掌握率（每题只看最近一次）是两个口径。
+type RecentAccuracy struct {
+	// AttemptCount 窗口内的作答次数（含重做）；没有作答时为 0
+	AttemptCount int `json:"attemptCount"`
+
+	// Rate 窗口内的正确率（0–100，四舍五入）。作答次数少于后端的门槛时缺省，界面显示「—」
+	Rate *int `json:"rate,omitempty"`
+
+	// WindowDays 窗口天数，界面显示「近 N 天」
+	WindowDays int `json:"windowDays"`
 }
 
 // Reference 判对错用的参考答案。优先级 ai_verdict > community_vote > bank_label ——
@@ -1248,10 +1329,15 @@ type Tag struct {
 // TagType defines model for Tag.Type.
 type TagType string
 
-// TagStat defines model for TagStat.
+// TagStat grade 是本标签的合格等级（与 PassGrade 同一套界线）。只有考纲域（type = domain）才有，
+// 且要做过的题够多（后端的门槛）、题库有官方及格线；否则缺省，界面显示「—」。
 type TagStat struct {
-	Correct int                `json:"correct"`
-	I18n    *map[string]string `json:"i18n,omitempty"`
+	Correct int `json:"correct"`
+
+	// Grade 合格等级。界线由后端按题库的官方及格线算出（各档范围见 PassGrade.bands），客户端只显示，⛔ 不自己按阈值分档。
+	// A ≥ 安全线 · B ≥ 合格线 · C ≥ 合格线 − 15 个点 · D 其余。
+	Grade *Grade             `json:"grade,omitempty"`
+	I18n  *map[string]string `json:"i18n,omitempty"`
 
 	// Rate 正确率 0-100
 	Rate  float32 `json:"rate"`

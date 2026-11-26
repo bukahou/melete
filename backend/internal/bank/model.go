@@ -9,8 +9,9 @@ type Bank struct {
 	Description *string `db:"description"`
 	Locale      string  `db:"locale"`
 	Kind        string  `db:"kind"`
-	// Meta 是题库自描述的展示元数据（标签轴名 / 考纲权重 / 及格线），原样透传给 API。
-	// 领域层不解析它：这些词只有前端要用，后端不该认识「考纲域」。
+	// Meta 是题库自描述的展示元数据（标签轴名 / 考纲权重 / 及格线），透传给 API。
+	// 领域层只解析其中的考试参数（见 exam.go，合格判断要用）；其余的词只有前端要用，
+	// 后端不该认识「考纲域」。
 	Meta *string `db:"meta"`
 	// Visibility 是 public / private（P9 #27 #30）。能不能看由 access.Scope 判断，⛔ 不在这里判断。
 	Visibility string `db:"visibility"`
