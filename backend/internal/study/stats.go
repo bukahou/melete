@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bukahou/melete/backend/internal/userid"
 	"strings"
 	"time"
+
+	"github.com/bukahou/melete/backend/internal/passgrade"
+	"github.com/bukahou/melete/backend/internal/userid"
 )
 
 // Progress 是一个账号在某题库上的总体进度。
@@ -25,6 +27,10 @@ type Progress struct {
 	// DueCount 已到期、等着复习的题数（FSRS）。⛔ 不含从没做过的题。
 	DueCount     int          `db:"due_count"`
 	LastActiveAt sql.NullTime `db:"last_active_at"`
+	// Recent 是近期正确率（窗口内每次作答都算）。
+	Recent RecentAccuracy `db:"-"`
+	// PassGrade 是整体的合格等级（当前掌握率分档）；nil 表示题库没有官方及格线。
+	PassGrade *passgrade.Judgement `db:"-"`
 }
 
 // TagStat 是某个标签下的正确率。
@@ -35,6 +41,8 @@ type TagStat struct {
 	I18n    sql.NullString `db:"i18n"`
 	Total   int            `db:"total"`
 	Correct int            `db:"correct"`
+	// Grade 只有考纲域才有，且要做过的题够多、题库有官方及格线（见 passgrade.DomainGrade）。
+	Grade *passgrade.Grade `db:"-"`
 }
 
 // Resume 是「继续学习」的两条轨道。两条都从 attempt 推导，不落任何断点状态。
@@ -149,6 +157,21 @@ func (s *service) LoadProgress(ctx context.Context, accountID userid.UserID, slu
 	if err != nil {
 		return nil, fmt.Errorf("统计进度: %w", err)
 	}
+	if p.Recent, err = s.loadRecentAccuracy(ctx, accountID, slug); err != nil {
+		return nil, err
+	}
+	exam, err := s.loadExam(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	scale, ok, err := exam.Scale()
+	if err != nil {
+		return nil, fmt.Errorf("题库 %q: %w", slug, err)
+	}
+	if ok {
+		j := scale.Judge(p.SeenCount, p.CorrectCount, exam.Questions())
+		p.PassGrade = &j
+	}
 	return &p, nil
 }
 
@@ -169,6 +192,23 @@ func (s *service) LoadTagStats(ctx context.Context, accountID userid.UserID, slu
 		accountID, slug, tagType, minAttempts)
 	if err != nil {
 		return nil, fmt.Errorf("统计标签正确率: %w", err)
+	}
+	// 只有考纲域分档：等级回答的是「去考能不能过」，服务、概念这类标签不对应考试的评分单位
+	if tagType != "domain" || len(out) == 0 {
+		return out, nil
+	}
+	exam, err := s.loadExam(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	scale, ok, err := exam.Scale()
+	if err != nil {
+		return nil, fmt.Errorf("题库 %q: %w", slug, err)
+	}
+	if ok {
+		for i := range out {
+			out[i].Grade = scale.DomainGrade(out[i].Correct, out[i].Total)
+		}
 	}
 	return out, nil
 }
