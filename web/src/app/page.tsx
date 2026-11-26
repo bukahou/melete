@@ -9,6 +9,7 @@ import {
   listBanks,
   type Bank,
   type BankDetail,
+  type Grade,
   type Progress,
   type Resume,
 } from "@/lib/api";
@@ -85,52 +86,59 @@ function History({ t, bank, progress }: { t: T; bank: BankDetail; progress: Prog
 }
 
 /**
- * 合格判断（P9 #7 #8 #9）：只看整体一个数，⛔ 不出预测分。
- * 判断用「当前掌握率」（每题只看最近一次）；答满一场考试的题数之前不判断。
+ * 合格判断：显示后端给的等级（Progress.passGrade），⛔ 不在这里按阈值自己分档 —— 网页与 iOS 必须是同一个结论。
+ * 等级按当前掌握率（每题只看最近一次）分；做过的题不满一场考试之前不给，只显示还差几道。
  */
-function PassCheck({ t, bank, progress }: { t: T; bank: BankDetail; progress: Progress }) {
-  const { safetyRate, examQuestions, passScore, maxScore } = bank.meta;
-  const passLine = pct(passScore ?? 0, maxScore ?? 0);
+function PassCheck({ t, progress }: { t: T; progress: Progress }) {
+  const pg = progress.passGrade;
   let body: React.ReactNode;
-  if (safetyRate == null) {
+  if (!pg) {
     body = <p className="text-[0.88rem] text-muted">{t("passNone")}</p>;
+  } else if (!pg.grade) {
+    body = (
+      <div className="flex items-center gap-2 text-[0.92rem]">
+        {t("passYours")}
+        <span className="rounded bg-line-2 px-2 py-0.5 text-[0.8rem] text-muted">—</span>
+        <span className="text-[0.78rem] text-muted">{t("passWaiting", { n: pg.remaining })}</span>
+      </div>
+    );
   } else {
-    const need = Math.max((examQuestions ?? 0) - progress.seenCount, 0);
-    const mastery = pct(progress.correctCount, progress.seenCount);
-    if (need > 0 || mastery == null) {
-      body = (
-        <div className="flex items-center gap-2 text-[0.92rem]">
-          {t("passYours")}
-          <span className="rounded bg-line-2 px-2 py-0.5 text-[0.8rem] text-muted">—</span>
-          <span className="text-[0.78rem] text-muted">{t("passWaiting", { n: need })}</span>
-        </div>
-      );
-    } else {
-      const ok = mastery >= safetyRate;
-      const tone = ok ? "var(--color-ok)" : "var(--color-warn)";
-      body = (
-        <div className="flex flex-wrap items-center gap-2 text-[0.92rem]">
-          {t("passYours")}
-          <span className="rounded-full px-2.5 py-0.5 text-[0.8rem] font-semibold"
-                style={{ color: tone, background: `color-mix(in oklab, ${tone} 12%, transparent)` }}>
-            {ok ? t("passOk") : t("passGap", { gap: safetyRate - mastery })}
-          </span>
-          <span className="text-[0.78rem] text-muted">{t("passMasteryIs", { rate: mastery })}</span>
-        </div>
-      );
-    }
+    const tone = GRADE_TONE[pg.grade];
+    body = (
+      <div className="flex flex-wrap items-center gap-2 text-[0.92rem]">
+        {t("passYours")}
+        <span className="rounded-full px-2.5 py-0.5 text-[0.8rem] font-semibold"
+              style={{ color: tone, background: `color-mix(in oklab, ${tone} 12%, transparent)` }}>
+          {pg.grade}
+        </span>
+        <span className="text-[0.78rem] text-muted">{t(`passGrade_${pg.grade}`)}</span>
+      </div>
+    );
   }
   return (
-    <Link href="/history" className="card group block px-5 py-4"
-          title={passLine != null && safetyRate != null ? t("passSafetyNote", { pass: passLine, line: safetyRate }) : undefined}>
+    <Link href="/history" className="card group block px-5 py-4">
       <CardTitle side={<ChevronRight size={15} className="transition-colors group-hover:text-accent-ink" />}>
         {t("passTitle")}
       </CardTitle>
       <div className="flex min-h-[3.1rem] items-center">{body}</div>
-      {safetyRate != null && <p className="mt-1 text-[0.72rem] text-muted">{t("passSafety", { line: safetyRate })}</p>}
+      {pg && (
+        <p className="mt-1 text-[0.72rem] text-muted tabular-nums">
+          {pg.bands.map((b) => `${b.grade} ${b.minRate > 0 || b.maxRate == null
+            ? t("passBandAtLeast", { rate: b.minRate })
+            : t("passBandBelow", { rate: b.maxRate })}`).join(" · ")}
+        </p>
+      )}
     </Link>
   );
 }
+
+/** 等级的语义色：过了合格线的两档用 ok，没过的两档用 warn。 */
+const GRADE_TONE: Record<Grade, string> = {
+  A: "var(--color-ok)",
+  B: "var(--color-ok)",
+  C: "var(--color-warn)",
+  D: "var(--color-warn)",
+};
 
 /** 过去问演练：五个白底描边按钮，两列；「继续上次」是第 5 个（P9 #13，版式同 it-pass）。 */
 function Drills({ t, bank, resume, kit, code }: { t: T; bank: BankDetail; resume: Resume; kit: LabelKit; code: string }) {
@@ -299,7 +307,7 @@ export default async function HomePage() {
       <SearchBox t={t} slug={slug} />
       <div className="grid gap-4 md:grid-cols-2 md:gap-6">
         <History t={t} bank={bank} progress={progress} />
-        <PassCheck t={t} bank={bank} progress={progress} />
+        <PassCheck t={t} progress={progress} />
       </div>
       <Drills t={t} bank={bank} resume={resume} kit={kit} code={code} />
       <Banks t={t} banks={banks} current={slug} progressOf={progressOf} />

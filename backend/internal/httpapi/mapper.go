@@ -5,6 +5,7 @@ import (
 
 	"github.com/bukahou/melete/backend/internal/api"
 	"github.com/bukahou/melete/backend/internal/bank"
+	"github.com/bukahou/melete/backend/internal/passgrade"
 	"github.com/bukahou/melete/backend/internal/question"
 	"github.com/bukahou/melete/backend/internal/study"
 )
@@ -23,6 +24,9 @@ func toAPIBank(b bank.Bank) api.Bank {
 // parseBankMeta 把 bank.meta JSON 列解成契约类型。
 // 列里可能还有导入侧留下的其它键（如 domains 英文名表），未在契约中的一律忽略；
 // 解析失败退回空 meta —— 展示元数据缺失只该让前端退回默认文案，不该让题库 404。
+//
+// safetyRate 以分档规则为准（passgrade）：列里存的只是题库显式指定的值，
+// 没指定时按公式算。这样它与合格等级的 A 档下限永远是同一个数。
 func parseBankMeta(raw *string) api.BankMeta {
 	var m api.BankMeta
 	if raw == nil || *raw == "" {
@@ -31,7 +35,36 @@ func parseBankMeta(raw *string) api.BankMeta {
 	if err := json.Unmarshal([]byte(*raw), &m); err != nil {
 		return api.BankMeta{}
 	}
+	m.SafetyRate = nil
+	if exam, err := bank.ParseExam(raw); err == nil {
+		if scale, ok, err := exam.Scale(); err == nil && ok {
+			m.SafetyRate = &scale.Safety
+		}
+	}
 	return m
+}
+
+func toAPIRecentAccuracy(r study.RecentAccuracy) api.RecentAccuracy {
+	return api.RecentAccuracy{WindowDays: r.WindowDays, AttemptCount: r.AttemptCount, Rate: r.Rate}
+}
+
+func toAPIPassGrade(j *passgrade.Judgement) *api.PassGrade {
+	if j == nil {
+		return nil
+	}
+	bands := make([]api.GradeBand, len(j.Bands))
+	for i, b := range j.Bands {
+		bands[i] = api.GradeBand{Grade: api.Grade(b.Grade), MinRate: b.Min, MaxRate: b.Max}
+	}
+	return &api.PassGrade{Grade: toAPIGrade(j.Grade), Remaining: j.Remaining, Bands: bands}
+}
+
+func toAPIGrade(g *passgrade.Grade) *api.Grade {
+	if g == nil {
+		return nil
+	}
+	out := api.Grade(*g)
+	return &out
 }
 
 func toAPIBankDetail(b *bank.Bank, s *bank.Stats) api.BankDetail {

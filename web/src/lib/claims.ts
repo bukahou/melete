@@ -36,6 +36,7 @@ export function parseDrillMode(raw: string | undefined): DrillMode | undefined {
   return (DRILL_MODES as readonly string[]).includes(raw ?? "") ? (raw as DrillMode) : undefined;
 }
 export type Progress = components["schemas"]["Progress"];
+export type Grade = components["schemas"]["Grade"];
 export type TagStat = components["schemas"]["TagStat"];
 export type Resume = components["schemas"]["Resume"];
 export type FocusCursor = components["schemas"]["FocusCursor"];

@@ -17,7 +17,7 @@ import "server-only";
 export type {
   Bank, BankDetail, Tag, QuestionSummary, QuestionDetail, QuestionPage,
   AnswerClaim, Choice, Reference, AttemptResult, ScheduleResult, DrillMode,
-  Progress, TagStat, Resume, FocusCursor, DrillContext, Overview, StudySession,
+  Progress, Grade, TagStat, Resume, FocusCursor, DrillContext, Overview, StudySession,
   SessionInfo, MyAccess, MyProfile, AdminUser, AdminUserPage, Tier, CurrentBank, SetSummary, DrillCursor, BankSession, TermSummary, TermDetail,
 } from "./claims";
 export { voteDistribution, hasDisagreement, DRILL_MODES, parseDrillMode } from "./claims";

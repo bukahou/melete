@@ -771,6 +771,46 @@ export interface components {
             dueCount: number;
             /** Format: date-time */
             lastActiveAt?: string;
+            recent: components["schemas"]["RecentAccuracy"];
+            passGrade?: components["schemas"]["PassGrade"];
+        };
+        /**
+         * @description 近期正确率：窗口内的每次作答都算（含重做），回答「最近练得怎么样」。
+         *     窗口 = 请求时刻往前 windowDays × 24 小时（滚动），只统计 bank 参数指定的题库。
+         *     ⚠️ 与合格等级用的当前掌握率（每题只看最近一次）是两个口径。
+         */
+        RecentAccuracy: {
+            /** @description 窗口天数，界面显示「近 N 天」 */
+            windowDays: number;
+            /** @description 窗口内的作答次数（含重做）；没有作答时为 0 */
+            attemptCount: number;
+            /** @description 窗口内的正确率（0–100，四舍五入）。作答次数少于后端的门槛时缺省，界面显示「—」 */
+            rate?: number;
+        };
+        /**
+         * @description 合格等级。界线由后端按题库的官方及格线算出（各档范围见 PassGrade.bands），客户端只显示，⛔ 不自己按阈值分档。
+         *     A ≥ 安全线 · B ≥ 合格线 · C ≥ 合格线 − 15 个点 · D 其余。
+         * @enum {string}
+         */
+        Grade: "A" | "B" | "C" | "D";
+        GradeBand: {
+            grade: components["schemas"]["Grade"];
+            /** @description 本档正确率下限（含）；D 为 0 */
+            minRate: number;
+            /** @description 本档正确率上限（不含）；A 缺省 */
+            maxRate?: number;
+        };
+        /**
+         * @description 整体的合格等级：按当前掌握率（correctCount / seenCount，每题只看最近一次）分档。
+         *     题库没有官方及格线时整个对象缺省。
+         *     做过的题不满一场正式考试的题数之前不给等级：grade 缺省，remaining 是还要再做几道。
+         */
+        PassGrade: {
+            grade?: components["schemas"]["Grade"];
+            /** @description 还要再做几道（去重）才给等级；0 表示 grade 已给出 */
+            remaining: number;
+            /** @description 本题库四档的范围（A → D），界面「等级说明」直接渲染 */
+            bands: components["schemas"]["GradeBand"][];
         };
         CurrentBank: {
             /** @description source 为 none 时缺省 */
@@ -781,6 +821,10 @@ export interface components {
              */
             source: "chosen" | "recent" | "none";
         };
+        /**
+         * @description grade 是本标签的合格等级（与 PassGrade 同一套界线）。只有考纲域（type = domain）才有，
+         *     且要做过的题够多（后端的门槛）、题库有官方及格线；否则缺省，界面显示「—」。
+         */
         TagStat: {
             /** Format: int64 */
             tagId: number;
@@ -798,6 +842,7 @@ export interface components {
              * @description 正确率 0-100
              */
             rate: number;
+            grade?: components["schemas"]["Grade"];
         };
         /**
          * @description 「继续学习」的两条轨道，全部从 attempt 推导：
@@ -1181,9 +1226,12 @@ export interface components {
             passScore?: number;
             /** @description 满分 */
             maxScore?: number;
-            /** @description 合格判断的安全线（正确率 %）= 及格线换算成正确率 + 10 个点。无则不做合格判断 */
+            /**
+             * @description 合格判断的安全线（正确率 %），与 PassGrade 的 A 档下限是同一个数：
+             *     题库显式指定的值，否则 = 及格线换算成正确率 + 10 个点（封顶 100）。没有官方及格线时缺省
+             */
             safetyRate?: number;
-            /** @description 一场正式考试的题数。作答不足这个数之前不给合格判断 */
+            /** @description 一场正式考试的题数。做过的题不满这个数之前不给合格等级（见 PassGrade.remaining） */
             examQuestions?: number;
             /** @description 顺序练习每组多少题 */
             groupSize?: number;
