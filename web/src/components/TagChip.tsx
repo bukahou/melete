@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { useLocale } from "next-intl";
-import { tagName, type Tag } from "@/lib/claims";
+import type { Tag } from "@/lib/claims";
 
 /**
  * 角色色是通用的（三条轴各一色，且与来源色复用同一组 token），
@@ -15,8 +14,8 @@ export const TAG_TYPE_COLOR: Record<Tag["type"], string> = {
 /** concept 标签跨题库共享 —— 它回答「缺的是 AWS 知识还是底层原理」。 */
 export function TagChip({ tag, slug }: { tag: Tag; slug?: string }) {
   const color = TAG_TYPE_COLOR[tag.type];
-  // ⛔ 不再写死 en。标签名跟界面语言走。
-  const name = tagName(tag, useLocale());
+  // 名字由后端按请求语言挑好（Tag.name），这里只显示
+  const name = tag.name;
   const chip = (
     <span className="inline-flex items-center gap-1.5 rounded-sm border border-line bg-raise px-2.5 py-1 text-xs text-ink transition-colors">
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} aria-hidden />

@@ -4,7 +4,7 @@ import {
   ApiError, getBank, getMyTagStats, listAxisTags, summarizeQuestions,
   type BankDetail, type DrillContext, type Tag,
 } from "@/lib/api";
-import { tagName, tagTypeLabel } from "@/lib/claims";
+import { tagTypeLabel } from "@/lib/claims";
 import { listParams, setHref } from "@/lib/drillSpec";
 import { PracticeShell } from "@/components/PracticeShell";
 import { EntryColumns, EntryHead, EntryRow, type EntryStats } from "@/components/EntryList";
@@ -20,20 +20,20 @@ export const revalidate = 0;
  */
 type Row = { ctx: DrillContext; title: string; level: 0 | 1 | 2; count?: number; tagId?: number };
 
-function rows(bank: BankDetail, tags: Tag[], locale: string): Row[] {
+function rows(bank: BankDetail, tags: Tag[]): Row[] {
   const domains = tags.filter((t) => t.type === "domain").sort((a, b) => a.value.localeCompare(b.value));
   const topicByValue = new Map(tags.filter((t) => t.type === "topic").map((t) => [t.value, t]));
   const tree = new Map((bank.meta.topicTree ?? []).map((d) => [d.domain, d.groups]));
   const out: Row[] = [];
   for (const d of domains) {
-    out.push({ ctx: { mode: "domain", tagIds: [d.id] }, title: tagName(d, locale), level: 0, count: d.questionCount, tagId: d.id });
+    out.push({ ctx: { mode: "domain", tagIds: [d.id] }, title: d.name, level: 0, count: d.questionCount, tagId: d.id });
     for (const g of tree.get(d.value) ?? []) {
       // ⚠️ 考纲树列的是考纲，可能含题库里没有题的中分類 —— 那样的 topic 库里没有 tag，跳过
       const topics = g.topics.map((v) => topicByValue.get(v)).filter((x): x is Tag => x != null);
       if (topics.length === 0) continue;
       out.push({ ctx: { mode: "domain", tagIds: topics.map((x) => x.id) }, title: g.name, level: 1 });
       for (const tp of topics) {
-        out.push({ ctx: { mode: "domain", tagIds: [tp.id] }, title: tagName(tp, locale), level: 2, count: tp.questionCount, tagId: tp.id });
+        out.push({ ctx: { mode: "domain", tagIds: [tp.id] }, title: tp.name, level: 2, count: tp.questionCount, tagId: tp.id });
       }
     }
   }
@@ -51,7 +51,7 @@ export default async function DomainPage({ params }: { params: Promise<{ slug: s
     throw e;
   }
   const domainLabel = tagTypeLabel(bank.meta, "domain", locale);
-  const list = rows(bank, tags, locale);
+  const list = rows(bank, tags);
   const [domainStats, topicStats] = await Promise.all([
     getMyTagStats("domain", 1, slug),
     getMyTagStats("topic", 1, slug),

@@ -55,7 +55,8 @@
     "title": "答案主张",
     "empty": "这道题还没有任何答案主张。",
     "disagree": "各方不一致",
-    "rationaleOf": "{source}的理由"
+    "rationaleOf": "{source}的理由",
+    "rationaleFallback": "理由暂无该语言版本，以下为原文"
   },
   "dash": {
     "switchBank": "切换题库",
@@ -158,7 +159,6 @@
     "noDueHint": "没有到期的题。要往前推进，去做",
     "noDueLink": "没做过的",
     "contested": "答案有分歧",
-    "explanation": "解析",
     "noExplanation": "这道题还没有 AI 解析。上方各方主张仍可对照参考。",
     "pickOne": "选一个答案",
     "submitN": "提交这 {n} 项",
@@ -187,7 +187,6 @@
     "multi": "多选 · 选 {n} 项",
     "single": "单选",
     "dataIssue": "这道题存在数据缺陷",
-    "explanation": "解析",
     "tags": "标签"
   },
   "login": {
@@ -323,5 +322,9 @@
   },
   "choices": {
     "notesFallback": "选项点评暂无该语言版本，以下为原文"
+  },
+  "explanation": {
+    "title": "解析",
+    "fallback": "解析暂无该语言版本，以下为原文"
   }
 }

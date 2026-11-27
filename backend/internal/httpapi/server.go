@@ -120,7 +120,7 @@ func (s *Server) ListBankTags(ctx context.Context, req api.ListBankTagsRequestOb
 	}
 	out := make(api.ListBankTags200JSONResponse, 0, len(tags))
 	for _, t := range tags {
-		out = append(out, toAPIBankTag(t))
+		out = append(out, toAPIBankTag(t, httplocale.RequestLocale(ctx)))
 	}
 	return out, nil
 }
@@ -218,7 +218,7 @@ func (s *Server) GetQuestion(ctx context.Context, req api.GetQuestionRequestObje
 	if err != nil {
 		return nil, s.fail("GetQuestion", err)
 	}
-	out := toAPIDetail(d)
+	out := toAPIDetail(d, httplocale.RequestLocale(ctx))
 	on, err := s.studies.IsBookmarked(ctx, accountID, d.ID)
 	if err != nil {
 		return nil, s.fail("GetQuestion.bookmark", err)
@@ -473,18 +473,14 @@ func (s *Server) GetMyTagStats(ctx context.Context, req api.GetMyTagStatsRequest
 	}
 	out := make(api.GetMyTagStats200JSONResponse, 0, len(stats))
 	for _, st := range stats {
-		item := api.TagStat{
+		// 名字与 Tag 同一个构造处，口径一致
+		tag := toAPITag(st.TagID, st.Type, st.Value, nullableText(st.I18n), httplocale.RequestLocale(ctx))
+		out = append(out, api.TagStat{
 			TagId: st.TagID, Type: api.TagStatType(st.Type), Value: st.Value,
+			Name: tag.Name, Localized: tag.Localized, I18n: tag.I18n,
 			Total: st.Total, Correct: st.Correct, Rate: st.Rate(),
 			Grade: toAPIGrade(st.Grade),
-		}
-		if st.I18n.Valid && st.I18n.String != "" {
-			m := map[string]string{}
-			if json.Unmarshal([]byte(st.I18n.String), &m) == nil && len(m) > 0 {
-				item.I18n = &m
-			}
-		}
-		out = append(out, item)
+		})
 	}
 	return out, nil
 }
@@ -595,7 +591,7 @@ func (s *Server) GetMyResume(ctx context.Context, req api.GetMyResumeRequestObje
 	if err != nil {
 		return nil, s.fail("GetMyResume", err)
 	}
-	out := toAPIResume(r)
+	out := toAPIResume(r, httplocale.RequestLocale(ctx))
 	if out.Cursor, err = s.loadCursor(ctx, accountID, slug); err != nil {
 		return nil, s.fail("GetMyResume.cursor", err)
 	}
@@ -629,7 +625,7 @@ func (s *Server) GetMyRecent(ctx context.Context, req api.GetMyRecentRequestObje
 	}
 	out := api.GetMyRecent200JSONResponse{}
 	for _, ss := range sessions {
-		out = append(out, toAPISession(ss))
+		out = append(out, toAPISession(ss, httplocale.RequestLocale(ctx)))
 	}
 	return out, nil
 }

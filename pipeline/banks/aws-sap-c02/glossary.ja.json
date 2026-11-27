@@ -1,0 +1,96 @@
+{
+  "_why": "SAP-C02 的日文术语表。题面原文是英文（从原文直接译成日文，不经中文转一道），点评与解析是中文 —— 两种原文共用这一张表：英文词条只会命中英文原文，中文词条只会命中中文原文。",
+  "_extends": "extends 继承 SAA 已经调好的中→日词条、not_terms 与 keep（点评与解析的中文出自同一套管道，用词一致）；这里只写英→日词条和 SAP 自己的补充。",
+  "extends": "aws-saa-c03",
+  "_terms": "英文词条按与原文同样折叠空白后的子串匹配，区分大小写（Region 与 region 各写一条）。选词原则与 SAA 相同：AWS 日文文档与日文考题里的标准叫法，写法唯一的只给一种。",
+  "terms": {
+    "Region": "リージョン",
+    "region": "リージョン",
+    "Regional": [
+      "リージョナル",
+      "リージョン",
+      "Regional"
+    ],
+    "Cross-Region": [
+      "クロスリージョン",
+      "Cross-Region"
+    ],
+    "cross-Region": [
+      "クロスリージョン",
+      "Cross-Region",
+      "cross-Region"
+    ],
+    "Multi-Region": [
+      "マルチリージョン",
+      "Multi-Region"
+    ],
+    "multi-Region": [
+      "マルチリージョン",
+      "Multi-Region",
+      "multi-Region"
+    ],
+    "Availability Zone": "アベイラビリティーゾーン",
+    "account": "アカウント",
+    "bucket": "バケット",
+    "instance": "インスタンス",
+    "snapshot": "スナップショット",
+    "read replica": "リードレプリカ",
+    "replica": "レプリカ",
+    "operational overhead": "運用オーバーヘッド",
+    "latency": "レイテンシー",
+    "throughput": "スループット",
+    "failover": "フェイルオーバー",
+    "subnet": "サブネット",
+    "security group": "セキュリティグループ",
+    "route table": "ルートテーブル",
+    "endpoint": "エンドポイント",
+    "policy": "ポリシー",
+    "role": "ロール",
+    "cost-effective": "コスト効率",
+    "on-premises": "オンプレミス",
+    "on premises": "オンプレミス",
+    "data center": "データセンター",
+    "encrypt": "暗号化",
+    "cluster": "クラスター",
+    "queue": "キュー",
+    "template": "テンプレート",
+    "stack": "スタック",
+    "lifecycle": "ライフサイクル",
+    "serverless": "サーバーレス",
+    "organizational unit": "組織単位",
+    "disaster recovery": [
+      "ディザスタリカバリ",
+      "災害対策"
+    ],
+    "highly available": [
+      "高可用性",
+      "可用性の高",
+      "可用性が高"
+    ],
+    "high availability": [
+      "高可用性",
+      "可用性の高",
+      "可用性が高"
+    ],
+    "Reserved Instance": "リザーブドインスタンス",
+    "Spot Instance": "スポットインスタンス",
+    "On-Demand": "オンデマンド",
+    "Dedicated Host": "専有ホスト"
+  },
+  "_alternatives": "列表 = 都正确的写法：Cross-Region 等功能名既可译成クロスリージョン，也可照英文功能名保留；disaster recovery 在 AWS 日文文档里两种都用；highly available 随句式是名词或形容（形容词写到词干「可用性が高 / 可用性の高」为止，活用成「高く」「高ければ」也算）。",
+  "not_terms": [
+    "amazonaws.region",
+    "replicat"
+  ],
+  "_not_terms": "英文按子串匹配：replicate / replication 里含 replica，正确译法是レプリケート / レプリケーション，不是レプリカ。read replica 等真正的 replica 不受影响。VPC 端点服务名 com.amazonaws.region.* 里的 region 是占位段，服务名原样保留，不译成リージョン。",
+  "keep": [
+    "Amazon Connect",
+    "OU",
+    "SCP",
+    "Savings Plans"
+  ],
+  "keep_drop": [
+    "Connect"
+  ],
+  "_keep_drop": "从数据推出的服务名「Connect」（Amazon Connect）在英文原文里也是动词（Connect A to B），那里要译成「接続します」。原文提到这项服务时都写全称 Amazon Connect，所以去掉裸名、保留全称。"
+}
