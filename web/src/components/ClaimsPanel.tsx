@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { Markdown } from "@/components/Markdown";
 import { hasDisagreement, voteDistribution, type AnswerClaim } from "@/lib/claims";
 
 /**
@@ -97,7 +98,13 @@ export function ClaimsPanel({ claims }: { claims: AnswerClaim[] }) {
           <p className="text-xs font-medium" style={{ color: SOURCE_COLOR[claim.source] }}>
             {t("rationaleOf", { source: source(claim.source) })}
           </p>
-          <p className="mt-2 text-[0.9rem] leading-[1.9]">{claim.rationale}</p>
+          {claim.rationaleLocalized === false && (
+            <p className="mt-1 text-xs text-muted">{t("rationaleFallback")}</p>
+          )}
+          {/* 理由可能是 Markdown（没有逐项点评的题，理由是整段裁决论证） */}
+          <div className="mt-2">
+            <Markdown>{claim.rationale ?? ""}</Markdown>
+          </div>
         </blockquote>
       ))}
     </section>

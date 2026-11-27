@@ -853,6 +853,11 @@ export interface components {
             /** @enum {string} */
             type: "domain" | "topic" | "concept";
             value: string;
+            /** @description 显示名，规则同 Tag.name */
+            name: string;
+            /** @description name 是否为请求的语言，规则同 Tag.localized */
+            localized: boolean;
+            /** @description 各语言的名字（原始数据）。显示请用 name */
             i18n?: {
                 [key: string]: string;
             };
@@ -1373,7 +1378,12 @@ export interface components {
             /** @description 最大原题号 */
             noTo: number;
         };
-        /** @description 通用 (type, value) 结构，不硬编码任何特定题库的分类体系 */
+        /**
+         * @description 通用 (type, value) 结构，不硬编码任何特定题库的分类体系。
+         *     显示用 name：后端按请求语言挑好（请求的语言 → 英文 → 其他语言 → value），
+         *     localized 为 false 表示 name 不是请求的语言，界面要标出来。
+         *     没有多语言名字的标签（服务名等）name 就是 value，localized 为 true。
+         */
         Tag: {
             /** Format: int64 */
             id: number;
@@ -1381,6 +1391,11 @@ export interface components {
             type: "domain" | "topic" | "concept";
             /** @example S3 */
             value: string;
+            /** @description 显示名（已按请求语言挑好） */
+            name: string;
+            /** @description name 是否为请求的语言；请求没有指定语言时为 true */
+            localized: boolean;
+            /** @description 各语言的名字（原始数据）。显示请用 name */
             i18n?: {
                 [key: string]: string;
             };
@@ -1436,8 +1451,19 @@ export interface components {
             /**
              * @description 为什么。AI 裁决只在与题库标注或社区投票不一致时才有，讲的是不一致的原因；
              *     各选项为什么对或错见 Choice.explanation。
+             *     已按请求语言挑好：有请求语言的版本就给它，否则给原文。
              */
             rationale?: string;
+            /**
+             * @description rationale 实际的语言。有 rationale 才有
+             * @example zh
+             */
+            rationaleLocale?: string;
+            /**
+             * @description rationale 是否为请求的语言。有 rationale 才有。**false 表示没有请求语言的版本、给的是原文**，
+             *     界面要把这件事显示出来，⛔ 不静默回退。请求没有指定语言时为 true
+             */
+            rationaleLocalized?: boolean;
             /** @description 如社区投票分布 {"A":80,"C":20} */
             meta?: {
                 [key: string]: unknown;
@@ -1449,6 +1475,14 @@ export interface components {
             /** @example zh */
             locale: string;
             body: string;
+        };
+        /** @description 按请求语言挑好的一份解析：请求的语言 → 题库的语言 → 其他语言；同一语言里人工订正优先于 AI。 */
+        PickedExplanation: components["schemas"]["Explanation"] & {
+            /**
+             * @description body 是否为请求的语言。**false 表示没有请求语言的版本，回退到了另一种语言**，
+             *     界面要把这件事显示出来，⛔ 不静默回退。请求没有指定语言时为 true
+             */
+            localized: boolean;
         };
         QuestionSummary: {
             /** Format: int64 */
@@ -1493,6 +1527,11 @@ export interface components {
             dataIssue?: string;
             choices: components["schemas"]["Choice"][];
             claims: components["schemas"]["AnswerClaim"][];
+            explanation?: components["schemas"]["PickedExplanation"];
+            /**
+             * @deprecated
+             * @description 全部语言、全部来源的解析。显示请用 explanation（后端按请求语言挑好的那一份）；保留给尚未升级的客户端
+             */
             explanations: components["schemas"]["Explanation"][];
             tags: components["schemas"]["Tag"][];
             /** @description P0 解析阶段的告警，不静默丢弃 */

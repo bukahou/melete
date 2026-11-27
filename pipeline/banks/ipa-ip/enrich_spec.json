@@ -33,6 +33,7 @@
     "2": "マネジメント系",
     "3": "テクノロジ系"
   },
+  "domains_locale": "ja",
   "_note_domain": "⛔ domain 不由 AI 判断 —— 卷子上印着题号区间（「問1から問34までは，ストラテジ系の問題です。」），转写时已抄进 transcribed/*.json 的 sections，按区间机械映射即可。AI 若给出与 sections 矛盾的 domain，以 sections 为准。",
   "topic_vocabulary": [
     {

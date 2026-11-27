@@ -349,12 +349,13 @@ func (r *mysqlRepository) FindQuestionByID(ctx context.Context, id int64, locale
 	if err = r.attachChoiceExplanations(ctx, id, locale, d.SourceLocale, d.Choices); err != nil {
 		return nil, err
 	}
-	if d.Claims, err = r.loadClaims(ctx, id); err != nil {
+	if d.Claims, err = r.loadClaims(ctx, id, locale, d.SourceLocale); err != nil {
 		return nil, err
 	}
 	if d.Explanations, err = r.loadExplanations(ctx, id); err != nil {
 		return nil, err
 	}
+	d.Explanation = pickExplanation(d.Explanations, locale, d.SourceLocale)
 	if d.Tags, err = r.loadTags(ctx, id); err != nil {
 		return nil, err
 	}
@@ -447,62 +448,116 @@ func (r *mysqlRepository) attachChoiceExplanations(ctx context.Context, id int64
 // explanationSourceRank 是多个来源并存时的优先顺序：人工订正优先于 AI，用户自己的笔记不替代公共点评。
 var explanationSourceRank = map[string]int{"editor": 0, "ai": 1, "user": 2}
 
-// pickChoiceExplanations 为每个选项选出一条点评。语言：请求的语言 → 题库的语言 → 其他；
-// 同一语言里按来源优先级。locale 为空表示请求没有指定语言，选到哪种语言都不算回退。
-func pickChoiceExplanations(rows []choiceExplanationRow, locale, sourceLocale string) map[string]ChoiceExplanation {
-	rank := func(row choiceExplanationRow) (int, int, string) {
-		lang := 2
-		switch {
-		case locale != "" && row.Locale == locale:
-			lang = 0
-		case row.Locale == sourceLocale:
-			lang = 1
-		}
-		src, ok := explanationSourceRank[row.Source]
-		if !ok {
-			src = len(explanationSourceRank)
-		}
-		return lang, src, row.Locale
+// versionPicker 从同一段内容的多个版本里挑一份显示（选项点评、题目解析共用这一套规则）：
+// 语言：请求的语言 → 题库的语言 → 其他（按语言代码）；同一语言里按来源优先级。
+// locale 为空表示请求没有指定语言，选到哪种语言都不算回退。
+type versionPicker struct {
+	locale, sourceLocale string
+}
+
+func (p versionPicker) rank(source, lang string) (int, int, string) {
+	langRank := 2
+	switch {
+	case p.locale != "" && lang == p.locale:
+		langRank = 0
+	case lang == p.sourceLocale:
+		langRank = 1
 	}
-	better := func(a, b choiceExplanationRow) bool {
-		al, as, ac := rank(a)
-		bl, bs, bc := rank(b)
-		if al != bl {
-			return al < bl
-		}
-		if as != bs {
-			return as < bs
-		}
-		return ac < bc
+	src, ok := explanationSourceRank[source]
+	if !ok {
+		src = len(explanationSourceRank)
 	}
+	return langRank, src, lang
+}
+
+// better：版本 a（来源、语言）是否比 b 更该显示。
+func (p versionPicker) better(aSource, aLang, bSource, bLang string) bool {
+	al, as, ac := p.rank(aSource, aLang)
+	bl, bs, bc := p.rank(bSource, bLang)
+	if al != bl {
+		return al < bl
+	}
+	if as != bs {
+		return as < bs
+	}
+	return ac < bc
+}
+
+func (p versionPicker) picked(source, lang, body string) PickedText {
+	return PickedText{Source: source, Locale: lang, Body: body, Localized: p.locale == "" || lang == p.locale}
+}
+
+// pickChoiceExplanations 为每个选项选出一条点评（规则见 versionPicker）。
+func pickChoiceExplanations(rows []choiceExplanationRow, locale, sourceLocale string) map[string]PickedText {
+	p := versionPicker{locale: locale, sourceLocale: sourceLocale}
 	best := map[string]choiceExplanationRow{}
 	for _, row := range rows {
-		if cur, ok := best[row.Label]; !ok || better(row, cur) {
+		if cur, ok := best[row.Label]; !ok || p.better(row.Source, row.Locale, cur.Source, cur.Locale) {
 			best[row.Label] = row
 		}
 	}
-	out := make(map[string]ChoiceExplanation, len(best))
+	out := make(map[string]PickedText, len(best))
 	for label, row := range best {
-		out[label] = ChoiceExplanation{
-			Source: row.Source, Locale: row.Locale, Body: row.Body,
-			Localized: locale == "" || row.Locale == locale,
-		}
+		out[label] = p.picked(row.Source, row.Locale, row.Body)
 	}
 	return out
 }
 
+// pickExplanation 从题目的全部解析里选出显示的那一份（规则见 versionPicker）；没有解析时返回 nil。
+func pickExplanation(all []Explanation, locale, sourceLocale string) *PickedText {
+	p := versionPicker{locale: locale, sourceLocale: sourceLocale}
+	var best *Explanation
+	for i := range all {
+		if best == nil || p.better(all[i].Source, all[i].Locale, best.Source, best.Locale) {
+			best = &all[i]
+		}
+	}
+	if best == nil {
+		return nil
+	}
+	out := p.picked(best.Source, best.Locale, best.Body)
+	return &out
+}
+
 // loadClaims 的排序刻意固定：题库标注 → 社区投票 → AI 裁决 → 用户笔记。
 // 界面按这个顺序并列展示，学习者一眼看到分歧在哪。
-func (r *mysqlRepository) loadClaims(ctx context.Context, id int64) ([]Claim, error) {
+//
+// 理由按请求语言挑：answer_claim_i18n 有该语言的译文就用译文，否则用原文（语言 = 题库语言 sourceLocale）。
+// locale 为空 = 只要原文，⛔ 不查 i18n 表（与题干、选项同一约定）。
+func (r *mysqlRepository) loadClaims(ctx context.Context, id int64, locale, sourceLocale string) ([]Claim, error) {
 	out := []Claim{}
-	err := r.db.SelectContext(ctx, &out, `
-		SELECT source, answer, confidence, rationale, meta
-		FROM answer_claim WHERE question_id = ?
-		ORDER BY FIELD(source, 'bank_label', 'community_vote', 'ai_verdict', 'user_note')`, id)
-	if err != nil {
+	query := `SELECT source, answer, confidence, rationale, meta, '' AS rationale_locale
+	          FROM answer_claim WHERE question_id = ?
+	          ORDER BY FIELD(source, 'bank_label', 'community_vote', 'ai_verdict', 'user_note')`
+	args := []any{id}
+	if locale != "" {
+		query = `SELECT c.source, c.answer, c.confidence, COALESCE(ci.rationale, c.rationale) AS rationale, c.meta,
+		                COALESCE(ci.locale, '') AS rationale_locale
+		         FROM answer_claim c
+		         LEFT JOIN answer_claim_i18n ci ON ci.question_id = c.question_id AND ci.source = c.source AND ci.locale = ?
+		         WHERE c.question_id = ?
+		         ORDER BY FIELD(c.source, 'bank_label', 'community_vote', 'ai_verdict', 'user_note')`
+		args = []any{locale, id}
+	}
+	if err := r.db.SelectContext(ctx, &out, query, args...); err != nil {
 		return nil, fmt.Errorf("查询题目 %d 的答案主张: %w", id, err)
 	}
+	for i := range out {
+		markRationaleLocale(&out[i], locale, sourceLocale)
+	}
 	return out, nil
+}
+
+// markRationaleLocale 补上理由的语言标记：查询只在用了译文时给出语言，用原文时语言是题库语言。
+func markRationaleLocale(c *Claim, locale, sourceLocale string) {
+	if c.Rationale == nil {
+		c.RationaleLocale, c.RationaleLocalized = "", false
+		return
+	}
+	if c.RationaleLocale == "" {
+		c.RationaleLocale = sourceLocale
+	}
+	c.RationaleLocalized = locale == "" || c.RationaleLocale == locale
 }
 
 func (r *mysqlRepository) loadExplanations(ctx context.Context, id int64) ([]Explanation, error) {

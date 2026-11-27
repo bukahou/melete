@@ -12,7 +12,7 @@ import {
   type Tag,
   type TagStat,
 } from "@/lib/api";
-import { tagName, tagTypeLabel, tagWeight } from "@/lib/claims";
+import { tagTypeLabel, tagWeight } from "@/lib/claims";
 import { drillHref, listParams } from "@/lib/drillSpec";
 import type { DrillContext } from "@/lib/claims";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -169,7 +169,7 @@ export default async function HistoryOverviewPage({
           const w = tagWeight(meta, d);
           return (
             <div key={d.id}>
-              <Row t={t} href={href([d.id])} title={tagName(d, locale)} sub={w != null ? t("weight", { w }) : undefined}
+              <Row t={t} href={href([d.id])} title={d.name} sub={w != null ? t("weight", { w }) : undefined}
                    done={s?.total ?? 0} total={d.questionCount ?? 0} rate={rateOf(s)} />
               {groupSums[i].map((g) => (
                 <Row key={g.name} t={t} level={1} href={href(g.ids)} title={g.name}
@@ -184,7 +184,7 @@ export default async function HistoryOverviewPage({
       <Section title={topicLabel} side={t("topicSide", { n: topics.length })}>
         {topicRows.map((tp) => {
           const s = byTopic.get(tp.id);
-          return <Row key={tp.id} t={t} href={href([tp.id])} title={tagName(tp, locale)}
+          return <Row key={tp.id} t={t} href={href([tp.id])} title={tp.name}
                       done={s?.total ?? 0} total={tp.questionCount ?? 0} rate={rateOf(s)} />;
         })}
         {topics.length > 10 && (

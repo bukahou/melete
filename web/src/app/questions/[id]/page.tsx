@@ -4,28 +4,21 @@ import { AlertTriangle } from "lucide-react";
 import { ApiError, getQuestion } from "@/lib/api";
 import { ClaimsPanel } from "@/components/ClaimsPanel";
 import { QuestionBody } from "@/components/QuestionBody";
-import { Markdown } from "@/components/Markdown";
+import { ExplanationPanel } from "@/components/ExplanationPanel";
 import { TagChip } from "@/components/TagChip";
 import { Page } from "@/components/Page";
-import { getLocale, getTranslations } from "next-intl/server";
+import { getTranslations } from "next-intl/server";
 
 // ⚠️ 从 300 改成 0：页面内容随 Accept-Language 变，而路径里没有语言 ——
 // 静态缓存会把某一种语言的渲染结果喂给所有人。
 // （api.ts 那层的 fetch 缓存键含 header，不受影响；这里说的是页面级缓存。）
 export const revalidate = 0;
 
-/** 同 drill 页：该语言有解析就只给该语言，一份都没有才把现有的都给出来。 */
-function pickExplanations<T extends { locale: string }>(all: T[], locale: string): T[] {
-  const hit = all.filter((e) => e.locale === locale);
-  return hit.length > 0 ? hit : all;
-}
-
 export default async function QuestionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [t, common, locale] = await Promise.all([
+  const [t, common] = await Promise.all([
     getTranslations("question"),
     getTranslations("common"),
-    getLocale(),
   ]);
   let q;
   try {
@@ -66,16 +59,7 @@ export default async function QuestionPage({ params }: { params: Promise<{ id: s
 
       <ClaimsPanel claims={q.claims} />
 
-      {pickExplanations(q.explanations, locale).map((e) => (
-        <section key={`${e.source}-${e.locale}`}>
-          <h3 className="section-rule">
-            <span className="eyebrow">{t("explanation")}</span>
-          </h3>
-          <div className="mt-5 card p-6 sm:p-8">
-            <Markdown>{e.body}</Markdown>
-          </div>
-        </section>
-      ))}
+      {q.explanation && <ExplanationPanel explanation={q.explanation} />}
 
       {q.tags.length > 0 && (
         <section>
