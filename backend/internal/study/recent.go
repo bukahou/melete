@@ -44,8 +44,13 @@ func (s *service) loadRecentAccuracy(ctx context.Context, accountID userid.UserI
 	}
 	r := RecentAccuracy{WindowDays: RecentWindowDays, AttemptCount: row.Attempts}
 	if row.Attempts >= RecentMinAttempts {
-		rate := int(math.Round(float64(row.Correct.Int64) * 100 / float64(row.Attempts)))
+		rate := percentRate(int(row.Correct.Int64), row.Attempts)
 		r.Rate = &rate
 	}
 	return r, nil
+}
+
+// percentRate 是按次数算的正确率（0–100，四舍五入）。近期正确率与作答推移共用这一个算法。attempts 必须 > 0。
+func percentRate(correct, attempts int) int {
+	return int(math.Round(float64(correct) * 100 / float64(attempts)))
 }

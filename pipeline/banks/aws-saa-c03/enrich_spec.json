@@ -1,5 +1,7 @@
 {
   "bank": "aws-saa-c03",
+  "cjk_gap_repair": true,
+  "_note_cjk_gap_repair": "素材是 pdftotext 抽出的中文，断行处在两个汉字之间留下空格；导入时去掉（facetext.py）。日文题库不开：假名记号后的空格有意义。",
   "tag_types": {
     "domain": {
       "label": {

@@ -21,6 +21,51 @@ const (
 	AccessTokenScopes accessTokenContextKey = "accessToken.Scopes"
 )
 
+// Defines values for ActivityBucketUnit.
+const (
+	Day   ActivityBucketUnit = "day"
+	Month ActivityBucketUnit = "month"
+	Week  ActivityBucketUnit = "week"
+)
+
+// Valid indicates whether the value is a known member of the ActivityBucketUnit enum.
+func (e ActivityBucketUnit) Valid() bool {
+	switch e {
+	case Day:
+		return true
+	case Month:
+		return true
+	case Week:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActivityRange.
+const (
+	ActivityRange30d ActivityRange = "30d"
+	ActivityRange7d  ActivityRange = "7d"
+	ActivityRange90d ActivityRange = "90d"
+	ActivityRangeAll ActivityRange = "all"
+)
+
+// Valid indicates whether the value is a known member of the ActivityRange enum.
+func (e ActivityRange) Valid() bool {
+	switch e {
+	case ActivityRange30d:
+		return true
+	case ActivityRange7d:
+		return true
+	case ActivityRange90d:
+		return true
+	case ActivityRangeAll:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AnswerClaimSource.
 const (
 	AnswerClaimSourceAiVerdict     AnswerClaimSource = "ai_verdict"
@@ -529,6 +574,70 @@ func (e GetMyTagStatsParamsType) Valid() bool {
 	default:
 		return false
 	}
+}
+
+// Activity total 是整个期间的合计（各桶之和）。
+type Activity struct {
+	// Bucket 一个桶是一天、一周（周一到周日）还是一个月（1 日到月末）。由后端按期间的长短决定，客户端照着显示，⛔ 不自己换算：
+	// 期间不超过 90 天按天（7d / 30d / 90d 都是），不超过两年按周，更长按月。
+	Bucket ActivityBucketUnit `json:"bucket"`
+
+	// Buckets 从旧到新、连续不断：没有作答的桶也返回（计数为 0，rate 缺省）。
+	// 第一个桶含期间的第一天，最后一个桶含今天 —— 客户端默认选中最后一个。
+	// range=all 且这个题库从没作答过时为空数组（total 全为 0）。
+	Buckets []ActivityBucket `json:"buckets"`
+
+	// Range 作答推移的期间。7d / 30d / 90d = 含今天在内的最近 7 / 30 / 90 个自然日（90d 就是 90 天，不是日历上的三个月）；
+	// all = 从这个题库的第一次作答到今天。
+	Range ActivityRange `json:"range"`
+
+	// Timezone 切自然日用的时区（IANA 名，如 Asia/Tokyo），与 /me/overview 的连续天数同一口径
+	Timezone string        `json:"timezone"`
+	Total    ActivityStats `json:"total"`
+}
+
+// ActivityBucket defines model for ActivityBucket.
+type ActivityBucket struct {
+	// AttemptCount 作答次数（含重做，与 Progress.attemptCount 同口径）
+	AttemptCount int `json:"attemptCount"`
+
+	// CorrectCount 其中答对的次数
+	CorrectCount int `json:"correctCount"`
+
+	// Date 桶的第一天；按天时就是那一天
+	Date openapi_types.Date `json:"date"`
+
+	// EndDate 桶的最后一天（含）。按天时与 date 相同；含今天的那个桶可能晚于今天（本周 / 本月的最后一天）
+	EndDate openapi_types.Date `json:"endDate"`
+
+	// Rate 正确率（0–100，四舍五入，与 RecentAccuracy.rate 同一算法）。attemptCount 为 0 时缺省；不设最少次数的门槛
+	Rate *int `json:"rate,omitempty"`
+
+	// WrongCount 其中答错的次数（= attemptCount − correctCount）
+	WrongCount int `json:"wrongCount"`
+}
+
+// ActivityBucketUnit 一个桶是一天、一周（周一到周日）还是一个月（1 日到月末）。由后端按期间的长短决定，客户端照着显示，⛔ 不自己换算：
+// 期间不超过 90 天按天（7d / 30d / 90d 都是），不超过两年按周，更长按月。
+type ActivityBucketUnit string
+
+// ActivityRange 作答推移的期间。7d / 30d / 90d = 含今天在内的最近 7 / 30 / 90 个自然日（90d 就是 90 天，不是日历上的三个月）；
+// all = 从这个题库的第一次作答到今天。
+type ActivityRange string
+
+// ActivityStats defines model for ActivityStats.
+type ActivityStats struct {
+	// AttemptCount 作答次数（含重做，与 Progress.attemptCount 同口径）
+	AttemptCount int `json:"attemptCount"`
+
+	// CorrectCount 其中答对的次数
+	CorrectCount int `json:"correctCount"`
+
+	// Rate 正确率（0–100，四舍五入，与 RecentAccuracy.rate 同一算法）。attemptCount 为 0 时缺省；不设最少次数的门槛
+	Rate *int `json:"rate,omitempty"`
+
+	// WrongCount 其中答错的次数（= attemptCount − correctCount）
+	WrongCount int `json:"wrongCount"`
 }
 
 // AdminUser defines model for AdminUser.
@@ -1649,6 +1758,15 @@ type ListBankTagsParams struct {
 // ListBankTagsParamsType defines parameters for ListBankTags.
 type ListBankTagsParamsType string
 
+// GetMyActivityParams defines parameters for GetMyActivity.
+type GetMyActivityParams struct {
+	// Bank 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库）
+	Bank *BankQuery `form:"bank,omitempty" json:"bank,omitempty"`
+
+	// Range 期间，缺省 7d
+	Range *ActivityRange `form:"range,omitempty" json:"range,omitempty"`
+}
+
 // ChooseMyBankJSONBody defines parameters for ChooseMyBank.
 type ChooseMyBankJSONBody struct {
 	BankSlug string `json:"bankSlug"`
@@ -1803,6 +1921,9 @@ type ServerInterface interface {
 	// 我的档位
 	// (GET /me/access)
 	GetMyAccess(w http.ResponseWriter, r *http.Request)
+	// 作答推移（履历页的图表）
+	// (GET /me/activity)
+	GetMyActivity(w http.ResponseWriter, r *http.Request, params GetMyActivityParams)
 	// 当前题库（首页显示哪一个）
 	// (GET /me/bank)
 	GetMyBank(w http.ResponseWriter, r *http.Request)
@@ -1986,6 +2107,12 @@ func (_ Unimplemented) ListTerms(w http.ResponseWriter, r *http.Request, slug Sl
 // 我的档位
 // (GET /me/access)
 func (_ Unimplemented) GetMyAccess(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// 作答推移（履历页的图表）
+// (GET /me/activity)
+func (_ Unimplemented) GetMyActivity(w http.ResponseWriter, r *http.Request, params GetMyActivityParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2939,6 +3066,58 @@ func (siw *ServerInterfaceWrapper) GetMyAccess(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetMyActivity operation middleware
+func (siw *ServerInterfaceWrapper) GetMyActivity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, AccessTokenScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetMyActivityParams
+
+	// ------------- Optional query parameter "bank" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "bank", r.URL.Query(), &params.Bank, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "bank"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "bank", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "range" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "range", r.URL.Query(), &params.Range, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "range"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "range", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMyActivity(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMyBank operation middleware
 func (siw *ServerInterfaceWrapper) GetMyBank(w http.ResponseWriter, r *http.Request) {
 
@@ -3513,6 +3692,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/access", wrapper.GetMyAccess)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/me/activity", wrapper.GetMyActivity)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/me/bank", wrapper.GetMyBank)
@@ -4410,6 +4592,56 @@ func (response GetMyAccess200JSONResponse) VisitGetMyAccessResponse(w http.Respo
 	return err
 }
 
+type GetMyActivityRequestObject struct {
+	Params GetMyActivityParams
+}
+
+type GetMyActivityResponseObject interface {
+	VisitGetMyActivityResponse(w http.ResponseWriter) error
+}
+
+type GetMyActivity200JSONResponse Activity
+
+func (response GetMyActivity200JSONResponse) VisitGetMyActivityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyActivity400JSONResponse Error
+
+func (response GetMyActivity400JSONResponse) VisitGetMyActivityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetMyActivity404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetMyActivity404JSONResponse) VisitGetMyActivityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetMyBankRequestObject struct {
 }
 
@@ -4839,6 +5071,9 @@ type StrictServerInterface interface {
 	// 我的档位
 	// (GET /me/access)
 	GetMyAccess(ctx context.Context, request GetMyAccessRequestObject) (GetMyAccessResponseObject, error)
+	// 作答推移（履历页的图表）
+	// (GET /me/activity)
+	GetMyActivity(ctx context.Context, request GetMyActivityRequestObject) (GetMyActivityResponseObject, error)
 	// 当前题库（首页显示哪一个）
 	// (GET /me/bank)
 	GetMyBank(ctx context.Context, request GetMyBankRequestObject) (GetMyBankResponseObject, error)
@@ -5592,6 +5827,32 @@ func (sh *strictHandler) GetMyAccess(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetMyAccessResponseObject); ok {
 		if err := validResponse.VisitGetMyAccessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetMyActivity operation middleware
+func (sh *strictHandler) GetMyActivity(w http.ResponseWriter, r *http.Request, params GetMyActivityParams) {
+	var request GetMyActivityRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetMyActivity(ctx, request.(GetMyActivityRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetMyActivity")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetMyActivityResponseObject); ok {
+		if err := validResponse.VisitGetMyActivityResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

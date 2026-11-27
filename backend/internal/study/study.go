@@ -84,6 +84,8 @@ type Service interface {
 	LoadTagStats(ctx context.Context, accountID userid.UserID, slug, tagType string, minAttempts int) ([]TagStat, error)
 	LoadResume(ctx context.Context, accountID userid.UserID, slug string) (*Resume, error)
 	LoadOverview(ctx context.Context, accountID userid.UserID, scope access.Scope) (*Overview, error)
+	// LoadActivity 作答推移（履历页的图表）：见 activity.go。
+	LoadActivity(ctx context.Context, accountID userid.UserID, slug string, r ActivityRange) (*Activity, error)
 	LoadRecentSessions(ctx context.Context, accountID userid.UserID, scope access.Scope, limit int) ([]Session, error)
 	LoadDueSummary(ctx context.Context, accountID userid.UserID) ([]DueSummary, error)
 	// 当前题库（P9）：首页显示哪一个，跟着账号走。见 current_bank.go。

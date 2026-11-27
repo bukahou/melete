@@ -573,6 +573,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 作答推移（履历页的图表）
+         * @description 一个题库在一段期间里每天（或每周、每月）的作答次数与正确率，只统计 bank 指定的题库。
+         *     每次作答都算（含重做），与 Progress.attemptCount 同口径。日期按 timezone 的自然日切。
+         *     正确率图要画的安全线取 BankMeta.safetyRate，这里不重复给。
+         */
+        get: operations["getMyActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/resume": {
         parameters: {
             query?: never;
@@ -922,6 +944,54 @@ export interface components {
             streakDays: number;
             /** @description 跨题库做过的题数（去重） */
             seenTotal: number;
+        };
+        /**
+         * @description 作答推移的期间。7d / 30d / 90d = 含今天在内的最近 7 / 30 / 90 个自然日（90d 就是 90 天，不是日历上的三个月）；
+         *     all = 从这个题库的第一次作答到今天。
+         * @enum {string}
+         */
+        ActivityRange: "7d" | "30d" | "90d" | "all";
+        /**
+         * @description 一个桶是一天、一周（周一到周日）还是一个月（1 日到月末）。由后端按期间的长短决定，客户端照着显示，⛔ 不自己换算：
+         *     期间不超过 90 天按天（7d / 30d / 90d 都是），不超过两年按周，更长按月。
+         * @enum {string}
+         */
+        ActivityBucketUnit: "day" | "week" | "month";
+        ActivityStats: {
+            /** @description 作答次数（含重做，与 Progress.attemptCount 同口径） */
+            attemptCount: number;
+            /** @description 其中答对的次数 */
+            correctCount: number;
+            /** @description 其中答错的次数（= attemptCount − correctCount） */
+            wrongCount: number;
+            /** @description 正确率（0–100，四舍五入，与 RecentAccuracy.rate 同一算法）。attemptCount 为 0 时缺省；不设最少次数的门槛 */
+            rate?: number;
+        };
+        ActivityBucket: components["schemas"]["ActivityStats"] & {
+            /**
+             * Format: date
+             * @description 桶的第一天；按天时就是那一天
+             */
+            date: string;
+            /**
+             * Format: date
+             * @description 桶的最后一天（含）。按天时与 date 相同；含今天的那个桶可能晚于今天（本周 / 本月的最后一天）
+             */
+            endDate: string;
+        };
+        /** @description total 是整个期间的合计（各桶之和）。 */
+        Activity: {
+            range: components["schemas"]["ActivityRange"];
+            bucket: components["schemas"]["ActivityBucketUnit"];
+            /** @description 切自然日用的时区（IANA 名，如 Asia/Tokyo），与 /me/overview 的连续天数同一口径 */
+            timezone: string;
+            total: components["schemas"]["ActivityStats"];
+            /**
+             * @description 从旧到新、连续不断：没有作答的桶也返回（计数为 0，rate 缺省）。
+             *     第一个桶含期间的第一天，最后一个桶含今天 —— 客户端默认选中最后一个。
+             *     range=all 且这个题库从没作答过时为空数组（total 全为 0）。
+             */
+            buckets: components["schemas"]["ActivityBucket"][];
         };
         StudySession: {
             bankSlug: string;
@@ -2312,6 +2382,41 @@ export interface operations {
                     "application/json": components["schemas"]["StudySession"][];
                 };
             };
+        };
+    };
+    getMyActivity: {
+        parameters: {
+            query?: {
+                /** @description 题库 slug；缺省 = 当前题库（同 `GET /me/bank`；都没有则为第一个题库） */
+                bank?: components["parameters"]["BankQuery"];
+                /** @description 期间，缺省 7d */
+                range?: components["schemas"]["ActivityRange"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Activity"];
+                };
+            };
+            /** @description range 不是约定的取值 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     getMyResume: {

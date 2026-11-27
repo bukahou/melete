@@ -137,6 +137,9 @@ func TestBankAccessIntegration(t *testing.T) {
 		{"GET /me/tag-stats?bank=", func(c context.Context) (any, error) {
 			return srv.GetMyTagStats(c, api.GetMyTagStatsRequestObject{Params: api.GetMyTagStatsParams{Bank: sp, Type: api.GetMyTagStatsParamsTypeDomain}})
 		}},
+		{"GET /me/activity?bank=", func(c context.Context) (any, error) {
+			return srv.GetMyActivity(c, api.GetMyActivityRequestObject{Params: api.GetMyActivityParams{Bank: sp}})
+		}},
 		{"GET /me/resume?bank=", func(c context.Context) (any, error) {
 			return srv.GetMyResume(c, api.GetMyResumeRequestObject{Params: api.GetMyResumeParams{Bank: sp}})
 		}},
@@ -150,7 +153,8 @@ func TestBankAccessIntegration(t *testing.T) {
 			api.SummarizeQuestions404JSONResponse, api.ListTerms404JSONResponse, api.GetTerm404JSONResponse,
 			api.GetQuestion404JSONResponse, api.AddBookmark404JSONResponse, api.RemoveBookmark404JSONResponse,
 			api.RecordAttempt404JSONResponse, api.RateAttempt404JSONResponse, api.GetMyProgress404JSONResponse,
-			api.GetMyTagStats404JSONResponse, api.GetMyResume404JSONResponse, api.ChooseMyBank404JSONResponse:
+			api.GetMyTagStats404JSONResponse, api.GetMyActivity404JSONResponse, api.GetMyResume404JSONResponse,
+			api.ChooseMyBank404JSONResponse:
 			return true
 		}
 		return false
