@@ -1,12 +1,17 @@
 """
 文本层缺陷的**确定性**修复 —— 只修「信息损失可无歧义还原」的那类。
 
-目前只有一类：pdftotext 抽取时 fi / fl / ffi / ffl 连字丢失
-（PDF 字体缺 ToUnicode 映射，连字被抽成一个空格）：
+两类：
 
-    Configure → Con gure      traffic → tra c      file → le
+1. pdftotext 抽取时 fi / fl / ffi / ffl 连字丢失
+   （PDF 字体缺 ToUnicode 映射，连字被抽成一个空格）：
 
-SAP-C02 实测 76.7% 的题中招（SAA 中文版只有 4 题，那边用了专项正则）。
+       Configure → Con gure      traffic → tra c      file → le
+
+   SAP-C02 实测 76.7% 的题中招（SAA 中文版只有 4 题，那边用了专项正则）。
+
+2. 断行在两个汉字之间留下的空格（close_cjk_gaps）：「重新路由流 量」→「重新路由流量」。
+   由导入侧按题库开关调用（facetext.py），不在解析时改原文。
 
 为什么用**封闭词表**而不是系统词典：
   · 可复现 —— 产物不随机器上 /usr/share/dict 的版本变化
@@ -46,6 +51,20 @@ _INTERNAL = re.compile(r"(?<![A-Za-z])([A-Za-z]+) ([a-z]+)(?![A-Za-z])")
 # 后接允许连字符（field-level）与冒号（types of files:）。冒号曾被排除是为了 sts:AssumeRole，
 # 但真正的保险是封闭词表（fists 不在表里），不是标点。
 _INITIAL = re.compile(r"(?:^|(?<=[\s(\"']))([a-z]{2,})(?=$|[\s.,;:)!?\"'\-/0-9@])")   # 也允许后接数字/@：nance1@example.com
+
+
+# ---------- 断行留下的汉字间空格 ----------
+# pdftotext 把版面上的断行接回来时会在断点留一个空格：「重新路由流 量」「中 的实例」「时， 在」。
+# 中文正文里两个汉字（或汉字与全角标点）之间本来就没有空格，去掉是无歧义的还原。
+# 只认汉字与全角标点，不认假名：日文里「ア ハードウェア」这种空格隔开的是选项记号，有意义。
+# 汉字与 ASCII 之间的空格（「使用 AWS 对」）是正常的混排，不动。
+_HAN_OR_PUNCT = r"\u3400-\u4dbf\u4e00-\u9fff\u3001-\u303f\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65"
+_CJK_GAP = re.compile(rf"(?<=[{_HAN_OR_PUNCT}]) +(?=[{_HAN_OR_PUNCT}])")
+
+
+def close_cjk_gaps(text: str) -> tuple[str, int]:
+    """去掉两个汉字（或全角标点）之间的半角空格；返回 (修复后的文本, 去掉了几处)。"""
+    return _CJK_GAP.subn("", text)
 
 
 def _recombine(left: str, right: str) -> str | None:
