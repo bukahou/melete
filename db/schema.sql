@@ -335,7 +335,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   --    而两者的处置相反（吊销该用户全部会话 vs 只拒绝这一次）。
   prev_refresh_hash BINARY(32) NULL,
   device_info    VARCHAR(255)  NULL,
-  client_ip      VARBINARY(16) NULL,   -- ⛔ 不得是 XFF 整条链（那是客户端可伪造的）
+  client_ip      VARBINARY(45) NULL,   -- 文本形式，IPv6 最长 45 字符；⛔ 不得是 XFF 整条链（那是客户端可伪造的）
   created_at     DATETIME      NOT NULL,
   last_active_at DATETIME      NOT NULL,
   expires_at     DATETIME      NOT NULL,
