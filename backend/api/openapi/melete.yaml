@@ -693,6 +693,34 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/StudySession" }
 
+  /me/activity:
+    get:
+      tags: [study]
+      summary: 作答推移（履历页的图表）
+      description: |
+        一个题库在一段期间里每天（或每周、每月）的作答次数与正确率，只统计 bank 指定的题库。
+        每次作答都算（含重做），与 Progress.attemptCount 同口径。日期按 timezone 的自然日切。
+        正确率图要画的安全线取 BankMeta.safetyRate，这里不重复给。
+      operationId: getMyActivity
+      parameters:
+        - $ref: "#/components/parameters/BankQuery"
+        - name: range
+          in: query
+          description: 期间，缺省 7d
+          schema: { $ref: "#/components/schemas/ActivityRange" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Activity" }
+        "400":
+          description: range 不是约定的取值
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /me/resume:
     get:
       tags: [study]
@@ -1168,6 +1196,60 @@ components:
         todayCount: { type: integer, description: 今天的作答次数 }
         streakDays: { type: integer, description: 连续有作答的自然日数（含今天；今天没做则从昨天起算） }
         seenTotal:  { type: integer, description: 跨题库做过的题数（去重） }
+
+    ActivityRange:
+      type: string
+      enum: ["7d", "30d", "90d", all]
+      x-enum-varnames: [ActivityRange7d, ActivityRange30d, ActivityRange90d, ActivityRangeAll]
+      description: |
+        作答推移的期间。7d / 30d / 90d = 含今天在内的最近 7 / 30 / 90 个自然日（90d 就是 90 天，不是日历上的三个月）；
+        all = 从这个题库的第一次作答到今天。
+
+    ActivityBucketUnit:
+      type: string
+      enum: [day, week, month]
+      description: |
+        一个桶是一天、一周（周一到周日）还是一个月（1 日到月末）。由后端按期间的长短决定，客户端照着显示，⛔ 不自己换算：
+        期间不超过 90 天按天（7d / 30d / 90d 都是），不超过两年按周，更长按月。
+
+    ActivityStats:
+      type: object
+      required: [attemptCount, correctCount, wrongCount]
+      properties:
+        attemptCount: { type: integer, description: 作答次数（含重做，与 Progress.attemptCount 同口径） }
+        correctCount: { type: integer, description: 其中答对的次数 }
+        wrongCount:   { type: integer, description: 其中答错的次数（= attemptCount − correctCount） }
+        rate:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: 正确率（0–100，四舍五入，与 RecentAccuracy.rate 同一算法）。attemptCount 为 0 时缺省；不设最少次数的门槛
+
+    ActivityBucket:
+      allOf:
+        - $ref: "#/components/schemas/ActivityStats"
+        - type: object
+          required: [date, endDate]
+          properties:
+            date:    { type: string, format: date, description: 桶的第一天；按天时就是那一天 }
+            endDate: { type: string, format: date, description: 桶的最后一天（含）。按天时与 date 相同；含今天的那个桶可能晚于今天（本周 / 本月的最后一天） }
+
+    Activity:
+      type: object
+      description: total 是整个期间的合计（各桶之和）。
+      required: [range, bucket, timezone, total, buckets]
+      properties:
+        range:    { $ref: "#/components/schemas/ActivityRange" }
+        bucket:   { $ref: "#/components/schemas/ActivityBucketUnit" }
+        timezone: { type: string, description: 切自然日用的时区（IANA 名，如 Asia/Tokyo），与 /me/overview 的连续天数同一口径 }
+        total:    { $ref: "#/components/schemas/ActivityStats" }
+        buckets:
+          type: array
+          description: |
+            从旧到新、连续不断：没有作答的桶也返回（计数为 0，rate 缺省）。
+            第一个桶含期间的第一天，最后一个桶含今天 —— 客户端默认选中最后一个。
+            range=all 且这个题库从没作答过时为空数组（total 全为 0）。
+          items: { $ref: "#/components/schemas/ActivityBucket" }
 
     StudySession:
       type: object

@@ -3,6 +3,8 @@ package httpapi
 import (
 	"encoding/json"
 
+	openapi_types "github.com/oapi-codegen/runtime/types"
+
 	"github.com/bukahou/melete/backend/internal/api"
 	"github.com/bukahou/melete/backend/internal/bank"
 	"github.com/bukahou/melete/backend/internal/passgrade"
@@ -46,6 +48,25 @@ func parseBankMeta(raw *string) api.BankMeta {
 
 func toAPIRecentAccuracy(r study.RecentAccuracy) api.RecentAccuracy {
 	return api.RecentAccuracy{WindowDays: r.WindowDays, AttemptCount: r.AttemptCount, Rate: r.Rate}
+}
+
+func toAPIActivity(a *study.Activity) api.Activity {
+	out := api.Activity{
+		Range: api.ActivityRange(a.Range), Bucket: api.ActivityBucketUnit(a.Unit), Timezone: a.TimeZone,
+		Total: api.ActivityStats{
+			AttemptCount: a.Total.AttemptCount, CorrectCount: a.Total.CorrectCount,
+			WrongCount: a.Total.WrongCount(), Rate: a.Total.Rate(),
+		},
+		Buckets: make([]api.ActivityBucket, 0, len(a.Buckets)),
+	}
+	for _, b := range a.Buckets {
+		out.Buckets = append(out.Buckets, api.ActivityBucket{
+			Date: openapi_types.Date{Time: b.Start}, EndDate: openapi_types.Date{Time: b.End},
+			AttemptCount: b.AttemptCount, CorrectCount: b.CorrectCount,
+			WrongCount: b.WrongCount(), Rate: b.Rate(),
+		})
+	}
+	return out
 }
 
 func toAPIPassGrade(j *passgrade.Judgement) *api.PassGrade {

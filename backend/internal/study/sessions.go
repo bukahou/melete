@@ -35,14 +35,12 @@ type Session struct {
 
 const sessionGap = 30 * time.Minute
 
-// 连续天数按学习者所在时区的自然日算；开发者在东京，先写死，将来进 account 偏好。
-var studyTZ = time.FixedZone("JST", 9*3600)
-
 // LoadOverview 只统计看得到的题库（P9 #27）：被降级后，私有题库的作答不进总览；记录本身不删。
+// 「今天」与连续天数按 studyTZ 的自然日算。
 func (s *service) LoadOverview(ctx context.Context, accountID userid.UserID, scope access.Scope) (*Overview, error) {
 	o := &Overview{}
 	now := time.Now().In(studyTZ)
-	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, studyTZ).UTC()
+	dayStart := dayStartUTC(localDate(now))
 	// 看得到的作答：attempt ⋈ question ⋈ bank，再按 scope 过滤
 	const visible = `attempt a JOIN question q ON q.id = a.question_id JOIN bank b ON b.id = q.bank_id`
 	err := s.db.QueryRowContext(ctx, `
@@ -56,9 +54,9 @@ func (s *service) LoadOverview(ctx context.Context, accountID userid.UserID, sco
 
 	// 连续天数：取最近 400 天有作答的自然日集合，从今天（或昨天）往回数
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT DISTINCT DATE(CONVERT_TZ(a.created_at, '+00:00', '+09:00'))
+		SELECT DISTINCT DATE(CONVERT_TZ(a.created_at, '+00:00', ?))
 		FROM `+visible+` WHERE a.user_id = ? AND a.created_at >= ? AND `+scope.BankFilter("b")+`
-		ORDER BY 1 DESC`, accountID, now.AddDate(0, 0, -400).UTC())
+		ORDER BY 1 DESC`, sqlOffset(now), accountID, now.AddDate(0, 0, -400).UTC())
 	if err != nil {
 		return nil, fmt.Errorf("统计连续天数: %w", err)
 	}

@@ -489,6 +489,32 @@ func (s *Server) GetMyTagStats(ctx context.Context, req api.GetMyTagStatsRequest
 	return out, nil
 }
 
+func (s *Server) GetMyActivity(ctx context.Context, req api.GetMyActivityRequestObject) (api.GetMyActivityResponseObject, error) {
+	accountID, scope, err := s.viewer(ctx, "GetMyActivity")
+	if err != nil {
+		return nil, err
+	}
+	r := study.DefaultActivityRange
+	if req.Params.Range != nil {
+		r = study.ActivityRange(*req.Params.Range)
+	}
+	slug, err := s.currentBank(ctx, accountID, scope, req.Params.Bank)
+	if errors.Is(err, bank.ErrNotFound) {
+		return api.GetMyActivity404JSONResponse{NotFoundJSONResponse: notFound("题库不存在")}, nil
+	}
+	if err != nil {
+		return nil, s.fail("GetMyActivity.banks", err)
+	}
+	act, err := s.studies.LoadActivity(ctx, accountID, slug, r)
+	if errors.Is(err, study.ErrUnknownRange) {
+		return api.GetMyActivity400JSONResponse{Message: "range 只能是 7d / 30d / 90d / all"}, nil
+	}
+	if err != nil {
+		return nil, s.fail("GetMyActivity", err)
+	}
+	return api.GetMyActivity200JSONResponse(toAPIActivity(act)), nil
+}
+
 // currentBank 解析可选的 bank 参数：显式给了就用（看不到 ⇒ bank.ErrNotFound）；
 // 缺省 = 这个账号的当前题库（与 GET /me/bank 同一套 chosen → recent 规则，只考虑看得到的题库）；
 // 都没有才退到第一个看得到的题库（P9 #27：被降级后落到公开题库）。
