@@ -321,6 +321,27 @@ func (e Grade) Valid() bool {
 	}
 }
 
+// Defines values for PickedExplanationSource.
+const (
+	Ai     PickedExplanationSource = "ai"
+	Editor PickedExplanationSource = "editor"
+	User   PickedExplanationSource = "user"
+)
+
+// Valid indicates whether the value is a known member of the PickedExplanationSource enum.
+func (e PickedExplanationSource) Valid() bool {
+	switch e {
+	case Ai:
+		return true
+	case Editor:
+		return true
+	case User:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QuestionDetailKind.
 const (
 	QuestionDetailKindMulti  QuestionDetailKind = "multi"
@@ -683,8 +704,16 @@ type AnswerClaim struct {
 
 	// Rationale 为什么。AI 裁决只在与题库标注或社区投票不一致时才有，讲的是不一致的原因；
 	// 各选项为什么对或错见 Choice.explanation。
-	Rationale *string           `json:"rationale,omitempty"`
-	Source    AnswerClaimSource `json:"source"`
+	// 已按请求语言挑好：有请求语言的版本就给它，否则给原文。
+	Rationale *string `json:"rationale,omitempty"`
+
+	// RationaleLocale rationale 实际的语言。有 rationale 才有
+	RationaleLocale *string `json:"rationaleLocale,omitempty"`
+
+	// RationaleLocalized rationale 是否为请求的语言。有 rationale 才有。**false 表示没有请求语言的版本、给的是原文**，
+	// 界面要把这件事显示出来，⛔ 不静默回退。请求没有指定语言时为 true
+	RationaleLocalized *bool             `json:"rationaleLocalized,omitempty"`
+	Source             AnswerClaimSource `json:"source"`
 }
 
 // AnswerClaimSource defines model for AnswerClaim.Source.
@@ -1014,7 +1043,10 @@ type FocusCursor struct {
 	Label  string    `json:"label"`
 	LastAt time.Time `json:"lastAt"`
 
-	// Tag 通用 (type, value) 结构，不硬编码任何特定题库的分类体系
+	// Tag 通用 (type, value) 结构，不硬编码任何特定题库的分类体系。
+	// 显示用 name：后端按请求语言挑好（请求的语言 → 英文 → 其他语言 → value），
+	// localized 为 false 表示 name 不是请求的语言，界面要标出来。
+	// 没有多语言名字的标签（服务名等）name 就是 value，localized 为 true。
 	Tag *Tag `json:"tag,omitempty"`
 
 	// Total 集合当前大小
@@ -1108,6 +1140,20 @@ type PasswordChanged struct {
 	Tokens *TokenPair `json:"tokens,omitempty"`
 }
 
+// PickedExplanation defines model for PickedExplanation.
+type PickedExplanation struct {
+	Body   string `json:"body"`
+	Locale string `json:"locale"`
+
+	// Localized body 是否为请求的语言。**false 表示没有请求语言的版本，回退到了另一种语言**，
+	// 界面要把这件事显示出来，⛔ 不静默回退。请求没有指定语言时为 true
+	Localized bool                    `json:"localized"`
+	Source    PickedExplanationSource `json:"source"`
+}
+
+// PickedExplanationSource defines model for PickedExplanation.Source.
+type PickedExplanationSource string
+
 // Progress defines model for Progress.
 type Progress struct {
 	// AttemptCorrectCount 作答为对的次数（含重做）。练习正确率 = attemptCorrectCount / attemptCount。
@@ -1168,7 +1214,13 @@ type QuestionDetail struct {
 	DataIssue *string `json:"dataIssue,omitempty"`
 
 	// Enriched 是否已完成 AI 富化
-	Enriched     bool          `json:"enriched"`
+	Enriched bool `json:"enriched"`
+
+	// Explanation 按请求语言挑好的一份解析：请求的语言 → 题库的语言 → 其他语言；同一语言里人工订正优先于 AI。
+	Explanation *PickedExplanation `json:"explanation,omitempty"`
+
+	// Explanations 全部语言、全部来源的解析。显示请用 explanation（后端按请求语言挑好的那一份）；保留给尚未升级的客户端
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Explanations []Explanation `json:"explanations"`
 
 	// ExternalNo 原题号，用于溯源
@@ -1420,14 +1472,27 @@ type StudySession struct {
 	LastNo    *int      `json:"lastNo,omitempty"`
 	StartedAt time.Time `json:"startedAt"`
 
-	// Tag 通用 (type, value) 结构，不硬编码任何特定题库的分类体系
+	// Tag 通用 (type, value) 结构，不硬编码任何特定题库的分类体系。
+	// 显示用 name：后端按请求语言挑好（请求的语言 → 英文 → 其他语言 → value），
+	// localized 为 false 表示 name 不是请求的语言，界面要标出来。
+	// 没有多语言名字的标签（服务名等）name 就是 value，localized 为 true。
 	Tag *Tag `json:"tag,omitempty"`
 }
 
-// Tag 通用 (type, value) 结构，不硬编码任何特定题库的分类体系
+// Tag 通用 (type, value) 结构，不硬编码任何特定题库的分类体系。
+// 显示用 name：后端按请求语言挑好（请求的语言 → 英文 → 其他语言 → value），
+// localized 为 false 表示 name 不是请求的语言，界面要标出来。
+// 没有多语言名字的标签（服务名等）name 就是 value，localized 为 true。
 type Tag struct {
+	// I18n 各语言的名字（原始数据）。显示请用 name
 	I18n *map[string]string `json:"i18n,omitempty"`
 	Id   int64              `json:"id"`
+
+	// Localized name 是否为请求的语言；请求没有指定语言时为 true
+	Localized bool `json:"localized"`
+
+	// Name 显示名（已按请求语言挑好）
+	Name string `json:"name"`
 
 	// QuestionCount 挂在该标签下的题数
 	QuestionCount *int    `json:"questionCount,omitempty"`
@@ -1445,8 +1510,16 @@ type TagStat struct {
 
 	// Grade 合格等级。界线由后端按题库的官方及格线算出（各档范围见 PassGrade.bands），客户端只显示，⛔ 不自己按阈值分档。
 	// A ≥ 安全线 · B ≥ 合格线 · C ≥ 合格线 − 15 个点 · D 其余。
-	Grade *Grade             `json:"grade,omitempty"`
-	I18n  *map[string]string `json:"i18n,omitempty"`
+	Grade *Grade `json:"grade,omitempty"`
+
+	// I18n 各语言的名字（原始数据）。显示请用 name
+	I18n *map[string]string `json:"i18n,omitempty"`
+
+	// Localized name 是否为请求的语言，规则同 Tag.localized
+	Localized bool `json:"localized"`
+
+	// Name 显示名，规则同 Tag.name
+	Name string `json:"name"`
 
 	// Rate 正确率 0-100
 	Rate  float32 `json:"rate"`

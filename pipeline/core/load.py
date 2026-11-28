@@ -26,7 +26,9 @@ except ImportError:
     sys.exit("✗ 需要 mysql-connector-python：pip install mysql-connector-python")
 
 from paths import REPO, bank_dir, rel  # 路径解析的唯一归属地, 见该模块 docstring
+from enrich import fingerprint
 from facetext import ErrataError, FacePreparer
+from notes_i18n import load_translations
 BATCH = 200
 DSN_RE = re.compile(r"^(?P<user>[^:]+):(?P<password>.*)@tcp\((?P<host>[^:)]+):(?P<port>\d+)\)/(?P<database>[^?]+)")
 
@@ -183,6 +185,7 @@ class Loader:
             stale += [(qid, src) for qid, src in self.cur.fetchall() if (qid, src) not in wanted]
         if stale:
             self._exec("DELETE FROM answer_claim WHERE question_id=%s AND source=%s", stale)
+            self._exec("DELETE FROM answer_claim_i18n WHERE question_id=%s AND source=%s", stale)
             print(f"  · 清理过期主张 {len(stale)} 条")
 
         rows = []
@@ -230,6 +233,28 @@ class Loader:
                       ON DUPLICATE KEY UPDATE body=VALUES(body)""", rows)
         return len(rows)
 
+    def sync_rationale_i18n(self, qmap: dict, qs: list, notes: dict, locale: str) -> int:
+        """
+        译过的分歧说明 → answer_claim_i18n（AI 裁决理由的该语言版本）。
+        与原文同一规则（apply_dispute_notes）：有点评的题，理由就是分歧说明；
+        分歧说明为 None 的题删掉该语言的旧行，否则界面会显示一段原文里已经没有的理由。
+        """
+        rows, cleared = [], []
+        for q in qs:
+            item = notes.get(q["no"])
+            if not item or not any(c["source"] == "ai_verdict" for c in q["claims"]):
+                continue
+            key = (qid(qmap, q), "ai_verdict", locale)
+            if item["dispute"] is None:
+                cleared.append(key)
+            else:
+                rows.append((*key, item["dispute"]))
+        self._exec("DELETE FROM answer_claim_i18n WHERE question_id=%s AND source=%s AND locale=%s", cleared)
+        self._exec("""INSERT INTO answer_claim_i18n (question_id, source, locale, rationale)
+                      VALUES (%s,%s,%s,%s)
+                      ON DUPLICATE KEY UPDATE rationale=VALUES(rationale)""", rows)
+        return len(rows)
+
     # ---- tag ----
     def upsert_tags(self, bank_id: int, qs: list, spec: dict) -> dict:
         """domain / service 是题库私有（bank_id=本题库），concept 全局共享（bank_id=0）。"""
@@ -252,16 +277,15 @@ class Loader:
             # 而前两处改了、这处没改，直到真的导入才炸。
             wanted.update((0, "concept", c) for c in e.get("concepts") or [])
 
-        domains = spec.get("domains", {})
-        domains_zh = spec.get("domains_zh", {})
+        names_by_locale = domain_names(spec)
         rows = []
         for bid, typ, val in sorted(wanted):
             i18n = None
             if typ == "domain":
                 key = val.split("-", 1)[1]
-                names = {k: v for k, v in (("en", domains.get(key)), ("zh", domains_zh.get(key))) if v}
+                names = {loc: m[key] for loc, m in names_by_locale.items() if m.get(key)}
                 if names:
-                    i18n = json.dumps(names, ensure_ascii=False)
+                    i18n = json.dumps(names, ensure_ascii=False, sort_keys=True)
             rows.append((bid, typ, val, i18n))
         self._exec("""INSERT INTO tag (bank_id, type, value, i18n) VALUES (%s,%s,%s,%s)
                       ON DUPLICATE KEY UPDATE i18n=COALESCE(VALUES(i18n), i18n)""", rows)
@@ -342,6 +366,19 @@ def bank_visibility(spec: dict) -> str:
     if v not in ("public", "private"):
         sys.exit(f"✗ enrich_spec.json 的 visibility 只能是 public / private，得到 {v!r}")
     return v
+
+
+def domain_names(spec: dict) -> dict[str, dict]:
+    """
+    考纲域的各语言名字 {语言: {域编号: 名字}}：domains 的语言由 domains_locale 声明（缺省 en，
+    AWS 考纲原文是英文；IPA 的原文是日文），其余语言写在 domains_<语言> 里。
+    """
+    out = {spec.get("domains_locale", "en"): spec.get("domains", {})}
+    for k, v in spec.items():
+        m = re.fullmatch(r"domains_([a-z]{2})", k)
+        if m and isinstance(v, dict):
+            out[m.group(1)] = v
+    return out
 
 
 def load_choice_notes(bank: str) -> dict | None:
@@ -520,6 +557,8 @@ def main() -> None:
 
     doc = json.loads(src.read_text(encoding="utf-8"))
     qs = doc["questions"]
+    # 点评译文的指纹按素材原文算（与 notes_i18n 一致），所以要在题面整理改动 qs 之前取
+    raw_fp = {q["no"]: fingerprint(q) for q in qs}
 
     # 题面整理（facetext.py）：断行空格 → 专有名词归一 → 勘误，只改进库的文字，enriched.json 一字不动。
     # 放在最前面：后面的校验与去重都按题号与告警走，不看正文，顺序不影响它们。
@@ -586,6 +625,22 @@ def main() -> None:
     else:
         display_locale = doc["bank"].get("locale", "zh")
 
+    # 理由原文（answer_claim.rationale）没有语言列，后端按 bank.locale 标注它的语言，与题干、选项同一约定。
+    # AI 写的文字与题面展示语言不同时这个约定不成立：停下，⛔ 不让界面把一种语言标成另一种。
+    choice_notes = load_choice_notes(args.bank)
+    ai_locale = (choice_notes["locale"] if choice_notes
+                 else (spec.get("explanation_locale") or doc["bank"].get("locale", "zh")).split("-")[0])
+    if ai_locale != display_locale:
+        sys.exit(f"✗ AI 裁决理由的语言（{ai_locale}）与题面展示语言（{display_locale}）不同 ——"
+                 f" answer_claim.rationale 没有语言列，导入后会被当成 {display_locale}")
+    # 点评译文带着翻译时的指纹：原文改过而译文没重做就整批停下，⛔ 不让另一种语言显示与原文说法不同的点评
+    notes_tr, stale = load_translations(bank_dir(args.bank), choice_notes["items"], raw_fp) if choice_notes else ([], [])
+    if stale:
+        print(f"✗ 点评译文过期 {len(stale)} 条（翻译之后原文点评或题面改过），未写入任何数据：")
+        for e in stale[:20]:
+            print(f"    {e}")
+        sys.exit("  先用 notes_i18n.py next / write 重译这些题，再 merge")
+
     conn = mysql.connect(**parse_go_dsn(args.dsn), charset="utf8mb4", autocommit=False)
     ld = Loader(conn)
     # bank.meta = 题库的自描述展示元数据：标签轴叫什么、考纲权重、及格线。
@@ -610,16 +665,22 @@ def main() -> None:
         # 卷子（question.session）的显示名：session 是给机器的键（2026r08），人要看「令和8年度」
         "sessionLabels": spec.get("session_labels"),
     }, display_locale, bank_visibility(spec))
-    choice_notes = load_choice_notes(args.bank)
     if choice_notes:
         apply_dispute_notes(qs, choice_notes["items"])
     qmap = ld.upsert_questions(bank_id, qs)
     n_ch = ld.upsert_choices(qmap, qs)
     n_cl = ld.upsert_claims(qmap, qs)
     n_notes = 0
+    n_notes_tr = {}
     if choice_notes:
-        n_notes = ld.upsert_choice_explanations(qmap, ld.choice_ids(qmap), qs,
-                                                choice_notes["items"], choice_notes["locale"])
+        cmap = ld.choice_ids(qmap)
+        n_notes = ld.upsert_choice_explanations(qmap, cmap, qs, choice_notes["items"], choice_notes["locale"])
+        for tr in notes_tr:
+            if tr["locale"] == choice_notes["locale"]:
+                continue
+            a = ld.upsert_choice_explanations(qmap, cmap, qs, tr["items"], tr["locale"])
+            b = ld.sync_rationale_i18n(qmap, qs, tr["items"], tr["locale"])
+            n_notes_tr[tr["locale"]] = (len(tr["items"]), a, b, tr["complete"])
     # 解析的语言 ≠ 题库的语言：SAP-C02 题面是英文，但富化会话按学习者语言写中文解析。
     # 由 spec 声明 explanation_locale，缺省才退回题库 locale（SAA 中文题库两者相同）。
     n_ex = ld.upsert_explanations(qmap, qs, spec.get("explanation_locale") or doc["bank"].get("locale", "zh"))
@@ -664,6 +725,9 @@ def main() -> None:
         flag = "" if choice_notes["complete"] else "   ⚠ 部分点评（complete=false），其余题保持原来的整段理由"
         print(f"✓ 逐项点评  {len(choice_notes['items'])} 题 · 选项 {n_notes}"
               f"（{choice_notes['locale']}）{flag}")
+        for loc, (n_q, a, b, complete) in sorted(n_notes_tr.items()):
+            flag = "" if complete else "   ⚠ 部分译文（complete=false），其余题显示原文"
+            print(f"✓ 点评译文 {loc}  {n_q} 题 · 选项 {a} · 分歧说明 {b}{flag}")
     # ⚠️ 只报【本题库的】标签数。tmap 里还有全部全局 concept（bank_id=0，
     # 目前 1075 个），把它算进来会打印出「标签 1100」这种数字 ——
     # 而 IPA 只有 25 个。⛔ 一个会让人以为出了事的数字本身就是缺陷：

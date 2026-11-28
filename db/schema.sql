@@ -133,6 +133,18 @@ CREATE TABLE IF NOT EXISTS choice_explanation (
   PRIMARY KEY (choice_id, source, locale)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- 答案主张理由的其他语言版本。原文在 answer_claim.rationale（语言 = bank.locale，与题干、选项同一约定），
+-- 这里只放译文，按 (question_id, source) 对应 answer_claim 的唯一键；主张被清理时导入器一并删掉译文。
+CREATE TABLE IF NOT EXISTS answer_claim_i18n (
+  question_id BIGINT      NOT NULL,
+  source      VARCHAR(32) NOT NULL,   -- 与 answer_claim.source 相同
+  locale      VARCHAR(16) NOT NULL,
+  rationale   TEXT        NOT NULL,
+  created_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (question_id, source, locale)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- 通用 (type, value) 结构，不硬编码 AWS。
 -- bank_id = 0 表示全局标签（concept 类，跨题库共享并链到知识条目）
 --
@@ -335,7 +347,7 @@ CREATE TABLE IF NOT EXISTS user_sessions (
   --    而两者的处置相反（吊销该用户全部会话 vs 只拒绝这一次）。
   prev_refresh_hash BINARY(32) NULL,
   device_info    VARCHAR(255)  NULL,
-  client_ip      VARBINARY(16) NULL,   -- ⛔ 不得是 XFF 整条链（那是客户端可伪造的）
+  client_ip      VARBINARY(45) NULL,   -- 文本形式，IPv6 最长 45 字符；⛔ 不得是 XFF 整条链（那是客户端可伪造的）
   created_at     DATETIME      NOT NULL,
   last_active_at DATETIME      NOT NULL,
   expires_at     DATETIME      NOT NULL,

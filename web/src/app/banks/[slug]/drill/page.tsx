@@ -6,7 +6,7 @@ import { contextFromSearch, drillHref, isShrinking, listParams, setHref } from "
 import { describeContext } from "@/lib/drillLabel";
 import { ClaimsPanel } from "@/components/ClaimsPanel";
 import { DrillCard } from "@/components/DrillCard";
-import { Markdown } from "@/components/Markdown";
+import { ExplanationPanel } from "@/components/ExplanationPanel";
 import { TagChip } from "@/components/TagChip";
 import { Page } from "@/components/Page";
 import { BookmarkToggle } from "@/components/BookmarkToggle";
@@ -15,18 +15,6 @@ import { needsSourceNotice } from "@/i18n/locales";
 
 type Search = Record<string, string | string[] | undefined>;
 
-/**
- * pickExplanations 挑该语言的解析。
- *
- * explanation 表天生带 locale，同一道题可以有多语言解析。
- * ⚠️ 全部渲染会让日语用户同时看到中文和日文两份 —— 不是「更全」，是噪音。
- * 该语言有就只给该语言；一份都没有就把现有的都给出来（⛔ 宁可语言不对，
- * 也不该把仅有的解析藏起来），上方的「暂无译文」提示已经说明了状况。
- */
-function pickExplanations<T extends { locale: string }>(all: T[], locale: string): T[] {
-  const hit = all.filter((e) => e.locale === locale);
-  return hit.length > 0 ? hit : all;
-}
 
 /**
  * 刷题页。每题一次页面导航（URL 携带位置）：可分享、可后退、刷新不丢进度，且天然 SSR。
@@ -219,17 +207,7 @@ export default async function DrillPage({
           表现就是「下一题默认选中了上一题的选项」。2026-09-05 实测。 */}
       <DrillCard key={q.id} questionId={q.id} stem={q.stem} choices={q.choices} pickCount={q.pickCount} reference={reference} context={context} nav={nav}>
         <ClaimsPanel claims={q.claims} />
-        {pickExplanations(q.explanations, locale).map((e) => (
-          <section key={`${e.source}-${e.locale}`}>
-            <h3 className="section-rule">
-              <span className="eyebrow">{t("explanation")}</span>
-            </h3>
-            <div className="mt-5 card p-6 sm:p-8">
-              <Markdown>{e.body}</Markdown>
-            </div>
-          </section>
-        ))}
-        {q.explanations.length === 0 && (
+        {q.explanation ? <ExplanationPanel explanation={q.explanation} /> : (
           <p className="text-xs leading-relaxed text-muted">{t("noExplanation")}</p>
         )}
         {q.tags.length > 0 && (

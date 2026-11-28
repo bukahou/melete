@@ -1,11 +1,16 @@
 package localauthx
 
 import (
+	"context"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/bukahou/gokit/localauth"
 	"github.com/bukahou/gokit/localauth/storetest"
 	"github.com/google/uuid"
+
+	"github.com/bukahou/melete/backend/internal/userid"
 )
 
 // ⭐ shim 已删（gokit v0.1.2 加了 SessionOptions.UserID）。
@@ -75,4 +80,36 @@ func TestVerificationStoreContractIntegration(t *testing.T) {
 		// 「不存在」在存储层归一。⛔ 声明为 true 才会跑那条额外断言。
 		FiltersExpired: true,
 	})
+}
+
+// 会话记下的客户端 IP 是文本形式：IPv6 最长 45 个字符（含 IPv4 映射的写法），列必须放得下，
+// 否则这类客户端一登录就建不出会话（Data too long）。
+func TestSessionStoreKeepsIPv6ClientIPIntegration(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	store := NewSessionStore(db)
+	uid := contractUserID("ipv6-client")
+	t.Cleanup(func() {
+		if bin, err := userid.Encode(uid); err == nil {
+			_, _ = db.Exec(`DELETE FROM user_sessions WHERE user_id = ?`, bin)
+		}
+	})
+	now := time.Now().UTC().Truncate(time.Second)
+	for i, ip := range []string{"2001:db8:85a3:0:0:8a2e:370:7334", "ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255"} {
+		rec := localauth.SessionRecord{UserID: uid, ClientIP: ip, CreatedAt: now, LastActiveAt: now, ExpiresAt: now.Add(time.Hour)}
+		if _, err := store.Create(ctx, rec, []byte(fmt.Sprintf("%032d", i))); err != nil {
+			t.Fatalf("IPv6 客户端（%d 字符）建会话失败：%v", len(ip), err)
+		}
+	}
+	got, err := store.ListByUser(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ips := map[string]bool{}
+	for _, r := range got {
+		ips[r.ClientIP] = true
+	}
+	if len(got) != 2 || !ips["ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255"] {
+		t.Fatalf("读回的会话 IP 不对：%+v", got)
+	}
 }

@@ -1,12 +1,14 @@
 package httpapi
 
 import (
+	"database/sql"
 	"encoding/json"
 
 	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	"github.com/bukahou/melete/backend/internal/api"
 	"github.com/bukahou/melete/backend/internal/bank"
+	"github.com/bukahou/melete/backend/internal/localize"
 	"github.com/bukahou/melete/backend/internal/passgrade"
 	"github.com/bukahou/melete/backend/internal/question"
 	"github.com/bukahou/melete/backend/internal/study"
@@ -117,24 +119,44 @@ func parseI18n(raw *string) *map[string]string {
 		return nil
 	}
 	m := map[string]string{}
-	if err := json.Unmarshal([]byte(*raw), &m); err != nil {
+	if err := json.Unmarshal([]byte(*raw), &m); err != nil || len(m) == 0 {
 		return nil
 	}
 	return &m
 }
 
-func toAPIBankTag(t bank.Tag) api.Tag {
-	count := t.QuestionCount
-	return api.Tag{
-		Id: t.ID, Type: api.TagType(t.Type), Value: t.Value,
-		I18n: parseI18n(t.I18n), QuestionCount: &count,
-	}
+// toAPITag 是 api.Tag 的唯一构造处：显示名按请求语言挑好（localize.PickName），各端点口径一致。
+func toAPITag(id int64, typ, value string, i18n *string, locale string) api.Tag {
+	names := parseI18n(i18n)
+	out := api.Tag{Id: id, Type: api.TagType(typ), Value: value, I18n: names}
+	out.Name, out.Localized = localize.PickName(derefNames(names), value, locale)
+	return out
 }
 
-func toAPIQuestionTag(t question.Tag) api.Tag {
-	return api.Tag{
-		Id: t.ID, Type: api.TagType(t.Type), Value: t.Value, I18n: parseI18n(t.I18n),
+func derefNames(names *map[string]string) map[string]string {
+	if names == nil {
+		return nil
 	}
+	return *names
+}
+
+func toAPIBankTag(t bank.Tag, locale string) api.Tag {
+	count := t.QuestionCount
+	out := toAPITag(t.ID, t.Type, t.Value, t.I18n, locale)
+	out.QuestionCount = &count
+	return out
+}
+
+func toAPIQuestionTag(t question.Tag, locale string) api.Tag {
+	return toAPITag(t.ID, t.Type, t.Value, t.I18n, locale)
+}
+
+// nullableText 把可空的文本列转成 parseI18n 要的形状。
+func nullableText(v sql.NullString) *string {
+	if !v.Valid {
+		return nil
+	}
+	return &v.String
 }
 
 func toAPISummary(q question.Summary) api.QuestionSummary {
@@ -154,6 +176,10 @@ func toAPIClaim(c question.Claim) api.AnswerClaim {
 		Source: api.AnswerClaimSource(c.Source), Answer: c.Answer,
 		Confidence: c.Confidence, Rationale: c.Rationale,
 	}
+	if c.Rationale != nil {
+		lang, localized := c.RationaleLocale, c.RationaleLocalized
+		out.RationaleLocale, out.RationaleLocalized = &lang, &localized
+	}
 	if len(c.Meta) > 0 {
 		m := map[string]any{}
 		if err := json.Unmarshal(c.Meta, &m); err == nil && len(m) > 0 {
@@ -170,7 +196,7 @@ func toAPIReference(r *question.Reference) *api.Reference {
 	return &api.Reference{Answer: r.Answer, Source: api.ReferenceSource(r.Source)}
 }
 
-func toAPIChoiceExplanation(e *question.ChoiceExplanation) *api.ChoiceExplanation {
+func toAPIChoiceExplanation(e *question.PickedText) *api.ChoiceExplanation {
 	if e == nil {
 		return nil
 	}
@@ -180,7 +206,17 @@ func toAPIChoiceExplanation(e *question.ChoiceExplanation) *api.ChoiceExplanatio
 	}
 }
 
-func toAPIDetail(d *question.Detail) api.QuestionDetail {
+func toAPIPickedExplanation(e *question.PickedText) *api.PickedExplanation {
+	if e == nil {
+		return nil
+	}
+	return &api.PickedExplanation{
+		Source: api.PickedExplanationSource(e.Source), Locale: e.Locale,
+		Body: e.Body, Localized: e.Localized,
+	}
+}
+
+func toAPIDetail(d *question.Detail, locale string) api.QuestionDetail {
 	out := api.QuestionDetail{
 		Id: d.ID, ExternalNo: d.ExternalNo, Stem: d.Stem,
 		Kind: api.QuestionDetailKind(d.Kind), PickCount: d.PickCount,
@@ -188,6 +224,7 @@ func toAPIDetail(d *question.Detail) api.QuestionDetail {
 		BankSlug: d.BankSlug, DataIssue: d.DataIssue,
 		Localized: &d.Localized, SourceLocale: &d.SourceLocale,
 		Reference:    toAPIReference(d.Reference),
+		Explanation:  toAPIPickedExplanation(d.Explanation),
 		Choices:      make([]api.Choice, 0, len(d.Choices)),
 		Claims:       make([]api.AnswerClaim, 0, len(d.Claims)),
 		Explanations: make([]api.Explanation, 0, len(d.Explanations)),
@@ -208,7 +245,7 @@ func toAPIDetail(d *question.Detail) api.QuestionDetail {
 		})
 	}
 	for _, t := range d.Tags {
-		out.Tags = append(out.Tags, toAPIQuestionTag(t))
+		out.Tags = append(out.Tags, toAPIQuestionTag(t, locale))
 	}
 	// TagIds：契约里 QuestionDetail 继承 QuestionSummary（allOf），同一个口径 —— 考纲域在前，再考点；⛔ 不含 concept
 	out.TagIds = []int64{}
@@ -226,7 +263,7 @@ func toAPIDetail(d *question.Detail) api.QuestionDetail {
 	return out
 }
 
-func toAPIResume(r *study.Resume) api.Resume {
+func toAPIResume(r *study.Resume, locale string) api.Resume {
 	seq := api.SequentialCursor{DoneCount: r.Sequential.DoneCount, TotalCount: r.Sequential.TotalCount}
 	if r.Sequential.QuestionID.Valid {
 		id := r.Sequential.QuestionID.Int64
@@ -246,15 +283,15 @@ func toAPIResume(r *study.Resume) api.Resume {
 		}
 		if f.Tag != nil {
 			fc.Label = f.Tag.Value
-			i18n := f.Tag.I18n.String
-			fc.Tag = &api.Tag{Id: f.Tag.ID, Type: api.TagType(f.Tag.Type), Value: f.Tag.Value, I18n: parseI18n(&i18n)}
+			tag := toAPITag(f.Tag.ID, f.Tag.Type, f.Tag.Value, nullableText(f.Tag.I18n), locale)
+			fc.Tag = &tag
 		}
 		out.Focus = &fc
 	}
 	return out
 }
 
-func toAPISession(ss study.Session) api.StudySession {
+func toAPISession(ss study.Session, locale string) api.StudySession {
 	out := api.StudySession{
 		BankSlug: ss.BankSlug, BankName: ss.BankName,
 		Context: api.DrillContext{Mode: api.DrillContextMode(ss.Mode), TagId: ss.TagID},
@@ -263,8 +300,8 @@ func toAPISession(ss study.Session) api.StudySession {
 	}
 	if ss.Tag != nil {
 		out.Label = ss.Tag.Value
-		i18n := ss.Tag.I18n.String
-		out.Tag = &api.Tag{Id: ss.Tag.ID, Type: api.TagType(ss.Tag.Type), Value: ss.Tag.Value, I18n: parseI18n(&i18n)}
+		tag := toAPITag(ss.Tag.ID, ss.Tag.Type, ss.Tag.Value, nullableText(ss.Tag.I18n), locale)
+		out.Tag = &tag
 	}
 	return out
 }

@@ -41,12 +41,14 @@ type Choice struct {
 	// Localized 同 Summary.Localized —— 选项的译文可能与题干不同步
 	// （比如译文只补了题干），所以各自带各自的标记。
 	Localized bool `db:"localized"`
-	// Explanation 是这个选项为什么对、为什么错的点评；还没有点评时为 nil。
-	Explanation *ChoiceExplanation `db:"-"`
+	// Explanation 是这个选项为什么对、为什么错的点评（对错由 Claim 决定，这里只有原因）；
+	// 按请求语言挑好的一份，还没有点评时为 nil。
+	Explanation *PickedText `db:"-"`
 }
 
-// ChoiceExplanation 是一个选项的点评。对错由 Claim 决定，这里只有原因。
-type ChoiceExplanation struct {
+// PickedText 是从同一段内容的多个版本（多来源 × 多语言）里挑出来显示的那一份：
+// 选项点评、题目解析都用它，挑选规则见 pickVersion。
+type PickedText struct {
 	Source string
 	Locale string
 	Body   string
@@ -67,6 +69,11 @@ type Claim struct {
 	Confidence *int    `db:"confidence"`
 	Rationale  *string `db:"rationale"`
 	Meta       RawJSON `db:"meta"`
+	// RationaleLocale 是 Rationale 实际的语言：有请求语言的译文时是请求的语言，否则是题库语言
+	// （原文与题干、选项同一约定，语言 = bank.locale）。没有 Rationale 时为空串。
+	RationaleLocale string `db:"rationale_locale"`
+	// RationaleLocalized 语义同 PickedText.Localized。没有 Rationale 时为 false。
+	RationaleLocalized bool `db:"-"`
 }
 
 // RawJSON 承载数据库里的 JSON 列。
@@ -144,7 +151,9 @@ type Detail struct {
 	Choices      []Choice
 	Claims       []Claim
 	Explanations []Explanation
-	Tags         []Tag
+	// Explanation 是按请求语言从 Explanations 里挑出的一份，规则同选项点评；没有解析时为 nil。
+	Explanation *PickedText
+	Tags        []Tag
 }
 
 // ListFilter 是列表查询的筛选条件。

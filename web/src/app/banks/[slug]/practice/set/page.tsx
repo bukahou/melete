@@ -6,7 +6,7 @@ import {
   ApiError, getBank, listAxisTags, listQuestions,
   type BankDetail, type DrillContext, type QuestionSummary, type Tag,
 } from "@/lib/api";
-import { tagName, tagTypeLabel } from "@/lib/claims";
+import { tagTypeLabel } from "@/lib/claims";
 import { contextFromSearch, drillHref, listParams } from "@/lib/drillSpec";
 import { describeContext } from "@/lib/drillLabel";
 import { bandStats, bandsByDomain, questionLabel } from "@/lib/questionSet";
@@ -60,7 +60,7 @@ export default async function SetPage({
   const byId = new Map(tags.map((x) => [x.id, x]));
   const topicName = (id: number) => {
     const tag = byId.get(id);
-    return tag?.type === "topic" ? tagName(tag, locale) : undefined;
+    return tag?.type === "topic" ? tag.name : undefined;
   };
   const rows = items.map((it, i) => ({
     it, i,
@@ -89,7 +89,7 @@ export default async function SetPage({
           {/* 白条：分段名（考纲域；不分段时写整组多少题）+ 这一段的已答 / 掌握率（同 it-pass「ストラテジ　正答率：88%」） */}
           <div className="band flex items-center gap-3">
             <span className="min-w-0 flex-1 truncate">
-              {b.domain != null && byId.get(b.domain) ? tagName(byId.get(b.domain)!, locale) : t("setAll", { n: b.rows.length })}
+              {b.domain != null && byId.get(b.domain) ? byId.get(b.domain)!.name : t("setAll", { n: b.rows.length })}
             </span>
             <span className="shrink-0 text-[0.78rem] font-normal text-muted tabular-nums">
               {statText(b.rows.map((r) => r.it.lastCorrect))}

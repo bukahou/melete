@@ -20,6 +20,7 @@ export type QuestionSummary = components["schemas"]["QuestionSummary"];
 export type QuestionDetail = components["schemas"]["QuestionDetail"];
 export type QuestionPage = components["schemas"]["QuestionPage"];
 export type AnswerClaim = components["schemas"]["AnswerClaim"];
+export type PickedExplanation = components["schemas"]["PickedExplanation"];
 export type Choice = components["schemas"]["Choice"];
 export type Reference = components["schemas"]["Reference"];
 export type AttemptResult = components["schemas"]["AttemptResult"];
@@ -104,11 +105,6 @@ export function tagTypeLabel(meta: BankMeta | undefined, type: TagType, locale: 
 export function tagWeight(meta: BankMeta | undefined, tag: { type: TagType; value: string }): number | undefined {
   const key = tag.value.startsWith(`${tag.type}-`) ? tag.value.slice(tag.type.length + 1) : tag.value;
   return meta?.tagTypes?.[tag.type]?.weights?.[key];
-}
-
-/** 标签显示名：优先本地化名（考纲域有 zh/en），否则用 value（服务名本来就是英文短名）。 */
-export function tagName(tag: { value: string; i18n?: Record<string, string> | null }, locale: string): string {
-  return tag.i18n?.[locale] ?? tag.i18n?.en ?? tag.value;
 }
 
 /**

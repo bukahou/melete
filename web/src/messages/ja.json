@@ -55,7 +55,8 @@
     "title": "答えの主張",
     "empty": "この問題にはまだ答えの主張がありません。",
     "disagree": "見解が割れています",
-    "rationaleOf": "{source}の根拠"
+    "rationaleOf": "{source}の根拠",
+    "rationaleFallback": "根拠はこの言語版がまだありません。以下は原文です"
   },
   "dash": {
     "switchBank": "問題集を切り替え",
@@ -158,7 +159,6 @@
     "noDueHint": "期限の来た問題はありません。先へ進むなら",
     "noDueLink": "未着手のもの",
     "contested": "答えに見解の割れあり",
-    "explanation": "解説",
     "noExplanation": "この問題にはまだ AI 解説がありません。上の各主張は参考になります。",
     "pickOne": "答えをひとつ選んでください",
     "submitN": "この {n} 項目で確定",
@@ -187,7 +187,6 @@
     "multi": "複数選択 · {n} 項目",
     "single": "単一選択",
     "dataIssue": "この問題にはデータ上の欠陥があります",
-    "explanation": "解説",
     "tags": "タグ"
   },
   "login": {
@@ -323,5 +322,9 @@
   },
   "choices": {
     "notesFallback": "選択肢の解説はこの言語版がまだありません。以下は原文です"
+  },
+  "explanation": {
+    "title": "解説",
+    "fallback": "解説はこの言語版がまだありません。以下は原文です"
   }
 }

@@ -33,6 +33,7 @@ Melete 数据导入管道 — 翻译段：enriched.json → translated/<locale>/
   merge  <bank> --locale ja
 """
 import argparse
+import copy
 import json
 import re
 import sys
@@ -43,6 +44,8 @@ from paths import REPO, bank_dir, rel
 # ⭐ 复用 enrich 的分片与指纹：两段必须切在同一个边界上、算出同一个指纹，
 #    否则「第 3 片」在两段里指的不是同一批题，人工对照立刻失效。
 from enrich import SHARD_SIZE, fingerprint, shard_name, shard_ranges
+from facetext import ErrataError, FacePreparer
+from mdcheck import emphasis_errors, structure_diff
 
 # 平假名 + 片假名。⭐ 与下面的简体字黑名单一起构成「这是不是中文原文」的判据。
 KANA = re.compile(r"[぀-ゟ゠-ヿ]")
@@ -138,9 +141,13 @@ def load_glossary(bank: str, locale: str) -> dict:
             f"     41 片跨多次会话，术语一旦漂了就要返工几十片。"
         )
     g = json.loads(p.read_text(encoding="utf-8"))
+    # extends：继承另一个题库同语言的术语表（SAP 的点评与解析是中文，沿用 SAA 调好的中→日词条），
+    # 本表的同名词条覆盖继承来的，not_terms 与 keep 取并集
+    base = (load_glossary(g["extends"], locale) if g.get("extends")
+            else {"terms": {}, "not_terms": [], "keep": [], "keep_drop": []})
     # 值归一成列表：写成字符串是「只有一种正确写法」的简写
-    terms = {k: ([v] if isinstance(v, str) else list(v))
-             for k, v in g.get("terms", {}).items() if not k.startswith("_")}
+    terms = {**base["terms"], **{k: ([v] if isinstance(v, str) else list(v))
+                                 for k, v in g.get("terms", {}).items() if not k.startswith("_")}}
 
     # not_terms：**这几个字连在一起不是一个词**。
     #
@@ -154,20 +161,13 @@ def load_glossary(bank: str, locale: str) -> dict:
     # ⭐ 与被驳回的「本题豁免」的区别，就是这条机制存在的理由：
     #   豁免说的是「**这道题**放我过去」；not_terms 说的是「**这两个字**不是词」。
     #   后者是一句关于语言的可复查断言，对全部 41 片一次生效。
-    not_terms = [t for t in g.get("not_terms", []) if isinstance(t, str) and t]
+    not_terms = sorted({*base["not_terms"], *(t for t in g.get("not_terms", []) if isinstance(t, str) and t)})
 
     # ⛔ 防滥用：not_terms 不得用来把一个【真词条】关掉。
     # 没有这道锁的话，「负载均衡器」被搬进 not_terms 就等于静默删掉一条闸，
     # 而 diff 上看起来只是「加了一行」。
-    # ⛔ 词条键不得含空白 —— 它会【静默失效】，这是最坏的一种失败：
-    #    check 拿【折叠掉空白后】的原文匹配（见 check_item 里 _whitespace 那段），
-    #    所以键里带空格的词条永远匹配不上，而且不报任何错，看着像在工作。
-    # ⚠️ 「预置 IOPS」要写成「预置IOPS」。这条锁是 2026-09-08 「解析」会话
-    #    加第一个含拉丁字母的键时发现的 —— 它自己绕过去了，但下一个人不会知道。
-    # ⭐ keep 不受此限：它匹配的是【未折叠】的原文，服务名里的空格是必须保留的。
-    if spaced := sorted(k for k in [*terms, *not_terms] if re.search(r"\s", k)):
-        sys.exit(f"✗ {rel(p)}: 词条键含空白 {spaced} —— ⛔ 它永远匹配不上（匹配前原文已折叠空白），"
-                 f"\n  且不会报错，看着像在工作。把键里的空格去掉即可（「预置 IOPS」→「预置IOPS」）。")
+    # 词条键可以含空白：glossary_errors 把键与原文同样折叠空白后再比（英文词条 Availability Zone）。
+    # ⭐ keep 不折叠：它匹配的是【未折叠】的原文，服务名里的空格是必须保留的。
     if clash := sorted(set(not_terms) & set(terms)):
         sys.exit(f"✗ {rel(p)}: {clash} 同时出现在 terms 和 not_terms —— "
                  f"⛔ not_terms 是「这几个字不是词」，不是关闭词条的开关。"
@@ -175,7 +175,57 @@ def load_glossary(bank: str, locale: str) -> dict:
     for t in not_terms:
         if not any(k in t and k != t for k in terms):
             print(f"⚠ not_terms 的「{t}」不包含任何词条，是个空操作 —— 多半写错了")
-    return {"terms": terms, "keep": list(g.get("keep", [])), "not_terms": not_terms}
+
+    keep = sorted({*base["keep"], *g.get("keep", [])})
+    # keep_drop：从题库数据推出的服务名里，在本题库原文的语言里同时是普通词的那几个。
+    # 推出来的名字按词边界匹配，普通词的用法也会被要求原样保留 ——
+    # 英文原文「Connect the transit gateway …」里的动词 Connect 会被当成 Amazon Connect，
+    # 正确译文「接続します」反而过不了闸。⇒ 去掉裸名，在 keep 里写原文实际使用的全称（Amazon Connect）。
+    keep_drop = sorted({*base["keep_drop"], *(t for t in g.get("keep_drop", []) if isinstance(t, str) and t)})
+    if clash := sorted(set(keep_drop) & set(keep)):
+        sys.exit(f"✗ {rel(p)}: {clash} 同时出现在 keep 和 keep_drop —— keep_drop 只用来去掉从数据推出的名字")
+    return {"terms": terms, "keep": keep, "not_terms": not_terms, "keep_drop": keep_drop}
+
+
+def merge_keep(explicit: list[str], derived: list[str], drop: list[str]) -> list[str]:
+    """最终的保留名单：从数据推出的名字 ∪ 术语表的补充，再去掉 keep_drop。长的排前面（报错先看到 Route 53 而不是 S3）。"""
+    if unused := sorted(set(drop) - set(derived)):
+        print(f"⚠ keep_drop 的 {unused} 不在从数据推出的名字里，是个空操作 —— 多半写错了")
+    return sorted((set(explicit) | set(derived)) - set(drop), key=lambda x: (-len(x), x))
+
+
+def load_term_senses(bank: str, locale: str, glo: dict) -> dict[int, dict[str, list[str]]]:
+    """
+    按题声明词义：term_senses.<locale>.json —— 「这道题里，某个词条不是术语表的那个意思，要求出现的译词换成这里给的」。
+
+    ⛔ 这不是豁免：照样要求译文出现声明的译词，只是把要求换掉。用来表达子串匹配分不出来的同形异义
+    （「区域」在 DNS 题里是 zone 不是 Region，「预置仪表板」是现成的仪表板不是 provisioning）。
+    只能改写术语表里已有的词条（⛔ 不能借此新增词条），每题必须写明理由。
+    """
+    p = REPO / "pipeline" / "banks" / bank / f"term_senses.{locale}.json"
+    if not p.exists():
+        return {}
+    out, errs = {}, []
+    for k, entry in json.loads(p.read_text(encoding="utf-8")).items():
+        if k.startswith("_"):
+            continue
+        if not k.isdigit() or not isinstance(entry, dict):
+            errs.append(f"{k}: 键须为题号、值须为对象")
+            continue
+        if not isinstance(entry.get("_why"), str) or not entry["_why"].strip():
+            errs.append(f"#{k}: 缺 _why（为什么这道题里是另一个意思）")
+        senses = {t: ([v] if isinstance(v, str) else list(v)) for t, v in entry.items() if not t.startswith("_")}
+        if not senses:
+            errs.append(f"#{k}: 没有声明任何词条")
+        for t, vals in senses.items():
+            if t not in glo["terms"]:
+                errs.append(f"#{k}: 「{t}」不是术语表里的词条 —— 这里只能改写已有词条的要求")
+            if not vals or not all(isinstance(v, str) and v.strip() for v in vals):
+                errs.append(f"#{k}: 「{t}」的译词须为非空字符串")
+        out[int(k)] = senses
+    if errs:
+        sys.exit(f"✗ {rel(p)} 不成立：\n    " + "\n    ".join(errs))
+    return out
 
 
 def load_untranslated(bank: str, locale: str) -> dict:
@@ -218,6 +268,23 @@ def explanation_of(q: dict) -> str:
     return (q.get("enrichment") or {}).get("explanation") or ""
 
 
+# ⭐⭐ 假名哨兵 —— 本模块最重要的一条校验（题面、解析、逐项点评的翻译共用）。
+#
+# 中文里【没有假名】。所以「忘了翻译、把中文原样贴过来」这个失败模式
+# 必然被抓住，而它恰恰是长文本翻译里最常见、也最难用肉眼在 41 片里发现的。
+#
+# ⚠️ 为什么不用「译文与原文不相等」做判据：那与被测者同源 ——
+# 改几个字、删句标点就能骗过去，而假名骗不过去（要造假名就得真的在写日语）。
+# 这条呼应仓库里那句教训：「验证工具与被验证者共享同一盲区时，验证必然通过」。
+def looks_untranslated(text: str) -> str | None:
+    bad = SIMPLIFIED_ONLY & set(text)
+    if bad:
+        return f"含简体字「{''.join(sorted(bad))[:6]}」—— 日语里没有这些字，中文原文被抄了过来"
+    if len(CJK.findall(text)) >= KANA_REQUIRED_FROM and not KANA.search(text):
+        return "汉字这么多却一个假名都没有 —— 多半是没翻译"
+    return None
+
+
 def check_item(it: dict, q: dict, glo: dict) -> list[str]:
     errs = []
     labels = {c["label"] for c in q["choices"]}
@@ -239,26 +306,16 @@ def check_item(it: dict, q: dict, glo: dict) -> list[str]:
     expl = it.get("explanation")
     if expl is not None and (not isinstance(expl, str) or not expl.strip()):
         errs.append("explanation 给了但为空 —— 不译就整个不给这个键，⛔ 别给空串")
+    if isinstance(expl, str):
+        # 译文同样按 Markdown 渲染：强调标记写坏界面上会露出星号
+        errs += [f"explanation {e}" for e in emphasis_errors(expl)]
+        # 骨架逐项相同：长解析最容易漏掉一节、或把表格并成一段
+        if explanation_of(q):
+            errs += [f"explanation 结构与原文不同 —— {e}" for e in structure_diff(explanation_of(q), expl)]
 
     extra = set(it) - {"no", "fp", "stem", "choices", "explanation"}
     if extra:
         errs.append(f"多余字段 {sorted(extra)}")
-
-    # ⭐⭐ 假名哨兵 —— 本模块最重要的一条校验。
-    #
-    # 中文里【没有假名】。所以「忘了翻译、把中文原样贴过来」这个失败模式
-    # 必然被抓住，而它恰恰是长文本翻译里最常见、也最难用肉眼在 41 片里发现的。
-    #
-    # ⚠️ 为什么不用「译文与原文不相等」做判据：那与被测者同源 ——
-    # 改几个字、删句标点就能骗过去，而假名骗不过去（要造假名就得真的在写日语）。
-    # 这条呼应仓库里那句教训：「验证工具与被验证者共享同一盲区时，验证必然通过」。
-    def looks_untranslated(text: str) -> str | None:
-        bad = SIMPLIFIED_ONLY & set(text)
-        if bad:
-            return f"含简体字「{''.join(sorted(bad))[:6]}」—— 日语里没有这些字，中文原文被抄了过来"
-        if len(CJK.findall(text)) >= KANA_REQUIRED_FROM and not KANA.search(text):
-            return "汉字这么多却一个假名都没有 —— 多半是没翻译"
-        return None
 
     checked = [("stem", stem), *((f"choices[{k}]", v) for k, v in sorted(choices.items()))]
     if isinstance(expl, str):
@@ -288,6 +345,20 @@ def check_item(it: dict, q: dict, glo: dict) -> list[str]:
     if isinstance(expl, str) and expl.strip():
         parts_src.append(src_expl)
         parts_dst.append(expl)
+    errs += glossary_errors(parts_src, parts_dst, glo, glo.get("_senses", {}).get(q["no"]))
+    return errs
+
+
+def glossary_errors(parts_src: list[str], parts_dst: list[str], glo: dict,
+                    senses: dict[str, list[str]] | None = None) -> list[str]:
+    """
+    术语表的两条机械校验（题面、解析、逐项点评的翻译共用这一份）：
+      · terms：原文出现左边的词 ⇒ 译文必须含约定译词（最长匹配优先，not_terms 只吃掉不要求）
+      · keep：服务名等必须原样保留
+    parts_src / parts_dst 只放【这一趟真的翻了的部分】，否则没翻的段落里的术语会误报。
+    senses 是这道题按题声明的词义（load_term_senses），有声明的词条换成声明的译词。
+    """
+    errs: list[str] = []
     joined_src, joined_dst = " ".join(parts_src), " ".join(parts_dst)
     # 术语表的两条语义：
     #
@@ -306,7 +377,9 @@ def check_item(it: dict, q: dict, glo: dict) -> list[str]:
     # ⇒ 这是通用缺陷，不是「单区域」一个词的事：任何「X区域」「X主题」类复合词都会重犯。
     # not_terms 与 terms 一起按长度排 —— 假命中串（「并发出」3 字）必须排在
     # 被它包住的词条（「并发」2 字）之前，才能先把那段原文吃掉。
-    ordered = sorted([*glo["terms"], *glo["not_terms"]], key=len, reverse=True)
+    # 词条键与原文同样折叠空白再比：英文词条（Availability Zone）照常写，中文词条不受影响
+    fold = lambda t: re.sub(r"\s+", "", t)  # noqa: E731
+    ordered = sorted([*glo["terms"], *glo["not_terms"]], key=lambda t: len(fold(t)), reverse=True)
     # ⚠️⚠️ 术语匹配用【折叠掉空白】的原文，keep 那一侧⛔ 绝不能折叠。
     #
     # 素材是 PDF 转出来的，换行会在字中间留下空格：
@@ -324,19 +397,20 @@ def check_item(it: dict, q: dict, glo: dict) -> list[str]:
     #   ⇒ 折叠若做在 joined_src 上，等于悄悄关掉一半服务名的保护。
     # ⛔ 译文侧也不折叠：约定译词本身含空格（Simple Queue Service / Load Balancer），
     #   而译文是人写的，不会有 PDF 换行伪影。
-    unconsumed = re.sub(r"\s+", "", joined_src)
+    unconsumed = fold(joined_src)
     for src_term in ordered:
-        if src_term in unconsumed:
-            accepted = glo["terms"].get(src_term)
+        key = fold(src_term)
+        if key in unconsumed:
+            accepted = (senses or {}).get(src_term) or glo["terms"].get(src_term)
             if accepted is None:
                 # not_terms：吃掉这段，⛔ 不对译文提任何要求
-                unconsumed = unconsumed.replace(src_term, "\x00" * len(src_term))
+                unconsumed = unconsumed.replace(key, "\x00" * len(key))
                 continue
             if not any(d in joined_dst for d in accepted):
                 errs.append(f"原文有「{src_term}」，译文里找不到约定译词"
                             + "（" + " / ".join(f"「{d}」" for d in accepted) + "）")
             # 吃掉：更短的子串不再对这一段提要求
-            unconsumed = unconsumed.replace(src_term, "\x00" * len(src_term))
+            unconsumed = unconsumed.replace(key, "\x00" * len(key))
     # keep：服务名等必须原样保留，⛔ 不许意译也不许改写成假名。
     #
     # ⚠️ 拉丁字母的服务名必须按【词边界】匹配，⛔ 不能裸子串 ——
@@ -389,13 +463,36 @@ def check_shard(path: Path, qmap: dict, glo: dict, skip: dict | None = None) -> 
     return errs
 
 
+def shown_questions(bank: str, doc: dict) -> dict:
+    """
+    译者看到、校验对照的原文 = 用户看到的那份（facetext：断行空格 → 专有名词 → 勘误），
+    ⛔ 不是 enriched.json 里未整理的素材原文 —— 否则机翻名、错字、串位的选项会被原样翻进译文，
+    术语校验也会拿已修掉的旧词去要求译文。
+    指纹仍按素材原文算（放在 q["_fp"]），已写的分片不受影响。
+    """
+    spec_dir = REPO / "pipeline" / "banks" / bank
+    spec_path = spec_dir / "enrich_spec.json"
+    spec = json.loads(spec_path.read_text(encoding="utf-8")) if spec_path.exists() else {}
+    shown = copy.deepcopy(doc["questions"])
+    try:
+        FacePreparer(spec, spec_dir, bank_dir(bank)).prepare(shown)
+    except ErrataError as e:
+        sys.exit("✗ 勘误表不成立，先修好再翻译：\n    " + "\n    ".join(e.problems[:20]))
+    for raw, q in zip(doc["questions"], shown):
+        q["_fp"] = fingerprint(raw)
+    return {q["no"]: q for q in shown}
+
+
 def _scan(bank: str, locale: str):
     doc = load_enriched(bank)
-    qmap = {q["no"]: q for q in doc["questions"]}
+    qmap = shown_questions(bank, doc)
     glo = load_glossary(bank, locale)
     glo["_skip"] = load_untranslated(bank, locale)
-    # 服务名从数据推，与题库自动同步；glossary 的 keep 是补充
-    glo["keep"] = sorted(set(glo["keep"]) | set(derive_keep(doc)), key=lambda x: (-len(x), x))
+    glo["_senses"] = load_term_senses(bank, locale, glo)
+    if unknown := sorted(set(glo["_senses"]) - set(qmap)):
+        sys.exit(f"✗ term_senses.{locale}.json 里的题号不在题库中：{unknown}")
+    # 服务名从数据推，与题库自动同步；glossary 的 keep 是补充，keep_drop 去掉同时是普通词的
+    glo["keep"] = merge_keep(glo["keep"], derive_keep(doc), glo["keep_drop"])
     d = shard_dir(bank, locale)
     return doc, qmap, glo, d
 
@@ -446,10 +543,59 @@ def cmd_status(bank: str, locale: str) -> None:
         print(f"\n下一片    {shard_name(first)}   （跑 translate.py next {bank} --locale {locale}）")
 
 
-def cmd_next(bank: str, locale: str, count: int, with_explanation: bool) -> None:
+def missing_explanations(path: Path, qmap: dict, skip: dict) -> list[int]:
+    """已完成题面的分片里，有原文解析却还没有译文解析的题号。"""
+    have = {it["no"]: it for it in json.loads(path.read_text(encoding="utf-8")).get("items", [])}
+    return sorted(no for no, it in have.items()
+                  if no in qmap and no not in skip and explanation_of(qmap[no]) and not it.get("explanation"))
+
+
+def cmd_next_explanations(bank: str, locale: str, count: int, at: int | None) -> None:
+    """
+    补解析那一趟：只取题面已完成、还缺解析的题，打印日文题面（对照用）与原文解析。
+    写入时条目只给 no / fp / explanation，题面沿用盘上已验收的译文（见 cmd_write 的增量合并）。
+    """
+    doc, qmap, glo, d = _scan(bank, locale)
+    todo = []
+    for r in shard_ranges(list(qmap)):
+        p = d / shard_name(r)
+        if p.exists() and not check_shard(p, qmap, glo, glo["_skip"]):
+            if nos := missing_explanations(p, qmap, glo["_skip"]):
+                todo.append((r, nos))
+    if at is not None:
+        todo = [(r, nos) for r, nos in todo if r[0] <= at <= r[1]]
+        if not todo:
+            sys.exit(f"✗ #{at} 所在的分片没有待补的解析（或题面还没完成）")
+    if not todo:
+        print("✓ 题面已完成的分片都补齐了解析")
+        return
+    for r, nos in todo[:count]:
+        have = {it["no"]: it for it in json.loads((d / shard_name(r)).read_text(encoding="utf-8"))["items"]}
+        print(f"{'='*70}\n分片 {shard_name(r)}：补 {len(nos)} 题的解析\n{'='*70}\n")
+        print("⛔ 术语表是【封闭】的：下面列出的词，译文必须用指定译词，不得另译。")
+        print("⛔ keep 里的名字必须【原样保留】—— 不译、不改写成假名。\n")
+        for k, v in sorted(glo["terms"].items()):
+            print(f"    {k} → {v}")
+        print(f"\n  保留原样: {'、'.join(glo['keep'][:40])}"
+              + (f" …… 共 {len(glo['keep'])} 个" if len(glo["keep"]) > 40 else "") + "\n")
+        for no in nos:
+            tr = have[no]
+            print(f"### 问题 #{no}  fp={qmap[no]['_fp']}")
+            print(f"\n[日文题面（已验收，对照用）]\n{tr['stem']}")
+            for label, body in sorted(tr["choices"].items()):
+                print(f"  {label}. {body}")
+            print(f"\n[解析原文]\n{explanation_of(qmap[no])}\n")
+
+
+def cmd_next(bank: str, locale: str, count: int, with_explanation: bool, at: int | None = None) -> None:
     doc, qmap, glo, d = _scan(bank, locale)
     todo = [r for r in shard_ranges(list(qmap))
             if not (d / shard_name(r)).exists() or check_shard(d / shard_name(r), qmap, glo, glo["_skip"])]
+    # --at：只取包含这个题号的那一片 —— 多个会话并行时各取各的片，不会撞到同一片
+    if at is not None:
+        todo = [r for r in todo if r[0] <= at <= r[1]]
+        if not todo:
+            sys.exit(f"✗ #{at} 所在的分片已完成且校验通过")
     if not todo:
         print(f"✓ 全部分片已完成且校验通过，可以跑 merge 了")
         return
@@ -464,7 +610,7 @@ def cmd_next(bank: str, locale: str, count: int, with_explanation: bool) -> None
               + (f" …… 共 {len(glo['keep'])} 个" if len(glo["keep"]) > 40 else "") + "\n")
         for no in sorted(n for n in qmap if r[0] <= n <= r[1]):
             q = qmap[no]
-            print(f"### 问题 #{no}  fp={fingerprint(q)}")
+            print(f"### 问题 #{no}  fp={q['_fp']}")
             print(f"\n[题干]\n{source_of(q)}\n")
             for ch in q["choices"]:
                 print(f"  {ch['label']}. {ch['body']}")
@@ -515,7 +661,7 @@ def cmd_write(bank: str, locale: str, src: Path) -> None:
             continue
         # 指纹门禁：与 enrich 同一条纪律 —— 翻译比富化更容易「凭印象写」，
         # 因为一段看着合理的日文根本无从判断它对不对应原题。
-        want, got = fingerprint(qmap[no]), it.get("fp")
+        want, got = qmap[no]["_fp"], it.get("fp")
         if got != want:
             errs.append(f"#{no}: fp 不符（期望 {want}，收到 {got or '缺失'}）"
                         f" —— 请先跑 `translate.py next` 取真实题面")
@@ -679,13 +825,18 @@ def main() -> None:
     p = sub.add_parser("next", parents=[common])
     p.add_argument("-n", type=int, default=1, help="一次取几片")
     p.add_argument("--no-explanation", action="store_true", help="只取题面，不带解析（先翻题面那一趟）")
+    p.add_argument("--at", type=int, help="只取包含这个题号的那一片")
+    p.add_argument("--explanations", action="store_true",
+                   help="补解析那一趟：只取题面已完成、还缺解析的题")
     p = sub.add_parser("write", parents=[common])
     p.add_argument("file", type=Path)
     a = ap.parse_args()
     if a.cmd == "status":
         cmd_status(a.bank, a.locale)
+    elif a.cmd == "next" and a.explanations:
+        cmd_next_explanations(a.bank, a.locale, a.n, a.at)
     elif a.cmd == "next":
-        cmd_next(a.bank, a.locale, a.n, not a.no_explanation)
+        cmd_next(a.bank, a.locale, a.n, not a.no_explanation, a.at)
     elif a.cmd == "write":
         cmd_write(a.bank, a.locale, a.file)
     elif a.cmd == "check":

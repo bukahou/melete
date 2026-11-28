@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { ApiError, getBank, listAxisTags, type BankDetail, type Tag } from "@/lib/api";
-import { tagName, tagTypeLabel } from "@/lib/claims";
+import { tagTypeLabel } from "@/lib/claims";
 import { sessionLabel } from "@/lib/drillLabel";
 import { PickBrowser, type PickNode } from "@/components/PickBrowser";
 import { Page } from "@/components/Page";
@@ -49,7 +49,7 @@ export default async function PickPage({
     .sort((a, b) => a.value.localeCompare(b.value))
     .map((d) => ({
       value: String(d.id),
-      label: tagName(d, locale),
+      label: d.name,
       count: d.questionCount ?? 0,
       // ⭐ 一个分组 = 它下面几个中分類，值是逗号串；pickForm 把所有勾选拍平成并集
       children: (treeByDomain.get(d.value) ?? [])
@@ -76,7 +76,7 @@ export default async function PickPage({
         tree={tree}
         ranges={ranges(bank, (from, to) => dash("rangeLabel", { from, to }), locale)}
         labels={{ domain: tagTypeLabel(bank.meta, "domain", locale), range: t("pickRange") }}
-        topicNames={Object.fromEntries(tags.filter((x) => x.type === "topic").map((x) => [x.id, tagName(x, locale)]))}
+        topicNames={Object.fromEntries(tags.filter((x) => x.type === "topic").map((x) => [x.id, x.name]))}
       />
     </Page>
   );

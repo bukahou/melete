@@ -1,5 +1,4 @@
 import type { BankMeta, DrillContext, Tag } from "./claims";
-import { tagName } from "./claims";
 import { modeLabel } from "@/i18n/modeLabel";
 
 /**
@@ -34,7 +33,7 @@ export function tagSetLabel(ids: number[], k: LabelKit): string {
   }
   const names = ids.map((id) => {
     const tag = byId.get(id);
-    return tag ? tagName(tag, k.locale) : `#${id}`;
+    return tag ? tag.name : `#${id}`;
   });
   return names.length > 3 ? k.t("tagsMore", { first: names.slice(0, 2).join("・"), n: names.length }) : names.join("・");
 }
@@ -62,7 +61,7 @@ export function describeContext(c: DrillContext, k: LabelKit): string {
       return k.t("randomLabel", { n: c.count ?? 0 });
     case "tag": {
       const tag = k.tags.find((t) => t.id === c.tagId);
-      return tag ? tagName(tag, k.locale) : modeLabel(k.mode as never, "tag", "tag");
+      return tag ? tag.name : modeLabel(k.mode as never, "tag", "tag");
     }
     default:
       return modeLabel(k.mode as never, c.mode, c.mode);

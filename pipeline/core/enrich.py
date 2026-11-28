@@ -34,6 +34,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from paths import REPO, bank_dir, rel  # 路径解析的唯一归属地, 见该模块 docstring
+from mdcheck import emphasis_errors
 SHARD_SIZE = 25
 KEBAB = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 CONFIDENCE = {"high", "medium", "low"}
@@ -193,6 +194,9 @@ def check_item(item: dict, q: dict, spec: dict) -> list[str]:
     for k in ("reasoning", "explanation"):
         if not isinstance(item[k], str) or not item[k].strip():
             errs.append(f"{k} 为空")
+    # 解析按 Markdown 渲染：强调标记写坏（配不上对、整段加粗里再套加粗）界面上会露出星号
+    if isinstance(item["explanation"], str):
+        errs += [f"explanation {e}" for e in emphasis_errors(item["explanation"])]
     if str(item["domain"]) not in spec["domains"]:
         errs.append(f"domain {item['domain']!r} 不在 {sorted(spec['domains'])}")
     for k in [topic_field] + (["concepts"] if want_concepts else []):

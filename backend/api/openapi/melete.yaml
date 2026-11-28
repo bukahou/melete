@@ -1100,13 +1100,16 @@ components:
       description: |
         grade 是本标签的合格等级（与 PassGrade 同一套界线）。只有考纲域（type = domain）才有，
         且要做过的题够多（后端的门槛）、题库有官方及格线；否则缺省，界面显示「—」。
-      required: [tagId, type, value, total, correct, rate]
+      required: [tagId, type, value, name, localized, total, correct, rate]
       properties:
         tagId:   { type: integer, format: int64 }
         type:    { type: string, enum: [domain, topic, concept] }
         value:   { type: string }
+        name:    { type: string, description: 显示名，规则同 Tag.name }
+        localized: { type: boolean, description: name 是否为请求的语言，规则同 Tag.localized }
         i18n:
           type: object
+          description: 各语言的名字（原始数据）。显示请用 name
           additionalProperties: { type: string }
         total:   { type: integer, description: 该标签下做过的题数 }
         correct: { type: integer }
@@ -1667,14 +1670,21 @@ components:
 
     Tag:
       type: object
-      description: 通用 (type, value) 结构，不硬编码任何特定题库的分类体系
-      required: [id, type, value]
+      description: |
+        通用 (type, value) 结构，不硬编码任何特定题库的分类体系。
+        显示用 name：后端按请求语言挑好（请求的语言 → 英文 → 其他语言 → value），
+        localized 为 false 表示 name 不是请求的语言，界面要标出来。
+        没有多语言名字的标签（服务名等）name 就是 value，localized 为 true。
+      required: [id, type, value, name, localized]
       properties:
         id:    { type: integer, format: int64 }
         type:  { type: string, enum: [domain, topic, concept] }
         value: { type: string, example: "S3" }
+        name:  { type: string, description: 显示名（已按请求语言挑好） }
+        localized: { type: boolean, description: name 是否为请求的语言；请求没有指定语言时为 true }
         i18n:
           type: object
+          description: 各语言的名字（原始数据）。显示请用 name
           additionalProperties: { type: string }
         questionCount: { type: integer, description: 挂在该标签下的题数 }
 
@@ -1737,6 +1747,16 @@ components:
           description: |
             为什么。AI 裁决只在与题库标注或社区投票不一致时才有，讲的是不一致的原因；
             各选项为什么对或错见 Choice.explanation。
+            已按请求语言挑好：有请求语言的版本就给它，否则给原文。
+        rationaleLocale:
+          type: string
+          description: rationale 实际的语言。有 rationale 才有
+          example: zh
+        rationaleLocalized:
+          type: boolean
+          description: |
+            rationale 是否为请求的语言。有 rationale 才有。**false 表示没有请求语言的版本、给的是原文**，
+            界面要把这件事显示出来，⛔ 不静默回退。请求没有指定语言时为 true
         meta:
           type: object
           description: 如社区投票分布 {"A":80,"C":20}
@@ -1749,6 +1769,20 @@ components:
         source: { type: string, enum: [ai, editor, user] }
         locale: { type: string, example: zh }
         body:   { type: string }
+
+    PickedExplanation:
+      description: |
+        按请求语言挑好的一份解析：请求的语言 → 题库的语言 → 其他语言；同一语言里人工订正优先于 AI。
+      allOf:
+        - $ref: "#/components/schemas/Explanation"
+        - type: object
+          required: [localized]
+          properties:
+            localized:
+              type: boolean
+              description: |
+                body 是否为请求的语言。**false 表示没有请求语言的版本，回退到了另一种语言**，
+                界面要把这件事显示出来，⛔ 不静默回退。请求没有指定语言时为 true
 
     QuestionSummary:
       type: object
@@ -1804,8 +1838,11 @@ components:
             claims:
               type: array
               items: { $ref: "#/components/schemas/AnswerClaim" }
+            explanation: { $ref: "#/components/schemas/PickedExplanation" }
             explanations:
               type: array
+              deprecated: true
+              description: 全部语言、全部来源的解析。显示请用 explanation（后端按请求语言挑好的那一份）；保留给尚未升级的客户端
               items: { $ref: "#/components/schemas/Explanation" }
             tags:
               type: array
